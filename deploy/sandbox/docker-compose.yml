@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  validator-0:
+    image: dsn/node:latest
+    container_name: dsn-validator-0
+    ports:
+      - "30333:30333"
+      - "8545:8545"
+      - "9090:9090"
+    volumes:
+      - validator-0-data:/data
+    environment:
+      - DSN_NODE_ID=validator-0
+      - DSN_NETWORK=sandbox
+      - DSN_CHAIN_ID=dsn-sandbox-1
+      - DSN_BOOTSTRAP_PEERS=
+      - DSN_RPC_ADDR=:8545
+      - DSN_P2P_PORT=30333
+      - DSN_METRICS_PORT=9090
+    networks:
+      - dsn-sandbox
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8545/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  validator-1:
+    image: dsn/node:latest
+    container_name: dsn-validator-1
+    ports:
+      - "30334:30333"
+      - "8546:8545"
+      - "9091:9090"
+    volumes:
+      - validator-1-data:/data
+    environment:
+      - DSN_NODE_ID=validator-1
+      - DSN_NETWORK=sandbox
+      - DSN_CHAIN_ID=dsn-sandbox-1
+      - DSN_BOOTSTRAP_PEERS=validator-0:30333
+      - DSN_RPC_ADDR=:8545
+      - DSN_P2P_PORT=30333
+      - DSN_METRICS_PORT=9090
+    networks:
+      - dsn-sandbox
+    depends_on:
+      validator-0:
+        condition: service_healthy
+    restart: unless-stopped
+
+  validator-2:
+    image: dsn/node:latest
+    container_name: dsn-validator-2
+    ports:
+      - "30335:30333"
+      - "8547:8545"
+      - "9092:9090"
+    volumes:
+      - validator-2-data:/data
+    environment:
+      - DSN_NODE_ID=validator-2
+      - DSN_NETWORK=sandbox
+      - DSN_CHAIN_ID=dsn-sandbox-1
+      - DSN_BOOTSTRAP_PEERS=validator-0:30333
+      - DSN_RPC_ADDR=:8545
+      - DSN_P2P_PORT=30333
+      - DSN_METRICS_PORT=9090
+    networks:
+      - dsn-sandbox
+    depends_on:
+      validator-0:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  dsn-sandbox:
+    driver: bridge
+
+volumes:
+  validator-0-data:
+  validator-1-data:
+  validator-2-data:

@@ -1,0 +1,121 @@
+replicaCount: 1
+
+image:
+  repository: dsn/node
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+
+service:
+  type: ClusterIP
+  port: 26656
+  metricsPort: 26660
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: dsn.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: dsn-tls
+  #    hosts:
+  #      - dsn.local
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 26660
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 26660
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Configuration for persistent storage (use statefulset mode)
+persistence:
+  enabled: false
+  storageClass: "standard"
+  accessMode: ReadWriteOnce
+  size: 10Gi
+
+# Config for statefulset mode
+statefulset:
+  enabled: false
+
+# Network configuration
+config:
+  p2p:
+    port: 26656
+    seeds: ""
+    persistentPeers: ""
+  rpc:
+    port: 26657
+    corsAllowedOrigins: "*"
+  metrics:
+    enabled: true
+    port: 26660
+  consensus:
+    timeoutPropose: 3s
+    timeoutPrecommit: 1s
+    skipTimeoutCommit: false
+  chain:
+    id: "dsn-1"
+    genesis: ""

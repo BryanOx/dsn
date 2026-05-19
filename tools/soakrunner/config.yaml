@@ -1,0 +1,30 @@
+# Default configuration for soak runner
+nodeEndpoint: "http://localhost:8080"
+profile: "moderate"
+duration: "1h"
+tps: 100
+numAccounts: 100
+logInterval: "10s"
+
+# Profile-specific settings
+profiles:
+  light:
+    tps: 10
+    numAccounts: 10
+  moderate:
+    tps: 100
+    numAccounts: 100
+  heavy:
+    tps: 1000
+    numAccounts: 500
+
+# Burst settings
+burst:
+  burstMultiplier: 5
+  burstDuration: "30s"
+  cooldownDuration: "120s"
+
+# Mixed workload ratio (transfer:wasm)
+mixed:
+  transferRatio: 0.7
+  wasmRatio: 0.3

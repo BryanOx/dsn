@@ -1,0 +1,666 @@
+# DSN Monitoring Stack - Staging Deployment
+# Standalone monitoring with Prometheus, Grafana, AlertManager, and ServiceMonitor
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dsn-monitoring
+  labels:
+    app.kubernetes.io/name: dsn-monitoring
+    app.kubernetes.io/managed-by: kustomize
+---
+# Prometheus ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: dsn-monitoring
+  labels:
+    app: prometheus
+---
+# Grafana ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: grafana
+  namespace: dsn-monitoring
+  labels:
+    app: grafana
+---
+# Prometheus RBAC - ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - nodes/metrics
+      - services
+      - endpoints
+      - pods
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources:
+      - configmaps
+    verbs: ["get"]
+  - nonResourceURLs:
+      - /metrics
+    verbs: ["get"]
+---
+# Prometheus ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: dsn-monitoring
+---
+# Prometheus ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: dsn-monitoring
+  labels:
+    app: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: 'dsn-staging'
+        environment: 'staging'
+
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets:
+                - alertmanager:9093
+
+    rule_files:
+      - /etc/prometheus/rules/*
+
+    scrape_configs:
+      # Prometheus self-monitoring
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      # DSN validators - ServiceMonitor target
+      - job_name: 'dsn-validators'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - dsn-staging
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_name]
+            action: keep
+            regex: dsn
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_component]
+            action: replace
+            target_label: component
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
+
+      # Node exporter for system metrics
+      - job_name: 'node-exporter'
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - source_labels: [__address__]
+            regex: '(.*):10250'
+            replacement: '${1}:9100'
+            target_label: __address__
+
+  rules.yml: |
+    groups:
+      - name: dsn
+        rules:
+          # Recording rules
+          - record: dsn:block_time:avg5m
+            expr: rate(dsn_consensus_block_time_seconds[5m])
+          - record: dsn:sync_lag:max
+            expr: max(dsn_node_sync_lag_blocks)
+          - record: dsn:validator_active:count
+            expr: count(dsn_validator_info{status="active"})
+          - record: dsn:consensus_round:max
+            expr: max(dsn_consensus_round)
+
+          # Existing alerts
+          - alert: DSNBlockHeightNotIncreasing
+            expr: rate(dsn_block_height[5m]) == 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "DSN block height not increasing"
+              description: "DSN node has not produced a new block in the last 5 minutes"
+
+          - alert: DSNSyncLagHigh
+            expr: dsn_node_sync_lag_blocks > 10
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "DSN sync lag is high"
+              description: "DSN node is behind by {{ $value }} blocks"
+
+          - alert: DSNPeerCountLow
+            expr: dsn_p2p_peer_count < 3
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "DSN peer count is low"
+              description: "DSN node has only {{ $value }} peers"
+
+          - alert: DSNValidatorDown
+            expr: up{job="dsn"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "DSN validator is down"
+              description: "DSN validator has been down for more than 1 minute"
+
+          - alert: DSNCPUUsageHigh
+            expr: rate(process_cpu_seconds_total{job="dsn"}[5m]) > 0.8
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "DSN CPU usage is high"
+              description: "DSN node CPU usage is above 80%"
+
+          - alert: DSNMemoryUsageHigh
+            expr: process_resident_memory_bytes{job="dsn"} / 4294967296 > 0.9
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "DSN memory usage is high"
+              description: "DSN node memory usage is above 90%"
+
+          # New security/monitoring alerts (T7-3)
+          - alert: PanicRecoveryRate
+            expr: rate(dsn_panic_recovery_total[5m]) > 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "DSN panic recovery occurred"
+              description: "DSN node experienced {{ $value }} panics in the last 5 minutes"
+
+          - alert: GoroutineSpike
+            expr: go_goroutines > 10000
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "DSN goroutine count spike"
+              description: "DSN node has {{ $value }} goroutines (> 10000)"
+
+          - alert: MempoolPressure
+            expr: dsn_mempool_tx_count / dsn_mempool_max_size > 0.8
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "DSN mempool pressure high"
+              description: "DSN mempool is at {{ $value | humanizePercentage }} capacity"
+
+          - alert: PeerCountDrop
+            expr: rate(dsn_peer_count[5m]) < 0
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "DSN peer count dropping"
+              description: "DSN node lost peers in the last 5 minutes"
+---
+# AlertManager ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: dsn-monitoring
+  labels:
+    app: alertmanager
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+
+    route:
+      group_by: ['alertname', 'severity']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 12h
+      receiver: 'default'
+      routes:
+        - match:
+            severity: critical
+          receiver: 'critical'
+          continue: true
+        - match:
+            severity: warning
+          receiver: 'warning'
+
+    receivers:
+      - name: 'default'
+        webhook_configs:
+          - url: 'http://dsn-notifier.dsn-staging.svc.cluster.local:9090/alerts'
+            send_resolved: true
+
+      - name: 'critical'
+        webhook_configs:
+          - url: 'http://dsn-notifier.dsn-staging.svc.cluster.local:9090/alerts-critical'
+            send_resolved: true
+
+      - name: 'warning'
+        webhook_configs:
+          - url: 'http://dsn-notifier.dsn-staging.svc.cluster.local:9090/alerts-warning'
+            send_resolved: true
+---
+# AlertManager Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: dsn-monitoring
+  labels:
+    app: alertmanager
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 9093
+      targetPort: http
+      protocol: TCP
+  selector:
+    app: alertmanager
+---
+# AlertManager Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: dsn-monitoring
+  labels:
+    app: alertmanager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alertmanager
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+    spec:
+      serviceAccountName: prometheus
+      containers:
+        - name: alertmanager
+          image: prom/alertmanager:v0.26.0
+          args:
+            - '--config.file=/etc/alertmanager/alertmanager.yml'
+            - '--storage.path=/alertmanager'
+          ports:
+            - name: http
+              containerPort: 9093
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alertmanager
+            - name: storage
+              mountPath: /alertmanager
+          resources:
+            requests:
+              cpu: 100m
+              memory: 200Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+      volumes:
+        - name: config
+          configMap:
+            name: alertmanager-config
+        - name: storage
+          emptyDir: {}
+---
+# Prometheus Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: dsn-monitoring
+  labels:
+    app: prometheus
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 9090
+      targetPort: http
+      protocol: TCP
+  selector:
+    app: prometheus
+---
+# Prometheus Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: dsn-monitoring
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.47.0
+          args:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+            - '--storage.tsdb.retention.time=15d'
+            - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+            - '--web.console.templates=/usr/share/prometheus/consoles'
+            - '--web.enable-lifecycle'
+          ports:
+            - name: http
+              containerPort: 9090
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+              readOnly: true
+            - name: rules
+              mountPath: /etc/prometheus/rules
+              readOnly: true
+            - name: storage
+              mountPath: /prometheus
+          resources:
+            requests:
+              cpu: 200m
+              memory: 500Mi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+            items:
+              - key: prometheus.yml
+                path: prometheus.yml
+        - name: rules
+          configMap:
+            name: prometheus-config
+            items:
+              - key: rules.yml
+                path: rules.yml
+        - name: storage
+          emptyDir: {}
+---
+# Grafana Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: dsn-monitoring
+  labels:
+    app: grafana
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+      protocol: TCP
+  selector:
+    app: grafana
+---
+# Grafana Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: dsn-monitoring
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      serviceAccountName: grafana
+      containers:
+        - name: grafana
+          image: grafana/grafana:10.2.0
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: admin
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-credentials
+                  key: password
+            - name: GF_SERVER_ROOT_URL
+              value: "http://grafana.dsn-monitoring.svc.cluster.local:3000"
+            - name: GF_SERVER_SERVE_FROM_SUB_PATH
+              value: "false"
+            - name: GF_INSTALL_PLUGINS
+              value: "grafana-piechart-panel"
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          volumeMounts:
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
+            - name: provisioning
+              mountPath: /etc/grafana/provisioning
+          resources:
+            requests:
+              cpu: 100m
+              memory: 200Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
+        - name: provisioning
+          configMap:
+            name: grafana-provisioning
+---
+# Grafana ConfigMaps for dashboards and provisioning
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: dsn-monitoring
+  labels:
+    app: grafana
+data:
+  dsn-dashboard.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "uid": "dsn-overview",
+        "title": "DSN Overview",
+        "tags": ["dsn", "staging"],
+        "timezone": "browser",
+        "schemaVersion": 38,
+        "version": 1,
+        "refresh": "10s",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Block Height",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+            "targets": [
+              {
+                "expr": "dsn_block_height",
+                "legendFormat": "Block Height"
+              }
+            ]
+          },
+          {
+            "id": 2,
+            "title": "Peer Count",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+            "targets": [
+              {
+                "expr": "dsn_peer_count",
+                "legendFormat": "Peers"
+              }
+            ]
+          },
+          {
+            "id": 3,
+            "title": "Mempool Size",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+            "targets": [
+              {
+                "expr": "dsn_mempool_tx_count",
+                "legendFormat": "Transactions"
+              }
+            ]
+          },
+          {
+            "id": 4,
+            "title": "Consensus Round Time",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+            "targets": [
+              {
+                "expr": "rate(dsn_consensus_block_time_seconds[5m])",
+                "legendFormat": "Block Time (s)"
+              }
+            ]
+          }
+        ]
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-provisioning
+  namespace: dsn-monitoring
+  labels:
+    app: grafana
+data:
+  datasources.yml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus.dsn-monitoring.svc.cluster.local:9090
+        isDefault: true
+        editable: true
+
+  dashboards.yml: |
+    apiVersion: 1
+    providers:
+      - name: 'DSN'
+        folder: 'DSN'
+        type: file
+        options:
+          path: /var/lib/grafana/dashboards
+---
+# ServiceMonitor for DSN validators
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: dsn-validators
+  namespace: dsn-monitoring
+  labels:
+    app: dsn
+    app.kubernetes.io/name: dsn
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dsn
+  namespaceSelector:
+    matchNames:
+      - dsn-staging
+  endpoints:
+    - port: metrics
+      interval: 15s
+      path: /metrics
+      scheme: http
+      tlsConfig:
+        insecureSkipVerify: true
+  jobLabel: app.kubernetes.io/name
+---
+# Grafana Credentials Secret (placeholder - use sealed secret in production)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-credentials
+  namespace: dsn-monitoring
+  labels:
+    app: grafana
+type: Opaque
+stringData:
+  password: "admin"  # Change in production!

@@ -1,0 +1,40 @@
+# StorageClass for fast SSD storage
+# For local clusters (minikube/kind): uses hostPath
+# For cloud: replace provisioner with cloud-specific (e.g., pd.ssd.csi.google.com, EBS, etc.)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: fast-ssd
+  labels:
+    app.kubernetes.io/name: dsn
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/part-of: dsn
+  annotations:
+    description: "Fast SSD storage for DSN validator nodes"
+# For local development (minikube/kind) - uses local disk
+# For production cloud environments, replace with:
+#   - GKE: pd-ssd
+#   - AWS: gp3 or io2
+#   - Azure: managed-premium
+provisioner: kubernetes.io/no-provisioner
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+---
+# Alternative: For cloud providers, use this StorageClass instead:
+# apiVersion: storage.k8s.io/v1
+# kind: StorageClass
+# metadata:
+#   name: fast-ssd
+#   labels:
+#     app.kubernetes.io/name: dsn
+# provisioner: pd.ssd.csi.google.com  # GKE
+# # Or: provisioner: ebs.csi.aws.com  # AWS
+# # Or: provisioner: disk.csi.azure.com  # Azure
+# allowVolumeExpansion: true
+# reclaimPolicy: Retain
+# volumeBindingMode: WaitForFirstConsumer
+# parameters:
+#   type: pd-ssd  # GKE
+#   # Or for AWS: type: gp3, iops: "3000", throughput: "125"
+#   # Or for Azure: skuName: Premium_LRS

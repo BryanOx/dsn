@@ -1,0 +1,25 @@
+[Unit]
+Description=DSN Node
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dsn
+Group=dsn
+WorkingDirectory=/var/lib/dsn
+EnvironmentFile=-/etc/dsn/config.env
+ExecStart=/usr/local/bin/dsn node start
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65535
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+CapabilityBoundingSet=~CAP_SYS_PTRACE ~CAP_NET_ADMIN
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

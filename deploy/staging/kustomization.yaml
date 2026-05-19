@@ -1,0 +1,93 @@
+# Staging Kustomization for DSN 3-Validator Cluster
+# Usage:
+#   1. Generate Helm template output: helm template charts/dsn/ > base.yaml
+#   2. Build and apply: kustomize build deploy/staging/ | kubectl apply -f -
+#   Or combine: helm template charts/dsn/ -f charts/dsn/values-staging.yaml | kubectl apply -f -
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: dsn-staging
+
+# Resources to apply
+resources:
+  - namespace.yaml
+  - bootstrap-configmap.yaml
+  - pvc-storage-class.yaml
+  - network-policy.yaml
+
+# Patches to customize the Helm chart output for staging
+patches:
+  # Patch replica count to 3 validators
+  - patch: |
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: dsn
+      spec:
+        replicas: 3
+        serviceName: dsn-headless
+        volumeClaimTemplates:
+        - metadata:
+            name: data
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: "fast-ssd"
+            resources:
+              requests:
+                storage: 20Gi
+        template:
+          spec:
+            containers:
+            - name: dsn
+              resources:
+                requests:
+                  cpu: "2"
+                  memory: 4Gi
+                limits:
+                  cpu: "4"
+                  memory: 8Gi
+    target:
+      kind: StatefulSet
+      name: dsn
+
+  # Patch Service to be headless for P2P
+  - patch: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: dsn-headless
+      spec:
+        clusterIP: None
+        publishNotReadyAddresses: true
+    target:
+      kind: Service
+      name: dsn-headless
+
+  # Add validator ordinal labels to pods
+  - patch: |
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: dsn
+      spec:
+        template:
+          metadata:
+            labels:
+              app.kubernetes.io/component: validator
+              app.kubernetes.io/part-of: dsn
+    target:
+      kind: StatefulSet
+      name: dsn
+
+# ConfigMap generator for bootstrap configuration
+configMapGenerator:
+  - name: dsn-staging-config
+    literals:
+      - STAGING=true
+      - VALIDATOR_COUNT=3
+
+# Common labels for all resources
+commonLabels:
+  app.kubernetes.io/managed-by: kustomize
+  environment: staging

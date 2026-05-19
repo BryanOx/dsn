@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "dsn.fullname" . }}-config
+  labels:
+    {{- include "dsn.labels" . | nindent 4 }}
+data:
+  config.toml: |
+    [chain]
+    id = "{{ .Values.config.chain.id }}"
+    genesis = "{{ .Values.config.chain.genesis }}"
+
+    [p2p]
+    listen_addr = "0.0.0.0:{{ .Values.config.p2p.port }}"
+    {{- if .Values.config.p2p.seeds }}
+    seeds = "{{ .Values.config.p2p.seeds }}"
+    {{- end }}
+    {{- if .Values.config.p2p.persistent_peers }}
+    persistent_peers = "{{ .Values.config.p2p.persistent_peers }}"
+    {{- end }}
+
+    [rpc]
+    listen_addr = "0.0.0.0:{{ .Values.config.rpc.port }}"
+    cors_allowed_origins = {{ .Values.config.rpc.corsAllowedOrigins }}
+
+    [metrics]
+    enabled = {{ .Values.config.metrics.enabled }}
+    listen_addr = "0.0.0.0:{{ .Values.config.metrics.port }}"
+
+    [consensus]
+    timeout_propose = "{{ .Values.config.consensus.timeoutPropose }}"
+    timeout_precommit = "{{ .Values.config.consensus.timeoutPrecommit }}"
+    skip_timeout_commit = {{ .Values.config.consensus.skipTimeoutCommit }}

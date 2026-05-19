@@ -1,0 +1,19 @@
+# Moderate profile configuration for standard soak tests
+# 100 TPS, 24 hour duration, 1000 accounts
+profile: moderate
+tps: 100
+duration: 24h
+num_accounts: 1000
+log_interval: 1m
+
+# Profile-specific settings
+profiles:
+  light:
+    tps: 10
+    num_accounts: 100
+  moderate:
+    tps: 100
+    num_accounts: 1000
+  heavy:
+    tps: 1000
+    num_accounts: 10000

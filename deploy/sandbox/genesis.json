@@ -1,0 +1,32 @@
+{
+  "genesis_time": "2026-05-19T00:00:00Z",
+  "chain_id": "dsn-sandbox-1",
+  "initial_height": 1,
+  "consensus_params": {
+    "max_tx_per_block": 10000,
+    "max_bytes_per_block": 1048576,
+    "max_gas_per_block": 10000000
+  },
+  "epoch_params": {
+    "blocks_per_epoch": 100,
+    "unstake_cooldown_epochs": 5,
+    "max_validators": 21,
+    "minimum_stake": 1000000
+  },
+  "inflation_params": {
+    "enabled": true,
+    "annual_rate": "0.05",
+    "mint_per_block": 100
+  },
+  "initial_validators": [],
+  "initial_balances": [
+    {
+      "address": "faucet0000000000000000000000000000000001",
+      "amount": 1000000000000
+    }
+  ],
+  "treasury": {
+    "address": "treasury000000000000000000000000000000000",
+    "initial_balance": 500000000000
+  }
+}

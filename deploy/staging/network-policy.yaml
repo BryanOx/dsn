@@ -1,0 +1,141 @@
+# Network Policy for DSN Staging - 3-Validator Cluster
+# Enforces network isolation between validators and external access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dsn-validator-network-policy
+  namespace: dsn-staging
+  labels:
+    app.kubernetes.io/name: dsn
+    app.kubernetes.io/component: network-policy
+    app.kubernetes.io/part-of: dsn
+spec:
+  # Apply to all validator pods
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: validator
+  policyTypes:
+    - Ingress
+    - Egress
+  # =============================================
+  # INGRESS RULES
+  # =============================================
+  ingress:
+    # Rule 1: Allow inter-validator traffic on all ports
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: validator
+      ports:
+        - protocol: TCP
+          port: 30333  # P2P
+        - protocol: TCP
+          port: 8545   # RPC
+        - protocol: TCP
+          port: 9090   # Metrics
+        - protocol: TCP
+          port: 26656  # Tendermint P2P
+        - protocol: TCP
+          port: 26657  # Tendermint RPC
+        - protocol: TCP
+          port: 26660  # Tendermint Metrics
+    # Rule 2: Allow P2P (30333) from external peers
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 30333
+    # Rule 3: Allow RPC (8545) for external API access
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8545
+    # Rule 4: Allow Prometheus metrics scraping
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 9090
+    # Rule 5: Allow Grafana dashboard access
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: grafana
+      ports:
+        - protocol: TCP
+          port: 3000
+  # =============================================
+  # EGRESS RULES
+  # =============================================
+  egress:
+    # Rule 1: Allow DNS for cluster DNS resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: TCP
+          port: 53
+        - protocol: UDP
+          port: 53
+    # Rule 2: Allow P2P outbound to other validators/peers
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 30333
+        - protocol: TCP
+          port: 26656
+    # Rule 3: Allow outbound to other validators in the cluster
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: validator
+      ports:
+        - protocol: TCP
+          port: 30333
+        - protocol: TCP
+          port: 8545
+        - protocol: TCP
+          port: 9090
+        - protocol: TCP
+          port: 26656
+        - protocol: TCP
+          port: 26657
+        - protocol: TCP
+          port: 26660
+    # Rule 4: Allow HTTPS outbound for external APIs (e.g., Prometheus remote write)
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+    # Default deny all other egress (implicit)
+---
+# Additional NetworkPolicy for dsn pods to allow ingress from ingress-nginx
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dsn-ingress-access
+  namespace: dsn-staging
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: validator
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow ingress from ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8545

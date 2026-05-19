@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  node0:
+    build:
+      context: ../..
+      dockerfile: dev/localnet/Dockerfile
+    ports:
+      - "26656:26656"
+      - "8545:8545"
+      - "9464:9464"
+    volumes:
+      - ./tmp/node0:/root/.dsn
+      - ./tmp/genesis.json:/root/genesis.json:ro
+    environment:
+      - DSN_CONFIG=/root/.dsn/config.toml
+      - DSN_VALIDATOR_KEY=/root/.dsn/validator.key
+      - DSN_GENESIS=/root/genesis.json
+    command: ["node", "start"]
+    networks:
+      dsn-localnet:
+        ipv4_address: 10.0.1.10
+
+  node1:
+    build:
+      context: ../..
+      dockerfile: dev/localnet/Dockerfile
+    ports:
+      - "26657:26656"
+      - "8546:8545"
+      - "9465:9464"
+    volumes:
+      - ./tmp/node1:/root/.dsn
+      - ./tmp/genesis.json:/root/genesis.json:ro
+    environment:
+      - DSN_CONFIG=/root/.dsn/config.toml
+      - DSN_VALIDATOR_KEY=/root/.dsn/validator.key
+      - DSN_GENESIS=/root/genesis.json
+    command: ["node", "start"]
+    networks:
+      dsn-localnet:
+        ipv4_address: 10.0.1.11
+
+  node2:
+    build:
+      context: ../..
+      dockerfile: dev/localnet/Dockerfile
+    ports:
+      - "26658:26656"
+      - "8547:8545"
+      - "9466:9464"
+    volumes:
+      - ./tmp/node2:/root/.dsn
+      - ./tmp/genesis.json:/root/genesis.json:ro
+    environment:
+      - DSN_CONFIG=/root/.dsn/config.toml
+      - DSN_VALIDATOR_KEY=/root/.dsn/validator.key
+      - DSN_GENESIS=/root/genesis.json
+    command: ["node", "start"]
+    networks:
+      dsn-localnet:
+        ipv4_address: 10.0.1.12
+
+networks:
+  dsn-localnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.1.0/24

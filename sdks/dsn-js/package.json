@@ -1,0 +1,20 @@
+{
+  "name": "@dsn/sdk",
+  "version": "0.1.0",
+  "description": "DSN TypeScript SDK — interact with DSN nodes via JSON-RPC",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build"
+  },
+  "keywords": ["dsn", "blockchain", "sdk"],
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.0.0"
+  }
+}

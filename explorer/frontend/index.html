@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DSN Explorer</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:system-ui, -apple-system, sans-serif; background:#0d1117; color:#c9d1d9; min-height:100vh; }
+    header { background:#161b22; border-bottom:1px solid #30363d; padding:1rem 2rem; display:flex; align-items:center; gap:1rem; }
+    header h1 { font-size:1.25rem; font-weight:600; color:#58a6ff; }
+    header h1 span { color:#8b949e; }
+    nav { display:flex; gap:.5rem; background:#161b22; padding:.5rem 2rem; border-bottom:1px solid #30363d; flex-wrap:wrap; }
+    nav button { background:transparent; border:1px solid #30363d; color:#c9d1d9; padding:.35rem .75rem; border-radius:6px; cursor:pointer; font-size:.85rem; }
+    nav button:hover { background:#1f2937; border-color:#58a6ff; }
+    nav button.active { background:#1f2937; border-color:#58a6ff; color:#58a6ff; }
+    main { padding:1.5rem 2rem; max-width:1200px; margin:0 auto; }
+    section { display:none; }
+    section.active { display:block; }
+    .card { background:#161b22; border:1px solid #30363d; border-radius:8px; padding:1.25rem; margin-bottom:1rem; }
+    .card h2 { font-size:1rem; font-weight:500; color:#58a6ff; margin-bottom:.75rem; }
+    .card .row { display:flex; justify-content:space-between; padding:.35rem 0; border-bottom:1px solid #21262d; font-size:.875rem; }
+    .card .row:last-child { border-bottom:none; }
+    .card .label { color:#8b949e; }
+    .card .value { font-family:ui-monospace, monospace; word-break:break-all; color:#e6edf3; }
+    .highlight { color:#58a6ff; }
+    .success { color:#3fb950; }
+    .warning { color:#d29922; }
+    .error { color:#f85149; }
+    input, select { background:#0d1117; border:1px solid #30363d; color:#c9d1d9; padding:.4rem .6rem; border-radius:6px; font-size:.85rem; width:100%; }
+    button.primary { background:#238636; border:1px solid #2ea043; color:#fff; padding:.45rem 1rem; border-radius:6px; cursor:pointer; font-size:.875rem; }
+    button.primary:hover { background:#2ea043; }
+    .flex-row { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+    .error-box { background:#f8514911; border:1px solid #f85149; border-radius:6px; padding:.75rem; margin:.5rem 0; color:#f85149; font-size:.85rem; }
+    .loading { text-align:center; padding:2rem; color:#8b949e; }
+    table { width:100%; border-collapse:collapse; font-size:.85rem; }
+    th, td { text-align:left; padding:.5rem .75rem; border-bottom:1px solid #21262d; }
+    th { color:#8b949e; font-weight:500; }
+    tr:hover { background:#1c2128; }
+    .badge { display:inline-block; padding:.12rem .5rem; border-radius:12px; font-size:.75rem; font-weight:500; }
+    .badge.success { background:#3fb95022; color:#3fb950; }
+    .badge.error { background:#f8514922; color:#f85149; }
+    .stat-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:1rem; }
+    .stat { background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:1rem; text-align:center; }
+    .stat .num { font-size:1.5rem; font-weight:600; color:#58a6ff; }
+    .stat .desc { font-size:.75rem; color:#8b949e; text-transform:uppercase; letter-spacing:.05em; margin-top:.25rem; }
+    @media (max-width:768px) {
+      header, nav, main { padding-left:1rem; padding-right:1rem; }
+      .stat-grid { grid-template-columns:repeat(2,1fr); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🔷 DSN <span>Explorer</span></h1>
+  </header>
+  <nav>
+    <button class="active" data-tab="overview">Overview</button>
+    <button data-tab="blocks">Blocks</button>
+    <button data-tab="transactions">Transactions</button>
+    <button data-tab="account">Account</button>
+    <button data-tab="contract">Contract</button>
+    <button data-tab="validators">Validators</button>
+    <button data-tab="events">Events</button>
+  </nav>
+  <main>
+    <!-- OVERVIEW -->
+    <section id="overview" class="active">
+      <div class="stat-grid" id="stats">
+        <div class="stat"><div class="num" id="block-number">--</div><div class="desc">Block Height</div></div>
+        <div class="stat"><div class="num" id="tx-count">--</div><div class="desc">Total Tx</div></div>
+        <div class="stat"><div class="num" id="validator-count">--</div><div class="desc">Validators</div></div>
+        <div class="stat"><div class="num" id="supply">--</div><div class="desc">Total Supply</div></div>
+        <div class="stat"><div class="num" id="staked">--</div><div class="desc">Staked</div></div>
+      </div>
+      <div class="card">
+        <h2>Latest Block</h2>
+        <div id="latest-block">Loading...</div>
+      </div>
+    </section>
+
+    <!-- BLOCKS -->
+    <section id="blocks">
+      <div class="card">
+        <div class="flex-row">
+          <input type="number" id="block-input" placeholder="Block number" min="0" />
+          <button class="primary" id="block-search">Search</button>
+        </div>
+      </div>
+      <div id="block-result"></div>
+    </section>
+
+    <!-- TRANSACTIONS -->
+    <section id="transactions">
+      <div class="card">
+        <div class="flex-row">
+          <input type="text" id="tx-hash-input" placeholder="Transaction hash" style="flex:1" />
+          <button class="primary" id="tx-search">Search</button>
+        </div>
+      </div>
+      <div id="tx-result"></div>
+    </section>
+
+    <!-- ACCOUNT -->
+    <section id="account">
+      <div class="card">
+        <div class="flex-row">
+          <input type="text" id="account-input" placeholder="0x address" style="flex:1" />
+          <button class="primary" id="account-search">Lookup</button>
+        </div>
+      </div>
+      <div id="account-result"></div>
+    </section>
+
+    <!-- CONTRACT -->
+    <section id="contract">
+      <div class="card">
+        <div class="flex-row">
+          <input type="text" id="contract-input" placeholder="Contract address" style="flex:1" />
+          <button class="primary" id="contract-search">Lookup</button>
+        </div>
+      </div>
+      <div id="contract-result"></div>
+    </section>
+
+    <!-- VALIDATORS -->
+    <section id="validators">
+      <div id="validators-result">Loading...</div>
+    </section>
+
+    <!-- EVENTS -->
+    <section id="events">
+      <div class="card">
+        <div class="flex-row">
+          <input type="text" id="event-contract" placeholder="Contract address (optional)" style="flex:1" />
+          <input type="number" id="event-from" placeholder="From block" />
+          <input type="number" id="event-to" placeholder="To block" />
+          <button class="primary" id="event-search">Query</button>
+        </div>
+      </div>
+      <div id="events-result"></div>
+    </section>
+  </main>
+
+  <script>
+    const RPC_URL = window.location.origin.replace(':8080', ':8545');
+    let idCounter = 1;
+
+    async function rpc(method, params = []) {
+      const res = await fetch(RPC_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', method, params, id: idCounter++ }),
+      });
+      const json = await res.json();
+      if (json.error) throw new Error(json.error.message);
+      return json.result;
+    }
+
+    function renderRow(label, value, cls = '') {
+      return `<div class="row"><span class="label">${label}</span><span class="value ${cls}">${value ?? '--'}</span></div>`;
+    }
+
+    // ── Tabs ──
+    document.querySelectorAll('nav button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.tab).classList.add('active');
+      });
+    });
+
+    // ── Overview ──
+    async function loadOverview() {
+      try {
+        const [blockNum, validators, supply] = await Promise.all([
+          rpc('dsn_blockNumber'),
+          rpc('dsn_getValidators').catch(() => []),
+          rpc('dsn_getSupply').catch(() => ({ total: '0', circulating: '0', staked: '0' })),
+        ]);
+        document.getElementById('block-number').textContent = blockNum ?? '?';
+        document.getElementById('validator-count').textContent = Array.isArray(validators) ? validators.length : '?';
+        document.getElementById('supply').textContent = supply.total ?? '?';
+        document.getElementById('staked').textContent = supply.staked ?? '?';
+
+        const block = await rpc('dsn_getBlockByNumber', [blockNum ?? 0]);
+        document.getElementById('tx-count').textContent = block?.transactions?.length ?? 0;
+
+        if (block) {
+          document.getElementById('latest-block').innerHTML = [
+            renderRow('Hash', block.hash),
+            renderRow('Number', block.number),
+            renderRow('Parent Hash', block.parentHash),
+            renderRow('Timestamp', block.timestamp ? new Date(block.timestamp * 1000).toISOString() : '--'),
+            renderRow('Transactions', block.transactions?.length ?? 0),
+          ].join('');
+        }
+      } catch (e) {
+        document.getElementById('latest-block').innerHTML = `<div class="error-box">Could not connect: ${e.message}</div>`;
+      }
+    }
+    loadOverview();
+    setInterval(loadOverview, 10000);
+
+    // ── Blocks ──
+    document.getElementById('block-search').addEventListener('click', async () => {
+      const num = parseInt(document.getElementById('block-input').value);
+      if (isNaN(num)) return;
+      const el = document.getElementById('block-result');
+      el.innerHTML = '<div class="loading">Loading...</div>';
+      try {
+        const block = await rpc('dsn_getBlockByNumber', [num]);
+        if (!block) { el.innerHTML = '<div class="error-box">Block not found</div>'; return; }
+        el.innerHTML = `<div class="card">${[
+          renderRow('Number', block.number),
+          renderRow('Hash', block.hash),
+          renderRow('Parent Hash', block.parentHash),
+          renderRow('Timestamp', block.timestamp ? new Date(block.timestamp * 1000).toISOString() : '--'),
+          renderRow('Transactions', block.transactions?.length ?? 0),
+          block.events ? renderRow('Events', block.events.length) : '',
+        ].join('')}</div>`;
+      } catch (e) { el.innerHTML = `<div class="error-box">${e.message}</div>`; }
+    });
+
+    // ── Transactions ──
+    document.getElementById('tx-search').addEventListener('click', async () => {
+      const hash = document.getElementById('tx-hash-input').value.trim();
+      if (!hash) return;
+      const el = document.getElementById('tx-result');
+      el.innerHTML = '<div class="loading">Loading...</div>';
+      try {
+        const tx = await rpc('dsn_getTransactionByHash', [hash]);
+        if (!tx) { el.innerHTML = '<div class="error-box">Transaction not found</div>'; return; }
+        el.innerHTML = `<div class="card">${[
+          renderRow('Hash', tx.hash),
+          renderRow('Sender', tx.sender),
+          renderRow('Recipient', tx.recipient ?? '--'),
+          renderRow('Nonce', tx.nonce),
+          renderRow('Value', tx.value),
+          renderRow('Max Fee', tx.maxFee),
+          renderRow('Gas Limit', tx.gasLimit),
+          renderRow('Data', tx.data ? tx.data.substring(0, 66) + (tx.data.length > 66 ? '...' : '') : '0x'),
+        ].join('')}</div>`;
+      } catch (e) { el.innerHTML = `<div class="error-box">${e.message}</div>`; }
+    });
+
+    // ── Account ──
+    document.getElementById('account-search').addEventListener('click', async () => {
+      const addr = document.getElementById('account-input').value.trim();
+      if (!addr) return;
+      const el = document.getElementById('account-result');
+      el.innerHTML = '<div class="loading">Loading...</div>';
+      try {
+        const [account, balance, nonce] = await Promise.all([
+          rpc('dsn_getAccount', [addr]),
+          rpc('dsn_getBalance', [addr]),
+          rpc('dsn_getNonce', [addr]),
+        ]);
+        el.innerHTML = `<div class="card">${[
+          renderRow('Address', addr),
+          renderRow('Balance', balance ?? '0'),
+          renderRow('Nonce', nonce ?? 0),
+          account ? renderRow('Code Hash', account.codeHash) : '',
+          account ? renderRow('Storage Root', account.storageRoot) : '',
+        ].join('')}</div>`;
+      } catch (e) { el.innerHTML = `<div class="error-box">${e.message}</div>`; }
+    });
+
+    // ── Contract ──
+    document.getElementById('contract-search').addEventListener('click', async () => {
+      const addr = document.getElementById('contract-input').value.trim();
+      if (!addr) return;
+      const el = document.getElementById('contract-result');
+      el.innerHTML = '<div class="loading">Loading...</div>';
+      try {
+        const contract = await rpc('dsn_getAccount', [addr]);
+        if (!contract) { el.innerHTML = '<div class="error-box">Contract not found</div>'; return; }
+        el.innerHTML = `<div class="card">${[
+          renderRow('Address', addr),
+          renderRow('Code Hash', contract.codeHash),
+          renderRow('Storage Root', contract.storageRoot),
+          renderRow('Balance', contract.balance),
+        ].join('')}</div>`;
+      } catch (e) { el.innerHTML = `<div class="error-box">${e.message}</div>`; }
+    });
+
+    // ── Validators ──
+    async function loadValidators() {
+      const el = document.getElementById('validators-result');
+      try {
+        const validators = await rpc('dsn_getValidators');
+        if (!validators || !validators.length) {
+          el.innerHTML = '<div class="card">No validators found.</div>';
+          return;
+        }
+        el.innerHTML = `<div class="card"><table><thead><tr><th>Address</th><th>Power</th><th>Commission</th></tr></thead><tbody>${validators.map(v =>
+          `<tr><td class="value">${v.address}</td><td>${v.power}</td><td>${v.commission != null ? v.commission + '%' : '--'}</td></tr>`
+        ).join('')}</tbody></table></div>`;
+      } catch (e) { el.innerHTML = `<div class="error-box">${e.message}</div>`; }
+    }
+    document.querySelector('[data-tab="validators"]').addEventListener('click', loadValidators);
+
+    // ── Events ──
+    document.getElementById('event-search').addEventListener('click', async () => {
+      const contract = document.getElementById('event-contract').value.trim() || undefined;
+      const fromBlock = parseInt(document.getElementById('event-from').value) || undefined;
+      const toBlock = parseInt(document.getElementById('event-to').value) || undefined;
+      const el = document.getElementById('events-result');
+      el.innerHTML = '<div class="loading">Loading...</div>';
+      try {
+        const events = await rpc('dsn_getEvents', [{ contract, fromBlock, toBlock }]);
+        if (!events || !events.length) { el.innerHTML = '<div class="card">No events found.</div>'; return; }
+        el.innerHTML = `<div class="card"><table><thead><tr><th>Contract</th><th>Topics</th><th>Block</th></tr></thead><tbody>${
+          events.map(e =>
+            `<tr><td class="value">${(e.contract || '').substring(0, 18)}...</td><td class="value">${(e.topics || []).length} topics</td><td>${e.blockNumber}</td></tr>`
+          ).join('')
+        }</tbody></table></div>`;
+      } catch (e) { el.innerHTML = `<div class="error-box">${e.message}</div>`; }
+    });
+  </script>
+</body>
+</html>

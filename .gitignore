@@ -1,0 +1,42 @@
+# Binaries
+*.exe
+*.test
+*.bin
+
+# Test output
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data directories
+data/
+*.db
+
+# Logs
+*.log
+
+# Wallet files (for local development - don't commit real keys)
+*.wallet.json
+!example*.wallet.json
+
+# SDD planning artifacts (persisted in engram)
+sdd/
+
+# Generated temp data
+tmp/
+
+# Built binaries
+/dsn
+/dsn-tui
+/event-subscriber
+
+# CI/test output
+*.output.txt

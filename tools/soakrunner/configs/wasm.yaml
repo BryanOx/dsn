@@ -1,0 +1,27 @@
+# WASM profile configuration for WASM contract testing
+# Lower TPS due to contract execution overhead
+profile: wasm
+tps: 20
+duration: 1h
+num_accounts: 100
+log_interval: 1m
+
+# WASM-specific settings (simulated for testing)
+wasm:
+  contract_timeout: 5s
+  memory_limit: 64MB
+
+# Profile-specific settings
+profiles:
+  light:
+    tps: 10
+    num_accounts: 100
+  moderate:
+    tps: 100
+    num_accounts: 1000
+  heavy:
+    tps: 1000
+    num_accounts: 10000
+  wasm:
+    tps: 20
+    num_accounts: 100

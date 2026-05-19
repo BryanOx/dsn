@@ -1,0 +1,28 @@
+# Burst profile configuration for burst pattern testing
+# Alternating high/low TPS with cooldown periods
+profile: burst
+tps: 50
+duration: 30m
+num_accounts: 500
+log_interval: 30s
+
+# Burst-specific settings
+burst:
+  burst_multiplier: 5
+  burst_duration: 30s
+  cooldown_duration: 120s
+
+# Profile-specific settings
+profiles:
+  light:
+    tps: 10
+    num_accounts: 100
+  moderate:
+    tps: 100
+    num_accounts: 1000
+  heavy:
+    tps: 1000
+    num_accounts: 10000
+  burst:
+    tps: 50
+    num_accounts: 500

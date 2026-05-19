@@ -1,0 +1,132 @@
+groups:
+  - name: dsn
+    rules:
+      - record: dsn:block_time:avg5m
+        expr: rate(dsn_consensus_block_time_seconds[5m])
+      - record: dsn:sync_lag:max
+        expr: max(dsn_node_sync_lag_blocks)
+      - record: dsn:validator_active:count
+        expr: count(dsn_validator_info{status="active"})
+      - record: dsn:consensus_round:max
+        expr: max(dsn_consensus_round)
+      - alert: DSNBlockHeightNotIncreasing
+        expr: rate(dsn_block_height[5m]) == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DSN block height not increasing"
+          description: "DSN node has not produced a new block in the last 5 minutes"
+      - alert: DSNSyncLagHigh
+        expr: dsn_node_sync_lag_blocks > 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DSN sync lag is high"
+          description: "DSN node is behind by {{ $value }} blocks"
+      - alert: DSNPeerCountLow
+        expr: dsn_p2p_peer_count < 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DSN peer count is low"
+          description: "DSN node has only {{ $value }} peers"
+      - alert: DSNValidatorDown
+        expr: up{job="dsn"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DSN validator is down"
+          description: "DSN validator has been down for more than 1 minute"
+      - alert: DSNCPUUsageHigh
+        expr: rate(process_cpu_seconds_total{job="dsn"}[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DSN CPU usage is high"
+          description: "DSN node CPU usage is above 80%"
+      - alert: DSNMemoryUsageHigh
+        expr: process_resident_memory_bytes{job="dsn"} / 4294967296 > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DSN memory usage is high"
+          description: "DSN node memory usage is above 90%"
+
+      # T7-3: Defensive security alerts
+      - alert: PanicRecoveryRate
+        expr: rate(dsn_panic_recovery_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DSN panic recovery occurred"
+          description: "DSN node experienced {{ $value }} panics in the last 5 minutes"
+
+      - alert: GoroutineSpike
+        expr: go_goroutines > 10000
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DSN goroutine count spike"
+          description: "DSN node has {{ $value }} goroutines (> 10000)"
+
+      - alert: MempoolPressure
+        expr: dsn_mempool_current_size / dsn_mempool_max_size > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DSN mempool pressure high"
+          description: "DSN mempool is above 80% capacity"
+
+      - alert: PeerCountDrop
+        expr: changes(dsn_peer_count_gauge[5m]) < -1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DSN peer count dropped significantly"
+          description: "DSN node lost more than 1 peer in the last 5 minutes"
+
+      - alert: StateRootMismatch
+        expr: rate(dsn_state_root_mismatch_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DSN state root mismatch detected"
+          description: "DSN node detected {{ $value }} state root mismatches in the last 5 minutes"
+
+      - alert: SignatureVerificationFailures
+        expr: rate(dsn_signature_verification_failures_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DSN high signature verification failure rate"
+          description: "DSN node has {{ $value }} signature verification failures per second"
+
+      - alert: GossipMessageDropped
+        expr: rate(dsn_gossip_dropped_total[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DSN high gossip message drop rate"
+          description: "DSN node is dropping {{ $value }} gossip messages per second"
+
+      - alert: GasLimitRejectionRate
+        expr: rate(dsn_gas_limit_rejections_total[5m]) > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DSN high gas limit rejection rate"
+          description: "DSN node is rejecting {{ $value }} transactions per second due to gas limits"

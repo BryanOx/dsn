@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dsn-bootstrap
+  namespace: dsn-staging
+  labels:
+    app.kubernetes.io/name: dsn
+    app.kubernetes.io/component: bootstrap
+    app.kubernetes.io/part-of: dsn
+data:
+  # Bootstrap peer list for 3 validators in staging
+  # Replace <peer-id-X> with actual validator peer IDs after initial setup
+  bootstrap-peers: |
+    /dns/validator-0.dsn-staging.svc.cluster.local/tcp/30333/p2p/<peer-id-0>
+    /dns/validator-1.dsn-staging.svc.cluster.local/tcp/30333/p2p/<peer-id-1>
+    /dns/validator-2.dsn-staging.svc.cluster.local/tcp/30333/p2p/<peer-id-2>
+
+  # Genesis hash - replace with actual genesis after chain initialization
+  genesis-hash: "<placeholder-genesis-hash>"
+
+  # P2P configuration
+  p2p-port: "30333"
+  rpc-port: "8545"
+  metrics-port: "9090"

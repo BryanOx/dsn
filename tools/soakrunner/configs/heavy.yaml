@@ -1,0 +1,19 @@
+# Heavy profile configuration for extended stress testing
+# 1000 TPS, 72 hour duration, 10000 accounts
+profile: heavy
+tps: 1000
+duration: 72h
+num_accounts: 10000
+log_interval: 5m
+
+# Profile-specific settings
+profiles:
+  light:
+    tps: 10
+    num_accounts: 100
+  moderate:
+    tps: 100
+    num_accounts: 1000
+  heavy:
+    tps: 1000
+    num_accounts: 10000

@@ -1,0 +1,27 @@
+# Mixed profile configuration for mixed workload testing
+# 70% transfers, 30% contract calls
+profile: mixed
+tps: 70
+duration: 2h
+num_accounts: 500
+log_interval: 1m
+
+# Mixed workload ratio (transfer:wasm)
+mixed:
+  transfer_ratio: 0.7
+  wasm_ratio: 0.3
+
+# Profile-specific settings
+profiles:
+  light:
+    tps: 10
+    num_accounts: 100
+  moderate:
+    tps: 100
+    num_accounts: 1000
+  heavy:
+    tps: 1000
+    num_accounts: 10000
+  mixed:
+    tps: 70
+    num_accounts: 500

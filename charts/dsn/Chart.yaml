@@ -1,0 +1,13 @@
+apiVersion: v2
+name: dsn
+description: A Helm chart for DSN Node
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - dsn
+  - blockchain
+  - node
+maintainers:
+  - name: DSN Team
+    email: team@dsn.example

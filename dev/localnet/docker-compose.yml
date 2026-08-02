@@ -16,7 +16,8 @@ services:
       - DSN_CONFIG=/root/.dsn/config.toml
       - DSN_VALIDATOR_KEY_FILE=/root/.dsn/validator.key
       - DSN_GENESIS=/root/genesis.json
-    command: ["node", "start"]
+      - DSN_DATA_DIR=/root/.dsn/data
+    command: ["sh", "-c", "mkdir -p /root/.dsn/data && exec dsn node start"]
     networks:
       dsn-localnet:
         ipv4_address: 10.0.1.10
@@ -36,7 +37,9 @@ services:
       - DSN_CONFIG=/root/.dsn/config.toml
       - DSN_VALIDATOR_KEY_FILE=/root/.dsn/validator.key
       - DSN_GENESIS=/root/genesis.json
-    command: ["node", "start"]
+      - DSN_DATA_DIR=/root/.dsn/data
+      - DSN_P2P_BOOTSTRAP_PEERS=node0:26656
+    command: ["sh", "-c", "mkdir -p /root/.dsn/data && exec dsn node start"]
     networks:
       dsn-localnet:
         ipv4_address: 10.0.1.11
@@ -56,7 +59,9 @@ services:
       - DSN_CONFIG=/root/.dsn/config.toml
       - DSN_VALIDATOR_KEY_FILE=/root/.dsn/validator.key
       - DSN_GENESIS=/root/genesis.json
-    command: ["node", "start"]
+      - DSN_DATA_DIR=/root/.dsn/data
+      - DSN_P2P_BOOTSTRAP_PEERS=node0:26656
+    command: ["sh", "-c", "mkdir -p /root/.dsn/data && exec dsn node start"]
     networks:
       dsn-localnet:
         ipv4_address: 10.0.1.12

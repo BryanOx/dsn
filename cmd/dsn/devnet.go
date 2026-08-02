@@ -154,7 +154,7 @@ func runDevnet(cmd *cobra.Command, args []string) error {
 				// Build block from mempool
 				block, err := consensus.BuildBlock(
 					n.State(),
-					nil, // no VM for devnet (standard txs only)
+					n.VM(), // WASM VM for contract execution
 					n.Mempool(),
 					height,
 					prevHash,
@@ -356,10 +356,10 @@ type FaucetRequest struct {
 
 // FaucetResponse represents a faucet response
 type FaucetResponse struct {
-	Success  bool   `json:"success"`
-	TxHash   string `json:"txHash,omitempty"`
-	Error    string `json:"error,omitempty"`
-	Amount   string `json:"amount,omitempty"`
+	Success bool   `json:"success"`
+	TxHash  string `json:"txHash,omitempty"`
+	Error   string `json:"error,omitempty"`
+	Amount  string `json:"amount,omitempty"`
 }
 
 // HandleFaucet handles faucet requests

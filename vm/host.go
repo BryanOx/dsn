@@ -2,24 +2,25 @@ package vm
 
 import (
 	"context"
+	"encoding/binary"
 
-	"github.com/dsn/dsn/types"
 	"github.com/dsn/dsn/state"
+	"github.com/dsn/dsn/types"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
 )
 
 // HostEnv holds the execution context for host functions.
 type HostEnv struct {
-	meter        *GasMeter
-	state        state.StateDB
-	caller       types.Address
-	contractID   types.Hash
-	blockHeight  uint64
-	timestamp    uint64
-	txIndex      uint32
-	eventLog     *EventLog
-	callDepth    int
+	meter       *GasMeter
+	state       state.StateDB
+	caller      types.Address
+	contractID  types.Hash
+	blockHeight uint64
+	timestamp   uint64
+	txIndex     uint32
+	eventLog    *EventLog
+	callDepth   int
 }
 
 // MaxCallDepth is the maximum allowed contract call depth.
@@ -44,15 +45,15 @@ func (env *HostEnv) ExitCall() {
 // NewHostEnv creates a new host environment for contract execution.
 func NewHostEnv(meter *GasMeter, st state.StateDB, caller types.Address, contractID types.Hash, blockHeight, timestamp uint64, txIndex uint32) *HostEnv {
 	return &HostEnv{
-		meter:        meter,
-		state:        st,
-		caller:       caller,
-		contractID:   contractID,
-		blockHeight:  blockHeight,
-		timestamp:    timestamp,
-		txIndex:      txIndex,
-		eventLog:     NewEventLog(),
-		callDepth:    0,
+		meter:       meter,
+		state:       st,
+		caller:      caller,
+		contractID:  contractID,
+		blockHeight: blockHeight,
+		timestamp:   timestamp,
+		txIndex:     txIndex,
+		eventLog:    NewEventLog(),
+		callDepth:   0,
 	}
 }
 
@@ -262,13 +263,26 @@ func BuildHostModule(ctx context.Context, runtime wazero.Runtime, env *HostEnv) 
 			var recipient types.Address
 			copy(recipient[:], recipientBytes)
 
-			// Compose 128-bit amount from hi:lo
-			// For now, this is a placeholder - full token transfer needs account state integration
-			_ = amountHi
-			_ = amountLo
+			// Build 128-bit amount from hi:lo
+			var amountBuf [16]byte
+			binary.BigEndian.PutUint64(amountBuf[:8], amountHi)
+			binary.BigEndian.PutUint64(amountBuf[8:], amountLo)
+			var amt types.Amount
+			if err := amt.UnmarshalBinary(amountBuf[:]); err != nil {
+				return 3 // error: invalid amount
+			}
 
-			// For now, we'll just return success - full token transfer needs account state integration
-			// TODO: integrate with state accounts for actual balance transfer
+			// Execute transfer: caller → recipient
+			if err := state.Transfer(env.state, env.caller, recipient, amt, nil); err != nil {
+				return 3 // error: transfer failed
+			}
+
+			// Emit transfer event
+			eventData := make([]byte, 0, 56)
+			eventData = append(eventData, env.caller[:]...)
+			eventData = append(eventData, recipient[:]...)
+			eventData = append(eventData, amountBuf[:]...)
+			env.eventLog.Emit(env.contractID, "transfer", eventData, env.txIndex, env.blockHeight)
 
 			return 0 // success
 		}).

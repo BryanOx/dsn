@@ -11,6 +11,7 @@ import (
 	"github.com/dsn/dsn/consensus"
 	"github.com/dsn/dsn/genesis"
 	"github.com/dsn/dsn/network"
+	"github.com/dsn/dsn/staking"
 	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/types"
 	"github.com/dsn/dsn/wallet"
@@ -278,12 +279,26 @@ func (n *Node) startupPhase6_InitBoltDB(ctx context.Context) error {
 	if n.persistent != nil {
 		err := n.persistent.DB().Update(func(tx *bbolt.Tx) error {
 			_, err := tx.CreateBucketIfNotExists([]byte("genesis"))
-			return err
+			if err != nil {
+				return err
+			}
+			// Create/check meta bucket for DB versioning
+			metaBucket, err := tx.CreateBucketIfNotExists([]byte("meta"))
+			if err != nil {
+				return err
+			}
+			// Check DB version
+			versionBytes := metaBucket.Get([]byte("db_version"))
+			if versionBytes == nil {
+				// Fresh DB or pre-versioning DB — set version to 0 (legacy)
+				return metaBucket.Put([]byte("db_version"), []byte{0, 0, 0, 0, 0, 0, 0, 0})
+			}
+			return nil
 		})
 		if err != nil {
 			return &StartupError{
 				Phase:   PhaseInitBoltDB,
-				Message: "failed to create genesis bucket",
+				Message: "failed to initialize meta bucket",
 				Cause:   err,
 			}
 		}
@@ -303,7 +318,7 @@ func (n *Node) startupPhase7_InitGenesisState(ctx context.Context) error {
 
 	if isFreshDB {
 		// Initialize genesis state
-		root, err := genesis.InitGenesisState(n.genesisDoc, n.persistent.DB(), n.hasher)
+		root, err := genesis.InitGenesisState(n.genesisDoc, n.state, n.persistent.DB(), n.hasher)
 		if err != nil {
 			return &StartupError{
 				Phase:   PhaseInitGenesisState,
@@ -369,19 +384,34 @@ func (n *Node) startupPhase7_InitGenesisState(ctx context.Context) error {
 	return nil
 }
 
-// startupPhase8_InitValidatorRegistry loads validators from DB and verifies validator key.
+// startupPhase8_InitValidatorRegistry loads validators from staking registry or legacy DB.
 func (n *Node) startupPhase8_InitValidatorRegistry(ctx context.Context) error {
-	// Load validators from DB bucket
+	// Load validators from staking registry first, with fallback to legacy BoltDB
 	if n.persistent != nil {
-		validators, err := n.loadValidatorsFromDB()
-		if err != nil {
-			return &StartupError{
-				Phase:   PhaseInitValidatorRegistry,
-				Message: "failed to load validators from DB",
-				Cause:   err,
+		// Try staking registry first
+		activeVals, err := staking.GetActiveValidatorAddresses(n.State())
+		if err != nil || len(activeVals) == 0 {
+			// Fallback: load from old BoltDB bucket (pre-migration DBs)
+			validators, err := n.loadValidatorsFromDB()
+			if err != nil {
+				return &StartupError{
+					Phase:   PhaseInitValidatorRegistry,
+					Message: "failed to load validators from DB",
+					Cause:   err,
+				}
+			}
+			n.validators = validators
+		} else {
+			n.validators = activeVals
+		}
+
+		// Migration check: if we loaded from old BoltDB bucket, log notice
+		if n.persistent != nil {
+			stakingCount, _ := staking.ValidatorCount(n.State())
+			if stakingCount == 0 && len(n.validators) > 0 {
+				fmt.Println("Note: validators loaded from legacy storage. Run migration to update staking registry.")
 			}
 		}
-		n.validators = validators
 	}
 
 	// If validator key file is configured, load and verify
@@ -398,6 +428,7 @@ func (n *Node) startupPhase8_InitValidatorRegistry(ctx context.Context) error {
 		// Check if this validator is in the active set
 		isActive := false
 		isPending := false
+		var pendingValidator *staking.Validator
 		for _, v := range n.validators {
 			if v == vk.Address {
 				isActive = true
@@ -406,8 +437,16 @@ func (n *Node) startupPhase8_InitValidatorRegistry(ctx context.Context) error {
 		}
 
 		if !isActive {
-			// Check pending set (future: from registration transactions)
-			isPending = false // TODO: check pending validator set
+			// Check staking registry for pending status
+			if n.State() != nil {
+				v, err := staking.GetValidatorByOperator(n.State(), vk.Address)
+				if err == nil && v.Status == staking.ValidatorPending {
+					isPending = true
+					pendingValidator = v
+					fmt.Printf("Validator %s found PENDING in staking registry (activation epoch: %d)\n",
+						vk.Address.String(), v.ActivationEpoch)
+				}
+			}
 		}
 
 		// Set wallet for signing - convert slices to arrays
@@ -422,8 +461,8 @@ func (n *Node) startupPhase8_InitValidatorRegistry(ctx context.Context) error {
 
 		if isActive {
 			fmt.Printf("Validator identity restored: %s\n", vk.Address.String())
-		} else if isPending {
-			fmt.Printf("Validator pending activation, expected at epoch %d\n", n.currentEpoch+1)
+		} else if isPending && pendingValidator != nil {
+			fmt.Printf("Validator pending activation, expected at epoch %d\n", pendingValidator.ActivationEpoch)
 		} else {
 			fmt.Printf("Warning: validator key loaded but address not in active validator set (read-only mode)\n")
 		}
@@ -515,9 +554,9 @@ func (n *Node) startupPhase12_InitMetrics(ctx context.Context) error {
 
 	// Start metrics server
 	n.metricsServer = &MetricsServer{
-		node:    n,
-		addr:    fmt.Sprintf(":%d", n.cfg.MetricsPort),
-		stopCh:  make(chan struct{}),
+		node:   n,
+		addr:   fmt.Sprintf(":%d", n.cfg.MetricsPort),
+		stopCh: make(chan struct{}),
 	}
 
 	go n.metricsServer.Start()
@@ -579,7 +618,7 @@ func (n *Node) startupPhase14_TransitionToLive(ctx context.Context) error {
 		n.syncMode = SyncModeNormal
 
 		// Only start consensus if we have validators and P2P
-		if len(n.cfg.Validators) > 0 && n.p2p != nil {
+		if len(n.validators) > 0 && n.p2p != nil {
 			n.StartConsensus()
 			fmt.Println("Node is now participating in consensus")
 		} else {

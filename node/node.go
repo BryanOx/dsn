@@ -19,14 +19,14 @@ import (
 
 // Node represents a DSN node that ties together state, mempool, and networking.
 type Node struct {
-	cfg              Config
-	state            *state.InMemoryState
-	persistent       *state.PersistentState
-	mempool          *mempool.Mempool
-	hasher           types.SHA256Hasher
-	p2p              *network.P2PNode
-	vm               *vm.VM // WASM VM for contract execution
-	indexer          *indexer.Indexer
+	cfg        Config
+	state      *state.InMemoryState
+	persistent *state.PersistentState
+	mempool    *mempool.Mempool
+	hasher     types.SHA256Hasher
+	p2p        *network.P2PNode
+	vm         *vm.VM // WASM VM for contract execution
+	indexer    *indexer.Indexer
 
 	// Sync mode for fast sync / recovery
 	syncMode SyncMode // NEW
@@ -51,16 +51,16 @@ type Node struct {
 	bestChainHeight  uint64 // tracks best chain height for fork choice
 
 	// Production Node Runtime fields (Phase 5B)
-	genesisDoc     *genesis.GenesisDoc
-	genesisHash    types.Hash
-	started        bool
-	startOnce      sync.Once
-	stopOnce       sync.Once
-	shutdownCh     chan struct{}
-	validators     []types.Address
+	genesisDoc      *genesis.GenesisDoc
+	genesisHash     types.Hash
+	started         bool
+	startOnce       sync.Once
+	stopOnce        sync.Once
+	shutdownCh      chan struct{}
+	validators      []types.Address
 	consensusParams *genesis.ConsensusParams
-	epochParams    *genesis.EpochParams
-	metricsServer  *MetricsServer
+	epochParams     *genesis.EpochParams
+	metricsServer   *MetricsServer
 }
 
 // finalityK is the finality threshold (k=6)
@@ -379,7 +379,7 @@ func (n *Node) StartConsensus() {
 		return
 	}
 	// Only start if P2P is enabled AND we have validators
-	if n.p2p == nil || len(n.cfg.Validators) == 0 {
+	if n.p2p == nil || len(n.validators) == 0 {
 		return
 	}
 
@@ -450,7 +450,7 @@ func (n *Node) StopConsensus() {
 // runConsensusLoop is the main consensus loop running in a goroutine.
 func (n *Node) runConsensusLoop() {
 	height := n.currentHeight + 1
-	validators := n.cfg.Validators
+	validators := n.validators
 
 	for {
 		select {

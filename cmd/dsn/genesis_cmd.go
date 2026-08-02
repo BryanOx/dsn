@@ -4,8 +4,10 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/dsn/dsn/dev/localnet"
@@ -16,14 +18,14 @@ import (
 
 // GenesisFlags holds flags for genesis commands.
 type GenesisFlags struct {
-	outputFile  string
-	chainID     string
-	chainIDNum  uint32
-	validators  string
+	outputFile    string
+	chainID       string
+	chainIDNum    uint32
+	validators    string
 	validatorsNum int
-	allocations string
-	devnet      bool
-	numNodes    int
+	allocations   string
+	devnet        bool
+	numNodes      int
 }
 
 var genesisFlags GenesisFlags
@@ -83,15 +85,34 @@ Examples:
 	RunE: runGenesisDevnet,
 }
 
+// genesisInspectCmd inspects a genesis file and displays detailed information
+var genesisInspectCmd = &cobra.Command{
+	Use:   "inspect [flags]",
+	Short: "Inspect a genesis file and display detailed information",
+	Long: `Display detailed information about a genesis file including:
+  - Genesis version and chain ID
+  - Validator set with stake and commission
+  - Initial allocations
+  - Treasury information
+  - Consensus and epoch parameters
+  - Genesis hash
+
+Examples:
+  dsn genesis inspect
+  dsn genesis inspect genesis.json`,
+	RunE: runGenesisInspect,
+}
+
 func init() {
 	genesisCmd.AddCommand(genesisInitCmd)
 	genesisCmd.AddCommand(genesisValidateCmd)
 	genesisCmd.AddCommand(genesisDevnetCmd)
+	genesisCmd.AddCommand(genesisInspectCmd)
 
 	// genesis init flags
 	genesisInitCmd.Flags().StringVar(&genesisFlags.outputFile, "output", "genesis.json", "output genesis file path")
 	genesisInitCmd.Flags().StringVar(&genesisFlags.chainID, "chain-id", "dsn-localnet-1", "chain ID (string)")
-	genesisInitCmd.Flags().IntVar(&genesisFlags.validatorsNum, "num-validators", 3, "number of validators (for devnet mode)")
+	genesisInitCmd.Flags().IntVarP(&genesisFlags.validatorsNum, "validators", "n", 3, "number of validators (for devnet mode)")
 	genesisInitCmd.Flags().StringVar(&genesisFlags.validators, "validator-addresses", "", "comma-separated list of validator addresses (non-devnet mode)")
 	genesisInitCmd.Flags().StringVar(&genesisFlags.allocations, "allocations", "", "initial token allocations (JSON)")
 	genesisInitCmd.Flags().BoolVar(&genesisFlags.devnet, "devnet", false, "generate devnet with auto-generated validator keys")
@@ -102,6 +123,9 @@ func init() {
 	// genesis devnet flags
 	genesisDevnetCmd.Flags().IntVar(&genesisFlags.numNodes, "validators", 3, "number of validator nodes")
 	genesisDevnetCmd.Flags().StringVar(&genesisFlags.outputFile, "output", "dev/localnet/tmp", "output directory")
+
+	// genesis inspect flags
+	genesisInspectCmd.Flags().StringVar(&genesisFlags.outputFile, "file", "genesis.json", "genesis file to inspect")
 }
 
 func runGenesisInit(cmd *cobra.Command, args []string) error {
@@ -129,9 +153,14 @@ func runGenesisInit(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Generating devnet genesis with %d validators...\n", genesisFlags.validatorsNum)
 		doc = generateDevnetGenesis(chainID, genesisFlags.validatorsNum)
 	} else {
-		// Non-devnet mode: create template with placeholder validators
-		fmt.Println("Generating genesis template...")
-		doc = generateGenesisTemplate(chainID)
+		// Non-devnet mode: use provided validator addresses or create template
+		if genesisFlags.validators != "" {
+			fmt.Println("Generating genesis with specified validators...")
+			doc = generateGenesisWithValidators(chainID, genesisFlags.validators, genesisFlags.allocations)
+		} else {
+			fmt.Println("Generating genesis template...")
+			doc = generateGenesisTemplate(chainID)
+		}
 	}
 
 	// Write genesis file
@@ -151,7 +180,7 @@ func runGenesisInit(cmd *cobra.Command, args []string) error {
 
 	// Validate the genesis
 	if err := genesis.ValidateGenesis(doc); err != nil {
-		fmt.Printf("Warning: genesis validation failed: %v\n", err)
+		return fmt.Errorf("genesis validation FAILED: %w", err)
 	} else {
 		fmt.Println("Genesis validation: PASSED")
 	}
@@ -208,19 +237,20 @@ func generateDevnetGenesis(chainID string, numValidators int) *genesis.GenesisDo
 	}
 
 	return &genesis.GenesisDoc{
-		GenesisTime:     time.Now().UTC().Truncate(time.Second),
-		ChainID:         chainID,
-		InitialHeight:   1,
+		GenesisVersion: genesis.GenesisVersion,
+		GenesisTime:    time.Now().UTC().Truncate(time.Second),
+		ChainID:        chainID,
+		InitialHeight:  1,
 		ConsensusParams: genesis.ConsensusParams{
-			MaxTxPerBlock:   1000,
+			MaxTxPerBlock:    1000,
 			MaxBytesPerBlock: 2 * 1024 * 1024, // 2MB
-			MaxGasPerBlock:  100_000_000,      // 100M gas
+			MaxGasPerBlock:   100_000_000,     // 100M gas
 		},
 		EpochParams: genesis.EpochParams{
-			BlocksPerEpoch:       100,
+			BlocksPerEpoch:        100,
 			UnstakeCooldownEpochs: 2,
-			MaxValidators:        100,
-			MinimumStake:         uint64(10_000) * 10_000_000, // 10K tokens minimum
+			MaxValidators:         100,
+			MinimumStake:          uint64(10_000) * 10_000_000, // 10K tokens minimum
 		},
 		InflationParams: genesis.InflationParams{
 			Enabled: false, // Devnet has no inflation
@@ -240,19 +270,20 @@ func generateGenesisTemplate(chainID string) *genesis.GenesisDoc {
 	treasuryAddr := types.Address{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
 
 	return &genesis.GenesisDoc{
-		GenesisTime:     time.Now().UTC().Truncate(time.Second),
-		ChainID:         chainID,
-		InitialHeight:   1,
+		GenesisVersion: genesis.GenesisVersion,
+		GenesisTime:    time.Now().UTC().Truncate(time.Second),
+		ChainID:        chainID,
+		InitialHeight:  1,
 		ConsensusParams: genesis.ConsensusParams{
-			MaxTxPerBlock:   1000,
+			MaxTxPerBlock:    1000,
 			MaxBytesPerBlock: 2 * 1024 * 1024,
-			MaxGasPerBlock:  100_000_000,
+			MaxGasPerBlock:   100_000_000,
 		},
 		EpochParams: genesis.EpochParams{
-			BlocksPerEpoch:       100,
+			BlocksPerEpoch:        100,
 			UnstakeCooldownEpochs: 2,
-			MaxValidators:        100,
-			MinimumStake:         uint64(10_000) * 10_000_000,
+			MaxValidators:         100,
+			MinimumStake:          uint64(10_000) * 10_000_000,
 		},
 		InflationParams: genesis.InflationParams{
 			Enabled: false,
@@ -272,6 +303,102 @@ func generateGenesisTemplate(chainID string) *genesis.GenesisDoc {
 				Amount:  uint64(1_000_000) * 10_000_000,
 			},
 		},
+		Treasury: genesis.TreasuryEntry{
+			Address:        "0x" + hex.EncodeToString(treasuryAddr[:]),
+			InitialBalance: uint64(1_000_000_000) * 10_000_000,
+		},
+	}
+}
+
+// generateGenesisWithValidators creates a genesis with user-specified validator addresses.
+func generateGenesisWithValidators(chainID string, validatorsFlag string, allocationsFlag string) *genesis.GenesisDoc {
+	// Parse validator addresses
+	parts := strings.Split(validatorsFlag, ",")
+	validators := make([]genesis.ValidatorEntry, 0, len(parts))
+	balances := make([]genesis.BalanceEntry, 0)
+
+	treasuryAddr := types.Address{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
+
+	for _, addrHex := range parts {
+		addrHex = strings.TrimSpace(addrHex)
+		if addrHex == "" {
+			continue
+		}
+
+		var addr types.Address
+		addrBytes, err := hex.DecodeString(strings.TrimPrefix(addrHex, "0x"))
+		if err != nil {
+			fmt.Printf("Warning: invalid address '%s', skipping: %v\n", addrHex, err)
+			continue
+		}
+		copy(addr[:], addrBytes)
+
+		validators = append(validators, genesis.ValidatorEntry{
+			Address:      "0x" + hex.EncodeToString(addr[:]),
+			PubKey:       "0x" + hex.EncodeToString(make([]byte, 32)), // placeholder
+			ConsensusKey: "0x" + hex.EncodeToString(make([]byte, 32)), // placeholder
+			Stake:        uint64(100_000_000) * 10_000_000,
+			Commission:   "1000",
+		})
+
+		balances = append(balances, genesis.BalanceEntry{
+			Address: "0x" + hex.EncodeToString(addr[:]),
+			Amount:  uint64(1_000_000) * 10_000_000,
+		})
+	}
+
+	// Parse allocations if provided
+	if allocationsFlag != "" {
+		// JSON format: [{"address":"0x...","amount":1000000}]
+		var allocs []struct {
+			Address string `json:"address"`
+			Amount  uint64 `json:"amount"`
+		}
+		if err := json.Unmarshal([]byte(allocationsFlag), &allocs); err != nil {
+			fmt.Printf("Warning: failed to parse allocations JSON: %v\n", err)
+		} else {
+			for _, a := range allocs {
+				balances = append(balances, genesis.BalanceEntry{
+					Address: a.Address,
+					Amount:  a.Amount,
+				})
+			}
+		}
+	}
+
+	// Fallback: ensure at least one validator exists
+	if len(validators) == 0 {
+		fmt.Println("Warning: no valid validators provided, creating template...")
+		return generateGenesisTemplate(chainID)
+	}
+
+	// Add treasury balance
+	balances = append(balances, genesis.BalanceEntry{
+		Address: "0x" + hex.EncodeToString(treasuryAddr[:]),
+		Amount:  uint64(1_000_000_000) * 10_000_000,
+	})
+
+	return &genesis.GenesisDoc{
+		GenesisVersion: genesis.GenesisVersion,
+		GenesisTime:    time.Now().UTC().Truncate(time.Second),
+		ChainID:        chainID,
+		InitialHeight:  1,
+		ConsensusParams: genesis.ConsensusParams{
+			MaxTxPerBlock:    1000,
+			MaxBytesPerBlock: 2 * 1024 * 1024,
+			MaxGasPerBlock:   100_000_000,
+		},
+		EpochParams: genesis.EpochParams{
+			BlocksPerEpoch:        100,
+			UnstakeCooldownEpochs: 2,
+			MaxValidators:         100,
+			MinimumStake:          uint64(10_000) * 10_000_000,
+		},
+		InflationParams: genesis.InflationParams{
+			Enabled: false,
+		},
+		InitialValidators: validators,
+		InitialBalances:   balances,
 		Treasury: genesis.TreasuryEntry{
 			Address:        "0x" + hex.EncodeToString(treasuryAddr[:]),
 			InitialBalance: uint64(1_000_000_000) * 10_000_000,
@@ -346,4 +473,128 @@ func runGenesisDevnet(cmd *cobra.Command, args []string) error {
 	fmt.Println("You can now start the devnet with docker-compose.")
 
 	return nil
+}
+
+func runGenesisInspect(cmd *cobra.Command, args []string) error {
+	filePath := genesisFlags.outputFile
+	if filePath == "" {
+		filePath = "genesis.json"
+	}
+
+	// Check if file exists
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return fmt.Errorf("genesis file not found at '%s'\nRun 'dsn genesis init' to create one", filePath)
+	}
+
+	// Load genesis
+	doc, err := genesis.LoadGenesis(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to load genesis: %w", err)
+	}
+
+	// Compute genesis hash
+	hash, err := genesis.HashGenesis(doc)
+	if err != nil {
+		return fmt.Errorf("failed to compute genesis hash: %w", err)
+	}
+
+	// Calculate total allocation
+	var totalAllocation uint64
+	for _, b := range doc.InitialBalances {
+		totalAllocation += b.Amount
+	}
+
+	// Print header
+	fmt.Printf("Genesis File: %s\n", filePath)
+	fmt.Printf("Genesis Version: %d\n", doc.GenesisVersion)
+	fmt.Printf("Chain ID: %s\n", doc.ChainID)
+	fmt.Printf("Genesis Time: %s\n", doc.GenesisTime.Format(time.RFC3339))
+	fmt.Printf("Initial Height: %d\n", doc.InitialHeight)
+	fmt.Println()
+
+	// Print validator set
+	fmt.Println("=== Validator Set", fmt.Sprintf("(%d) ===", len(doc.InitialValidators)))
+	for _, v := range doc.InitialValidators {
+		fmt.Printf("  Address:    %s\n", truncateAddress(v.Address))
+		fmt.Printf("  Stake:      %s\n", formatAmount(v.Stake))
+		fmt.Printf("  Commission: %s%%\n", formatCommission(v.Commission))
+	}
+	fmt.Println()
+
+	// Print allocations
+	fmt.Printf("=== Allocations (%d accounts, total: %s) ===\n", len(doc.InitialBalances), formatAmount(totalAllocation))
+	for _, b := range doc.InitialBalances {
+		fmt.Printf("  Address: %s\n", truncateAddress(b.Address))
+		fmt.Printf("  Amount:  %s\n", formatAmount(b.Amount))
+	}
+	fmt.Println()
+
+	// Print treasury
+	fmt.Println("=== Treasury ===")
+	fmt.Printf("  Address: %s\n", truncateAddress(doc.Treasury.Address))
+	fmt.Printf("  Balance: %s\n", formatAmount(doc.Treasury.InitialBalance))
+	fmt.Println()
+
+	// Print consensus parameters
+	fmt.Println("=== Consensus Parameters ===")
+	fmt.Printf("  MaxTxPerBlock:    %d\n", doc.ConsensusParams.MaxTxPerBlock)
+	fmt.Printf("  MaxBytesPerBlock: %d\n", doc.ConsensusParams.MaxBytesPerBlock)
+	fmt.Printf("  MaxGasPerBlock:   %d\n", doc.ConsensusParams.MaxGasPerBlock)
+	fmt.Println()
+
+	// Print epoch parameters
+	fmt.Println("=== Epoch Parameters ===")
+	fmt.Printf("  BlocksPerEpoch:        %d\n", doc.EpochParams.BlocksPerEpoch)
+	fmt.Printf("  UnstakeCooldownEpochs: %d\n", doc.EpochParams.UnstakeCooldownEpochs)
+	fmt.Printf("  MaxValidators:         %d\n", doc.EpochParams.MaxValidators)
+	fmt.Printf("  MinimumStake:          %s\n", formatAmount(doc.EpochParams.MinimumStake))
+	fmt.Println()
+
+	// Print inflation parameters
+	fmt.Println("=== Inflation ===")
+	fmt.Printf("  Enabled:   %t\n", doc.InflationParams.Enabled)
+	if doc.InflationParams.AnnualRate != "" {
+		fmt.Printf("  AnnualRate: %s\n", doc.InflationParams.AnnualRate)
+	}
+	fmt.Println()
+
+	// Print genesis hash
+	fmt.Println("=== Genesis Hash ===")
+	fmt.Printf("  %s\n", hex.EncodeToString(hash[:]))
+
+	return nil
+}
+
+// truncateAddress truncates a hex address for display (e.g., 0xabc...def)
+func truncateAddress(addr string) string {
+	if len(addr) <= 16 {
+		return addr
+	}
+	return addr[:10] + "..." + addr[len(addr)-6:]
+}
+
+// formatAmount formats a token amount for display
+func formatAmount(amount uint64) string {
+	// Assuming 10^8 units per token
+	const units = 10_000_000
+	if amount < units {
+		return fmt.Sprintf("%d", amount)
+	}
+	whole := amount / units
+	remainder := amount % units
+	if remainder == 0 {
+		return fmt.Sprintf("%d", whole)
+	}
+	return fmt.Sprintf("%d.%08d", whole, remainder)
+}
+
+// formatCommission formats a commission rate from basis points to percentage
+func formatCommission(commission string) string {
+	// Commission is stored as basis points (e.g., 1000 = 10%)
+	var basisPoints uint64
+	_, err := fmt.Sscanf(commission, "%d", &basisPoints)
+	if err != nil {
+		return commission // Return as-is if parsing fails
+	}
+	return fmt.Sprintf("%.2f", float64(basisPoints)/100)
 }

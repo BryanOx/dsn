@@ -98,17 +98,18 @@ func TestAdversarial_InconsistentParams(t *testing.T) {
 		{
 			name: "BlocksPerEpoch = 0",
 			doc: &GenesisDoc{
-				GenesisTime: time.Now().Truncate(time.Second),
-				ChainID:      "test",
+				GenesisVersion: 1,
+				GenesisTime:    time.Now().Truncate(time.Second),
+				ChainID:        "test",
 				EpochParams: EpochParams{
 					BlocksPerEpoch: 0,
-					MinimumStake:  1000000,
+					MinimumStake:   1000000,
 				},
 				InitialValidators: []ValidatorEntry{
 					{
 						Address:    "0123456789abcdef0123456789abcdef01234567",
-						PubKey:    "abcdef0123456789abcdef0123456789abcdef01",
-						Stake:     10000000,
+						PubKey:     "abcdef0123456789abcdef0123456789abcdef01",
+						Stake:      10000000,
 						Commission: "1000",
 					},
 				},
@@ -122,18 +123,19 @@ func TestAdversarial_InconsistentParams(t *testing.T) {
 		{
 			name: "MaxValidators = 0 with validators defined",
 			doc: &GenesisDoc{
-				GenesisTime: time.Now().Truncate(time.Second),
-				ChainID:      "test",
+				GenesisVersion: 1,
+				GenesisTime:    time.Now().Truncate(time.Second),
+				ChainID:        "test",
 				EpochParams: EpochParams{
 					BlocksPerEpoch: 100,
-					MaxValidators: 0,
-					MinimumStake:  1000000,
+					MaxValidators:  0,
+					MinimumStake:   1000000,
 				},
 				InitialValidators: []ValidatorEntry{
 					{
 						Address:    "0123456789abcdef0123456789abcdef01234567",
-						PubKey:    "abcdef0123456789abcdef0123456789abcdef01",
-						Stake:     10000000,
+						PubKey:     "abcdef0123456789abcdef0123456789abcdef01",
+						Stake:      10000000,
 						Commission: "1000",
 					},
 				},
@@ -148,17 +150,17 @@ func TestAdversarial_InconsistentParams(t *testing.T) {
 			name: "MinimumStake higher than all validator stakes",
 			doc: &GenesisDoc{
 				GenesisTime: time.Now().Truncate(time.Second),
-				ChainID:      "test",
+				ChainID:     "test",
 				EpochParams: EpochParams{
 					BlocksPerEpoch: 100,
-					MaxValidators: 100,
-					MinimumStake:  50000000, // Higher than validator stake
+					MaxValidators:  100,
+					MinimumStake:   50000000, // Higher than validator stake
 				},
 				InitialValidators: []ValidatorEntry{
 					{
 						Address:    "0123456789abcdef0123456789abcdef01234567",
-						PubKey:    "abcdef0123456789abcdef0123456789abcdef01",
-						Stake:     10000000, // Below minimum
+						PubKey:     "abcdef0123456789abcdef0123456789abcdef01",
+						Stake:      10000000, // Below minimum
 						Commission: "1000",
 					},
 				},
@@ -173,17 +175,17 @@ func TestAdversarial_InconsistentParams(t *testing.T) {
 			name: "All validators have zero stake",
 			doc: &GenesisDoc{
 				GenesisTime: time.Now().Truncate(time.Second),
-				ChainID:      "test",
+				ChainID:     "test",
 				EpochParams: EpochParams{
 					BlocksPerEpoch: 100,
-					MaxValidators: 100,
-					MinimumStake:  1000000,
+					MaxValidators:  100,
+					MinimumStake:   1000000,
 				},
 				InitialValidators: []ValidatorEntry{
 					{
 						Address:    "0123456789abcdef0123456789abcdef01234567",
-						PubKey:    "abcdef0123456789abcdef0123456789abcdef01",
-						Stake:     0,
+						PubKey:     "abcdef0123456789abcdef0123456789abcdef01",
+						Stake:      0,
 						Commission: "1000",
 					},
 				},
@@ -233,7 +235,7 @@ func TestAdversarial_WhitespaceOnlyFile(t *testing.T) {
 func TestAdversarial_NonHexAddress(t *testing.T) {
 	doc := &GenesisDoc{
 		GenesisTime: time.Now().Truncate(time.Second),
-		ChainID:      "test",
+		ChainID:     "test",
 		EpochParams: EpochParams{
 			BlocksPerEpoch: 100,
 			MinimumStake:   1000000,
@@ -241,8 +243,8 @@ func TestAdversarial_NonHexAddress(t *testing.T) {
 		InitialValidators: []ValidatorEntry{
 			{
 				Address:    "gggggggggggggggggggggggggggggggggggggggg", // 'g' is not hex
-				PubKey:    "abcdef0123456789abcdef0123456789abcdef01",
-				Stake:     10000000,
+				PubKey:     "abcdef0123456789abcdef0123456789abcdef01",
+				Stake:      10000000,
 				Commission: "1000",
 			},
 		},
@@ -263,30 +265,30 @@ func TestAdversarial_NonHexAddress(t *testing.T) {
 func TestAdversarial_TooManyValidators(t *testing.T) {
 	doc := &GenesisDoc{
 		GenesisTime: time.Now().Truncate(time.Second),
-		ChainID:      "test",
+		ChainID:     "test",
 		EpochParams: EpochParams{
 			BlocksPerEpoch: 100,
-			MaxValidators: 2, // Only allow 2 validators
+			MaxValidators:  2, // Only allow 2 validators
 			MinimumStake:   1000000,
 		},
 		// But we provide 3 validators - currently not validated as error
 		InitialValidators: []ValidatorEntry{
 			{
 				Address:    "0123456789abcdef0123456789abcdef01234567",
-				PubKey:    "abcdef0123456789abcdef0123456789abcdef01",
-				Stake:     10000000,
+				PubKey:     "abcdef0123456789abcdef0123456789abcdef01",
+				Stake:      10000000,
 				Commission: "1000",
 			},
 			{
 				Address:    "abcdef0123456789abcdef0123456789abcdef01",
-				PubKey:    "0123456789abcdef0123456789abcdef01234567",
-				Stake:     10000000,
+				PubKey:     "0123456789abcdef0123456789abcdef01234567",
+				Stake:      10000000,
 				Commission: "1000",
 			},
 			{
 				Address:    "9999999999999999999999999999999999999999",
-				PubKey:    "9999999999999999999999999999999999999999",
-				Stake:     10000000,
+				PubKey:     "9999999999999999999999999999999999999999",
+				Stake:      10000000,
 				Commission: "1000",
 			},
 		},

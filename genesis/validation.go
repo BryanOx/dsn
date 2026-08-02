@@ -11,6 +11,11 @@ import (
 func ValidateGenesis(doc *GenesisDoc) error {
 	var errs []string
 
+	// Check genesis_version is set and >= 1
+	if doc.GenesisVersion < 1 {
+		errs = append(errs, "genesis_version must be >= 1")
+	}
+
 	// T2-7: Check chain_id is non-empty
 	if doc.ChainID == "" {
 		errs = append(errs, "missing required field: chain_id")
@@ -204,6 +209,6 @@ func (e *ValidationErrors) Error() string {
 
 // Predefined validation errors
 var (
-	ErrInvalidAddress  = &GenesisError{Code: "INVALID_ADDRESS", Message: "address is invalid"}
+	ErrInvalidAddress    = &GenesisError{Code: "INVALID_ADDRESS", Message: "address is invalid"}
 	ErrInvalidCommission = &GenesisError{Code: "INVALID_COMMISSION", Message: "commission rate is invalid"}
 )

@@ -2,8 +2,11 @@ package genesis
 
 import (
 	"encoding/hex"
+	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/dsn/dsn/staking"
 	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/types"
 	"go.etcd.io/bbolt"
@@ -18,10 +21,7 @@ const ValidatorBucketName = "validators"
 // 2. Initial account balances
 // 3. Initial validator entries
 // Returns the state root hash.
-func InitGenesisState(doc *GenesisDoc, db *bbolt.DB, hasher types.Hasher) (types.Hash, error) {
-	// Create in-memory state for initial account setup
-	s := state.NewInMemoryState(hasher)
-
+func InitGenesisState(doc *GenesisDoc, s *state.InMemoryState, db *bbolt.DB, hasher types.Hasher) (types.Hash, error) {
 	// T2-13: Initialize treasury account
 	if doc.Treasury.Address != "" && doc.Treasury.InitialBalance > 0 {
 		treasuryAddr, err := parseAddress(doc.Treasury.Address)
@@ -54,6 +54,55 @@ func InitGenesisState(doc *GenesisDoc, db *bbolt.DB, hasher types.Hasher) (types
 		}
 	}
 
+	// Calculate and persist economic state
+	var totalSupply uint64
+	for _, b := range doc.InitialBalances {
+		totalSupply += b.Amount
+	}
+	if doc.Treasury.Address != "" && doc.Treasury.InitialBalance > 0 {
+		totalSupply += doc.Treasury.InitialBalance
+	}
+
+	if err := staking.WriteUint64(s, staking.KeyTotalSupply, totalSupply); err != nil {
+		return types.Hash{}, ErrGenesisValidationFailed.Wrap(err)
+	}
+	if err := staking.WriteUint64(s, staking.KeyIssuedSupply, 0); err != nil {
+		return types.Hash{}, ErrGenesisValidationFailed.Wrap(err)
+	}
+	if doc.Treasury.InitialBalance > 0 {
+		if err := staking.WriteUint64(s, staking.KeyTreasurySupply, doc.Treasury.InitialBalance); err != nil {
+			return types.Hash{}, ErrGenesisValidationFailed.Wrap(err)
+		}
+	}
+
+	// Persist EpochParams
+	if err := staking.WriteUint64(s, "epoch/blocks_per_epoch", doc.EpochParams.BlocksPerEpoch); err != nil {
+		return types.Hash{}, ErrGenesisValidationFailed.Wrap(err)
+	}
+	if err := staking.WriteUint64(s, "staking/unstake_cooldown", doc.EpochParams.UnstakeCooldownEpochs); err != nil {
+		return types.Hash{}, ErrGenesisValidationFailed.Wrap(err)
+	}
+	if err := staking.WriteUint64(s, "staking/max_validators", doc.EpochParams.MaxValidators); err != nil {
+		return types.Hash{}, ErrGenesisValidationFailed.Wrap(err)
+	}
+	if err := staking.WriteUint64(s, "staking/minimum_stake", doc.EpochParams.MinimumStake); err != nil {
+		return types.Hash{}, ErrGenesisValidationFailed.Wrap(err)
+	}
+
+	// Parse and persist InflationParams
+	var annualBP uint64
+	if doc.InflationParams.AnnualRate != "" {
+		rate, err := strconv.ParseFloat(doc.InflationParams.AnnualRate, 64)
+		if err != nil {
+			return types.Hash{}, ErrGenesisValidationFailed.Wrap(fmt.Errorf("invalid annual_rate: %w", err))
+		}
+		annualBP = uint64(rate * 10000)
+	}
+
+	if err := staking.SetInflationParams(s, doc.InflationParams.Enabled, annualBP); err != nil {
+		return types.Hash{}, ErrGenesisValidationFailed.Wrap(err)
+	}
+
 	// T2-12: Insert validator entries into validators bucket
 	// First ensure the validators bucket exists
 	if err := db.Update(func(tx *bbolt.Tx) error {
@@ -63,30 +112,34 @@ func InitGenesisState(doc *GenesisDoc, db *bbolt.DB, hasher types.Hasher) (types
 		return types.Hash{}, ErrGenesisValidationFailed.Wrap(err)
 	}
 
-	// Insert validators
+	// Register validators in the staking registry
 	for _, v := range doc.InitialValidators {
 		addr, err := parseAddress(v.Address)
 		if err != nil {
 			return types.Hash{}, ErrGenesisValidationFailed.Wrap(err)
 		}
 
-		// Encode validator data
 		pubKey, err := hex.DecodeString(stripHexPrefix(v.PubKey))
 		if err != nil {
 			return types.Hash{}, ErrGenesisValidationFailed.Wrap(err)
 		}
+		var pubKeyArr [32]byte
+		copy(pubKeyArr[:], pubKey)
 
-		commission, err := parseCommissionToUint64(v.Commission)
+		stake := types.NewAmount(v.Stake)
+		commissionUint64, err := parseCommissionToUint64(v.Commission)
 		if err != nil {
 			return types.Hash{}, ErrGenesisValidationFailed.Wrap(err)
 		}
+		commission := uint16(commissionUint64)
 
-		validatorData := encodeValidatorEntry(addr, pubKey, v.Stake, commission)
-
-		if err := db.Update(func(tx *bbolt.Tx) error {
-			return tx.Bucket([]byte(ValidatorBucketName)).Put(addr.Bytes(), validatorData)
-		}); err != nil {
-			return types.Hash{}, ErrGenesisValidationFailed.Wrap(err)
+		cid, err := staking.RegisterValidator(s, pubKeyArr, addr, stake, commission, 0)
+		if err != nil {
+			return types.Hash{}, ErrGenesisValidationFailed.Wrap(fmt.Errorf("register genesis validator: %w", err))
+		}
+		// Activate genesis validators immediately (epoch 1)
+		if err := staking.ActivateValidator(s, cid, 1); err != nil {
+			return types.Hash{}, ErrGenesisValidationFailed.Wrap(fmt.Errorf("activate genesis validator: %w", err))
 		}
 	}
 
@@ -137,32 +190,4 @@ func parseCommissionToUint64(c string) (uint64, error) {
 	}
 
 	return result, nil
-}
-
-// encodeValidatorEntry encodes validator data for storage
-func encodeValidatorEntry(addr types.Address, pubKey []byte, stake uint64, commission uint64) []byte {
-	// Format: address(20) + pubkey_len(1) + pubkey + stake(8) + commission(8)
-	data := make([]byte, 0, 20+1+len(pubKey)+8+8)
-
-	data = append(data, addr[:]...)
-	data = append(data, byte(len(pubKey)))
-	data = append(data, pubKey...)
-
-	// Add stake as big-endian uint64
-	stakeBytes := make([]byte, 8)
-	for i := 7; i >= 0; i-- {
-		stakeBytes[i] = byte(stake & 0xff)
-		stake >>= 8
-	}
-	data = append(data, stakeBytes...)
-
-	// Add commission as big-endian uint64
-	commBytes := make([]byte, 8)
-	for i := 7; i >= 0; i-- {
-		commBytes[i] = byte(commission & 0xff)
-		commission >>= 8
-	}
-	data = append(data, commBytes...)
-
-	return data
 }

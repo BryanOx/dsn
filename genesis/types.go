@@ -6,38 +6,43 @@ import (
 	"time"
 )
 
+// GenesisVersion is the current genesis document format version.
+const GenesisVersion uint64 = 1
+
 // GenesisDoc represents the canonical genesis configuration for a DSN network.
 type GenesisDoc struct {
-	GenesisTime     time.Time         `json:"genesis_time"`
-	ChainID         string            `json:"chain_id"`
-	InitialHeight   uint64            `json:"initial_height"`
-	ConsensusParams ConsensusParams   `json:"consensus_params"`
-	EpochParams     EpochParams       `json:"epoch_params"`
-	InflationParams InflationParams   `json:"inflation_params"`
+	// GenesisVersion is the format version for forward compatibility.
+	GenesisVersion    uint64           `json:"genesis_version"`
+	GenesisTime       time.Time        `json:"genesis_time"`
+	ChainID           string           `json:"chain_id"`
+	InitialHeight     uint64           `json:"initial_height"`
+	ConsensusParams   ConsensusParams  `json:"consensus_params"`
+	EpochParams       EpochParams      `json:"epoch_params"`
+	InflationParams   InflationParams  `json:"inflation_params"`
 	InitialValidators []ValidatorEntry `json:"initial_validators"`
-	InitialBalances  []BalanceEntry   `json:"initial_balances"`
-	Treasury        TreasuryEntry     `json:"treasury"`
+	InitialBalances   []BalanceEntry   `json:"initial_balances"`
+	Treasury          TreasuryEntry    `json:"treasury"`
 }
 
 // ConsensusParams defines block-level constraints enforced by the consensus engine.
 type ConsensusParams struct {
-	MaxTxPerBlock   uint64 `json:"max_tx_per_block"`
+	MaxTxPerBlock    uint64 `json:"max_tx_per_block"`
 	MaxBytesPerBlock uint64 `json:"max_bytes_per_block"`
-	MaxGasPerBlock  uint64 `json:"max_gas_per_block"`
+	MaxGasPerBlock   uint64 `json:"max_gas_per_block"`
 }
 
 // EpochParams defines epoch-level configuration.
 type EpochParams struct {
-	BlocksPerEpoch       uint64 `json:"blocks_per_epoch"`
+	BlocksPerEpoch        uint64 `json:"blocks_per_epoch"`
 	UnstakeCooldownEpochs uint64 `json:"unstake_cooldown_epochs"`
-	MaxValidators        uint64 `json:"max_validators"`
-	MinimumStake         uint64 `json:"minimum_stake"`
+	MaxValidators         uint64 `json:"max_validators"`
+	MinimumStake          uint64 `json:"minimum_stake"`
 }
 
 // InflationParams defines token minting and inflation behavior.
 type InflationParams struct {
-	Enabled    bool   `json:"enabled"`
-	AnnualRate string `json:"annual_rate,omitempty"`
+	Enabled      bool   `json:"enabled"`
+	AnnualRate   string `json:"annual_rate,omitempty"`
 	MintPerBlock uint64 `json:"mint_per_block,omitempty"`
 }
 

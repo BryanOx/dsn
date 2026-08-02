@@ -9,19 +9,20 @@ import (
 // validGenesis returns a genesis document that passes all validation checks.
 func validGenesis() *GenesisDoc {
 	return &GenesisDoc{
-		GenesisTime:   time.Now().Truncate(time.Second),
-		ChainID:       "test-valid-chain",
-		InitialHeight: 1,
+		GenesisVersion: 1,
+		GenesisTime:    time.Now().Truncate(time.Second),
+		ChainID:        "test-valid-chain",
+		InitialHeight:  1,
 		ConsensusParams: ConsensusParams{
-			MaxTxPerBlock:   100,
+			MaxTxPerBlock:    100,
 			MaxBytesPerBlock: 1048576,
-			MaxGasPerBlock:  10000000,
+			MaxGasPerBlock:   10000000,
 		},
 		EpochParams: EpochParams{
-			BlocksPerEpoch:       100,
+			BlocksPerEpoch:        100,
 			UnstakeCooldownEpochs: 21,
-			MaxValidators:        100,
-			MinimumStake:         1000000,
+			MaxValidators:         100,
+			MinimumStake:          1000000,
 		},
 		InflationParams: InflationParams{
 			Enabled:    false,
@@ -67,7 +68,7 @@ func TestValidateGenesis_DuplicateAddress(t *testing.T) {
 		PubKey:       "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		ConsensusKey: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		Stake:        5000000,
-		Commission:  "1000",
+		Commission:   "1000",
 	})
 
 	err := ValidateGenesis(doc)
@@ -89,10 +90,10 @@ func TestValidateGenesis_DuplicatePubkey(t *testing.T) {
 	// Add a validator with the same pubkey but different address
 	doc.InitialValidators = append(doc.InitialValidators, ValidatorEntry{
 		Address:      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", // Different address
-		PubKey:       doc.InitialValidators[0].PubKey,           // Same as first validator
+		PubKey:       doc.InitialValidators[0].PubKey,            // Same as first validator
 		ConsensusKey: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		Stake:        5000000,
-		Commission:  "1000",
+		Commission:   "1000",
 	})
 
 	err := ValidateGenesis(doc)

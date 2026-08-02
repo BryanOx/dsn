@@ -190,3 +190,50 @@ func TestFinalizeBlock_Noop(t *testing.T) {
 	err := FinalizeBlock(s, block)
 	require.NoError(t, err)
 }
+
+// TestFinalizeBlock_CreditsTreasury verifies 10% of fees are credited to the
+// treasury account and the remaining 20% are burned (F4).
+func TestFinalizeBlock_CreditsTreasury(t *testing.T) {
+	s := newMockStakingState()
+	staking.WriteUint64(s, staking.KeyTotalSupply, 10_000_000)
+
+	block := &types.Block{
+		FeeSummary: types.NewFeeSummary(1000),
+	}
+	err := FinalizeBlock(s, block)
+	require.NoError(t, err)
+
+	// 10% of fees credited to the treasury account
+	treasury, err := s.GetAccount(staking.TreasuryAddress)
+	require.NoError(t, err)
+	require.Equal(t, 0, treasury.Balance.Cmp(types.NewAmount(100)))
+
+	treasurySupply, err := staking.GetTreasuryBalance(s)
+	require.NoError(t, err)
+	require.Equal(t, uint64(100), treasurySupply)
+
+	// 20% of fees burned
+	burn, err := s.GetAccount(staking.BurnAddress)
+	require.NoError(t, err)
+	require.Equal(t, 0, burn.Balance.Cmp(types.NewAmount(200)))
+
+	// Total supply reduced by the burned amount only
+	totalSupply := staking.ReadUint64(s, staking.KeyTotalSupply)
+	require.Equal(t, uint64(9_999_800), totalSupply)
+}
+
+// TestFinalizeBlock_NoFees tests no distribution happens without fees
+func TestFinalizeBlock_NoFees(t *testing.T) {
+	s := newMockStakingState()
+	staking.WriteUint64(s, staking.KeyTotalSupply, 10_000_000)
+
+	block := &types.Block{
+		FeeSummary: types.NewFeeSummary(0),
+	}
+	err := FinalizeBlock(s, block)
+	require.NoError(t, err)
+
+	treasurySupply, err := staking.GetTreasuryBalance(s)
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), treasurySupply)
+}

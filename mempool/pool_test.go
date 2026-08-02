@@ -1,8 +1,10 @@
 package mempool
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"testing"
 	"time"
 
@@ -278,5 +280,58 @@ func TestMempoolFull(t *testing.T) {
 	tx4 := makeTestTx(4, 100, uint64(time.Now().Unix()), addr, priv, types.Hash{4})
 	if err := mp.Submit(tx4); err == nil {
 		t.Fatal("expected ErrMempoolFull")
+	}
+}
+
+func TestSubmit_GasLimitExceedsMaxFee(t *testing.T) {
+	hasher := types.SHA256Hasher{}
+	s := state.NewInMemoryState(hasher)
+	addr, _, priv := createTestAccountWithKey(s)
+
+	mp := New(1000, 300*time.Second, s)
+
+	// Contract call tx where GasLimit exceeds MaxFee (F4)
+	callTx := &types.CallContractTx{
+		Sender:     addr,
+		Nonce:      1,
+		ContractID: types.Hash{1},
+		Entrypoint: "test",
+		Calldata:   []byte{},
+		MaxFee:     100,
+		GasLimit:   50000,
+	}
+	innerID, err := callTx.ComputeIntentID(hasher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callTx.Signature = ed25519.Sign(priv, innerID[:])
+
+	var buf bytes.Buffer
+	callTx.Encode(&buf)
+
+	tx := &types.Transaction{
+		Version:   1,
+		ChainID:   0,
+		Sender:    addr,
+		Nonce:     1,
+		TxType:    types.TxTypeCallContract,
+		Payload:   buf.Bytes(),
+		MaxFee:    100,
+		GasLimit:  50000,
+		Timestamp: uint64(time.Now().Unix()),
+	}
+	intentID, err := tx.ComputeIntentID(hasher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx.IntentID = intentID
+	tx.Signature = ed25519.Sign(priv, intentID[:])
+
+	err = mp.Submit(tx)
+	if err == nil {
+		t.Fatal("expected ErrGasLimitExceedsMaxFee")
+	}
+	if !errors.Is(err, ErrGasLimitExceedsMaxFee) {
+		t.Fatalf("expected ErrGasLimitExceedsMaxFee, got %v", err)
 	}
 }

@@ -60,7 +60,13 @@ func ApplyTransaction(s *state.InMemoryState, tx *types.Transaction, header *typ
 		}
 		// T8-3: Gas refund on success - charge only the gas actually used.
 		// Unused gas (GasLimit - GasUsed) is refunded to the sender.
-		if err := chargeGas(s, tx.Sender, execResult.GasUsed); err != nil {
+		// T8-5/F4: Never charge more than MaxFee, even if execution consumed
+		// more gas than the sender declared.
+		charged := execResult.GasUsed
+		if charged > tx.MaxFee {
+			charged = tx.MaxFee
+		}
+		if err := chargeGas(s, tx.Sender, charged); err != nil {
 			return exec, fmt.Errorf("charge gas: %w", err)
 		}
 		// T8-4: Discard events on tx failure - only collect events from
@@ -69,7 +75,7 @@ func ApplyTransaction(s *state.InMemoryState, tx *types.Transaction, header *typ
 			exec.Events = execResult.Events
 		}
 		exec.Receipt = tx.IntentID
-		exec.Fee = tx.MaxFee
+		exec.Fee = charged
 		return exec, nil
 	}
 

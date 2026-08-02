@@ -78,7 +78,7 @@ func FinalizeBlock(s staking.StakingState, block *types.Block) error {
 		return nil // no fees to distribute
 	}
 	totalFees := types.NewAmount(block.FeeSummary.TotalFees)
-	_, burnShare, _, err := staking.DistributeRewards(s, totalFees)
+	_, burnShare, treasuryShare, err := staking.DistributeRewards(s, totalFees)
 	if err != nil {
 		return fmt.Errorf("distribute rewards: %w", err)
 	}
@@ -88,7 +88,32 @@ func FinalizeBlock(s staking.StakingState, block *types.Block) error {
 			return fmt.Errorf("burn tokens: %w", err)
 		}
 	}
+	// Credit the treasury share (10% of fees) to the treasury account
+	if !treasuryShare.IsZero() {
+		if err := staking.CreditTreasury(s, treasuryShareToUint64(treasuryShare)); err != nil {
+			return fmt.Errorf("credit treasury: %w", err)
+		}
+	}
 	return nil
+}
+
+// treasuryShareToUint64 converts a types.Amount to uint64 using the same
+// big-endian scheme staking uses internally (stakeToUint64). Safe for v1
+// amounts which fit in a uint64.
+func treasuryShareToUint64(amount types.Amount) uint64 {
+	data, err := amount.MarshalBinary()
+	if err != nil || len(data) == 0 {
+		return 0
+	}
+	if len(data) > 8 {
+		// Truncate to 8 bytes (loses high bits — should not happen in v1)
+		data = data[len(data)-8:]
+	}
+	var val uint64
+	for _, b := range data {
+		val = (val << 8) | uint64(b)
+	}
+	return val
 }
 
 // CreateCheckpoint persists a chain checkpoint at the given height.

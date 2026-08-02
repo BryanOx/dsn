@@ -127,7 +127,7 @@ func TestBuildBlock_EventsRoot_Populated(t *testing.T) {
 		Version: 1, Nonce: 1, Sender: sender,
 		TxType:    types.TxTypeDeployContract,
 		MaxFee:    1_000_000,
-		GasLimit:  5_000_000,
+		GasLimit:  1_000_000,
 		Timestamp: uint64(time.Now().Unix()),
 	}
 	var deployBuf bytes.Buffer
@@ -148,7 +148,7 @@ func TestBuildBlock_EventsRoot_Populated(t *testing.T) {
 		Version: 1, Nonce: 2, Sender: sender,
 		TxType:    types.TxTypeCallContract,
 		MaxFee:    1_000_000,
-		GasLimit:  5_000_000,
+		GasLimit:  1_000_000,
 		Timestamp: uint64(time.Now().Unix()),
 	}
 	var callBuf bytes.Buffer

@@ -55,7 +55,7 @@ func BuildDeployTokenTx(sender types.Address, nonce uint64, totalSupply uint64, 
 		Sender:   sender,
 		Nonce:    nonce,
 		TxType:   types.TxTypeDeployContract,
-		GasLimit: 5000000,
+		GasLimit: 1000000,
 		MaxFee:   1000000,
 	}
 

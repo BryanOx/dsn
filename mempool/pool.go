@@ -96,6 +96,11 @@ func (mp *Mempool) Submit(tx *types.Transaction) error {
 		if err := contractTx.Validate(); err != nil {
 			return err
 		}
+		// F4: gas limit must not exceed max fee, otherwise execution could
+		// charge more than the sender declared.
+		if contractTx.GasLimit > tx.MaxFee {
+			return fmt.Errorf("%w: gas limit %d exceeds max fee %d", ErrGasLimitExceedsMaxFee, contractTx.GasLimit, tx.MaxFee)
+		}
 	} else if tx.TxType == types.TxTypeCallContract {
 		// Decode and validate call contract tx
 		contractTx, err := tx.CallContract()
@@ -104,6 +109,11 @@ func (mp *Mempool) Submit(tx *types.Transaction) error {
 		}
 		if err := contractTx.Validate(); err != nil {
 			return err
+		}
+		// F4: gas limit must not exceed max fee, otherwise execution could
+		// charge more than the sender declared.
+		if contractTx.GasLimit > tx.MaxFee {
+			return fmt.Errorf("%w: gas limit %d exceeds max fee %d", ErrGasLimitExceedsMaxFee, contractTx.GasLimit, tx.MaxFee)
 		}
 	} else if tx.TxType == types.TxTypeValidatorRegistration {
 		// Validate validator registration tx

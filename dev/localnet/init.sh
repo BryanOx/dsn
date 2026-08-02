@@ -34,18 +34,22 @@ VALIDATORS=""
 for i in $(seq 0 $((NODES - 1))); do
     mkdir -p "$TMP_DIR/node$i"
 
-    # Generate validator key using dsn binary
-    "$TMP_DIR/dsn" validator init --output "$TMP_DIR/node$i/validator.key" --force
+    # Generate validator key using dsn binary.
+    # No --force needed: $TMP_DIR is wiped above, so no overwrite prompt.
+    "$TMP_DIR/dsn" validator init --output "$TMP_DIR/node$i/validator.key"
 
-    # Extract address and pubkey from the generated key file
-    KEY_JSON=$(cat "$TMP_DIR/node$i/validator.key")
-    ADDR=$(echo "$KEY_JSON" | grep -o '"address":"[^"]*"' | cut -d'"' -f4)
-    PUBKEY=$(echo "$KEY_JSON" | grep -o '"public_key":"[^"]*"' | cut -d'"' -f4)
+    # Extract pubkey (line 2) and address (line 3) from the key file.
+    # Format written by wallet.SaveValidatorKey: line 1 = priv key hex (128),
+    # line 2 = pubkey hex (64), line 3 = address hex (40), no 0x prefix.
+    PUBKEY=$(sed -n '2p' "$TMP_DIR/node$i/validator.key")
+    ADDR=$(sed -n '3p' "$TMP_DIR/node$i/validator.key")
 
-    # Calculate P2P and RPC ports
-    P2P_PORT=$((26656 + i))
-    RPC_PORT=$((8545 + i))
-    METRICS_PORT=$((9464 + i))
+    # Ports are uniform across nodes: each container lives in its own network
+    # namespace and listens on the same in-container ports. Only the host-side
+    # mappings differ (see docker-compose.yml).
+    P2P_PORT=26656
+    RPC_PORT=8545
+    METRICS_PORT=9464
 
     # Node-specific IP (for docker network)
     NODE_IP="10.0.1.$((10 + i))"
@@ -120,8 +124,14 @@ done
 # Generate genesis.json with all validators
 GENESIS_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
+# Note: node0 proposing the early heights is expected behavior, not a bug.
+# Consensus picks the proposer per height via voting-power-weighted round-robin
+# (consensus.WeightedProposerAtHeight); with equal stakes the first validator
+# in the sorted set proposes the low heights.
+
 cat > "$TMP_DIR/genesis.json" <<GENESIS
 {
+    "genesis_version": 1,
     "genesis_time": "$GENESIS_TIME",
     "chain_id": "dsn-localnet-1",
     "initial_height": 1,

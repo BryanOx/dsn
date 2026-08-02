@@ -1,118 +1,136 @@
-# DSN — Deterministic Settlement Network
+# DSN — Deterministic Settlement Network v0.1.0-sandbox
 
-[![Build Status](https://github.com/dsn/dsn/actions/workflows/ci.yml/badge.svg)](https://github.com/dsn/dsn/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/dsn/dsn)](https://goreportcard.com/report/github.com/dsn/dsn)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-DSN is a **financial-grade deterministic blockchain** purpose-built for settlement finality. It guarantees byte-identical execution across all nodes through BFT consensus, deterministic WASM runtime, and provable state transitions.
+DSN is a **BFT blockchain for settlement finality** with deterministic WASM smart contracts, Ed25519 signing, and Sparse Merkle Tree state commitment. Built in Go 1.25 with BoltDB storage, custom TCP networking, and a pipelined voting consensus model.
+
+**v0.1.0-sandbox** — functional but pre-production. Core features work for local devnets and single-node operation. Several areas remain stubbed or incomplete (see [Known Limitations](docs/OPERATIONS.md#known-limitations)).
 
 ## Quick Start
 
-[See docs/QUICKSTART.md](docs/QUICKSTART.md) for a step-by-step guide to running a local 3-validator network.
+```bash
+go build -o dsn.exe ./cmd/dsn
+dsn genesis init --devnet --validators 3 --chain-id sandbox-1
+dsn node start --config config.toml --genesis genesis.json --validator-key validator-0.json --data-dir data/
+```
 
-## Architecture Overview
-
-[See docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system architecture, component design, and C4-style diagrams.
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [Protocol Spec](docs/dsn_protocol_spec_v_1.md) | Full protocol specification (881 lines) |
-| [Whitepaper](docs/WHITEPAPER.md) | Design goals and rationale |
-| [Architecture](docs/ARCHITECTURE.md) | System architecture and component design |
-| [Quick Start](docs/QUICKSTART.md) | From clone to running network |
-| [Contract Guide](docs/CONTRACTS.md) | Deploying WASM smart contracts |
-| [Operations](docs/OPERATIONS.md) | Deployment and monitoring |
-| [Recovery Runbook](docs/RECOVERY_RUNBOOK.md) | Incident recovery procedures |
-| [SDK Guide](docs/SDK_GUIDE.md) | Go SDK for client interaction |
-| [Examples](docs/EXAMPLES.md) | Example contracts (Token, Escrow, Settlement) |
-| [Release Notes](docs/RELEASE_NOTES.md) | Release details and features |
-| [Known Limitations](docs/SANDBOX_LIMITATIONS.md) | Sandbox limitations and disclaimers |
-| [Final Verification](docs/FINAL_VERIFICATION.md) | Verification checklist |
+See [docs/GUIDES.md#quickstart](docs/GUIDES.md#quickstart) for the full walkthrough.
 
 ## Features
 
-- **Deterministic Execution** — Byte-identical state transitions across all nodes; every validator produces the same result
-- **BFT Consensus** — Byzantine fault tolerance with evidence-based slashing for validator accountability
-- **WASM Runtime** — Deterministic smart contracts via [wazero](https://github.com/tetratelabs/wazero)
-- **Staking Economics** — Inflation-based rewards (10% treasury, 90% validator pool) with epoch-based distribution
-- **Sparse Merkle Trees** — Cryptographic state commitment for every state transition
-- **Persistence & Recovery** — BoltDB-backed storage with WAL and snapshots for crash recovery
-- **Operational Tooling** — Helm charts, systemd units, Prometheus/Grafana monitoring
+- **BFT Consensus** — Pipelined three-phase voting with round-robin proposer rotation and evidence-based slashing
+- **WASM Smart Contracts** — Deterministic WebAssembly 1.0 runtime via [wazero](https://github.com/tetratelabs/wazero) (7 host functions: storage read/write, events, caller/block info, token transfers)
+- **Ed25519 Cryptography** — Transaction signing and validator identity
+- **Sparse Merkle Tree** — Cryptographic state commitment with 32-byte roots, InMemory + BoltDB persistence
+- **BoltDB Storage** — ACID-compliant, pure Go, no CGO — with WAL and snapshot-based recovery
+- **Gossip Networking** — Custom TCP protocol with bootstrap peer discovery (no libp2p)
+- **Validator Lifecycle** — Registration, staking, epoch-based activation, rewards, jailing, and slashing
+- **JSON-RPC 2.0 API** — 17 methods for transaction submission, state queries, and contract interaction
+- **Devnet Mode** — Built-in multi-node environment with faucet, block explorer, and indexer
+- **TUI Client** — Terminal dashboard with 5 tabs (Dashboard, Balance, Send, Pending, Wallet)
+- **Multi-Platform** — Linux, macOS, Windows
 
-## Project Structure
+## Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [Quick Start](docs/GUIDES.md#quickstart) | From clone to running a 3-validator devnet |
+| [Node Operation](docs/OPERATIONS.md#node-operation) | Starting, configuring, and managing nodes |
+| [Validator Guide](docs/GUIDES.md#validator-guide) | Registration, staking, rewards, and slashing |
+| [TUI Guide](docs/GUIDES.md#tui-guide) | Terminal UI dashboard and wallet interactions |
+| [Wallet Guide](docs/GUIDES.md#wallet-guide) | Key generation, signing, and transaction management |
+| [Contracts](docs/GUIDES.md#smart-contracts) | Deploying and calling WASM smart contracts |
+| [CLI Reference](docs/GUIDES.md#cli-reference) | Complete command reference with examples |
+| [Architecture](docs/ARCHITECTURE.md) | System design, components, and data flow |
+| [Networking](docs/ARCHITECTURE.md#networking--p2p) | P2P gossip protocol and peer discovery |
+| [Security Model](docs/ARCHITECTURE.md#security-model) | Threat model, trust assumptions, and crypto |
+| [Operations](docs/OPERATIONS.md) | Deployment, monitoring, and recovery |
+| [Sandbox Deployment](docs/OPERATIONS.md#sandbox-deployment) | Docker Compose multi-node setup |
+| [Troubleshooting](docs/OPERATIONS.md#troubleshooting) | Common issues and solutions |
+| [Known Limitations](docs/OPERATIONS.md#known-limitations) | What is and isn't working in v0.1.0-sandbox |
+
+## Package Structure
 
 ```
-dsn/
-├── cmd/dsn/              # CLI entry point (node, wallet, validator commands)
-├── cmd/dsn-tui/          # Terminal UI for node interaction
-├── types/                # Core types: Address, Hash, Amount, Transaction, Block
-├── state/                # SMT storage, account state, persistence (BoltDB)
-├── mempool/              # Transaction memory pool with fee-based ordering
-├── wallet/               # Ed25519 key management and transaction signing
-├── network/              # P2P networking (TCP, custom protocol, gossip)
-├── consensus/            # BFT consensus, block production, finality
-├── staking/              # Validator staking, rewards, slashing, epochs
-├── node/                 # Node orchestrator (startup, shutdown, recovery)
-├── rpc/                  # JSON-RPC 2.0 server for external interaction
-├── vm/                   # WASM smart contract runtime (wazero)
-├── genesis/              # Genesis block creation and validation
-├── config/               # Configuration management (TOML, env vars, CLI)
-├── telemetry/            # Logging, metrics, middleware
-├── indexer/              # Block and transaction indexing
-├── explorer/             # Block explorer HTTP server
-├── sdk/                  # Go SDK for client interaction
-├── docs/                 # Protocol specification and whitepaper
-├── benchmarks/          # Performance benchmarks
-└── integration/         # Integration tests
+cmd/dsn/           CLI entry point (node, wallet, validator, contract commands)
+cmd/dsn-tui/       Terminal UI binary (5-tab dashboard)
+types/             Core types: Address, Hash, Amount, Transaction, Block
+state/             Sparse Merkle Tree, account state, BoltDB persistence
+mempool/           Transaction memory pool
+wallet/            Ed25519 key management and signing
+network/           P2P networking (TCP, custom protocol, gossip, discovery)
+consensus/         BFT consensus, block production, finality
+staking/           Validator staking, rewards, slashing, epochs
+node/              Node orchestrator (startup, shutdown, recovery)
+rpc/               JSON-RPC 2.0 server (17 methods)
+vm/                WASM smart contract runtime (wazero, deterministic)
+genesis/           Genesis loading and validation (8 validation rules)
+config/            Configuration (TOML, env vars, CLI flags)
+telemetry/         Logging and metrics
+indexer/           Block and transaction indexing
+explorer/          Block explorer HTTP server
+sdk/               Go SDK for client interaction
+docs/              Documentation
+benchmarks/        Performance benchmarks
+integration/       Integration tests
+dev/localnet/      Docker Compose multi-node devnet
 ```
 
-## Key Technologies
+## CLI Commands
 
-| Component | Technology | Rationale |
-|-----------|------------|-----------|
-| Language | Go 1.25 | Concurrent, simple, battle-tested |
-| State | Sparse Merkle Tree | Cryptographic commitment, 32-byte roots |
-| Storage | BoltDB | Pure Go, no CGO, ACID-compliant |
-| WASM | wazero | Deterministic, sandboxed execution |
-| Crypto | Ed25519 | Modern, fast, well-audited |
-| Networking | Custom TCP | Avoid libp2p Windows compatibility issues |
+```
+dsn node start --config <toml> --genesis <path> [--validator-key <path>] [--data-dir <path>]
+dsn genesis init [--devnet] [--validators N] [--chain-id <id>] [--output <path>]
+dsn genesis validate [--file <path>]
+dsn genesis devnet [--validators N] [--output <dir>]
+dsn validator init [--output <path>]
+dsn validator register --key <path> --stake <amount> --commission <rate> [--node <url>]
+dsn validator status [--key <path>] [--node <url>]
+dsn wallet generate [--output <path>]
+dsn wallet sign <tx-file> [--key <path>]
+dsn wallet nonce <address> [--rpc <url>]
+dsn contract deploy <wasm-path> [--key <path>] [--gas-limit <n>] [--rpc <url>]
+dsn contract call <addr> <entrypoint> [--data <hex>] [--rpc <url>]
+dsn contract estimate <addr> <entrypoint> [--data <hex>] [--rpc <url>]
+dsn contract query <addr> <key> [--rpc <url>]
+dsn contract receipt <txid> [--rpc <url>]
+dsn devnet [--rpc-port <n>] [--explorer-port <n>] [--indexer] [--reset]
+```
 
 ## Building
 
 ```bash
-# Clone and build
-git clone https://github.com/dsn/dsn.git
-cd dsn
-go build -o dsn ./cmd/dsn
+# Binary
+go build -o dsn.exe ./cmd/dsn
+go build -o dsn-tui.exe ./cmd/dsn-tui
 
-# Run tests
+# Both to bin/ via Make
+make build
+
+# Tests
 go test ./... -cover -timeout 120s
-
-# Run linter
-go vet ./...
 ```
 
 ## Configuration
 
-Configuration precedence (lowest to highest):
+Hierarchical (lowest to highest precedence):
+
 ```
 defaults < TOML file < environment variables (DSN_*) < CLI flags
 ```
 
-Example:
 ```bash
-# TOML (config.toml)
+# TOML
 rpc_port = 8545
 
-# Override via env
-export DSN_RPC_PORT=8546
+# Env override
+$env:DSN_RPC_PORT = "8546"
 
-# Override via CLI
-./dsn node start --rpc-port 8547
+# CLI override (highest)
+dsn node start --config config.toml --rpc-port 8547
 ```
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE) for details.

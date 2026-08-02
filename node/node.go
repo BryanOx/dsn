@@ -11,6 +11,7 @@ import (
 	"github.com/dsn/dsn/indexer"
 	"github.com/dsn/dsn/mempool"
 	"github.com/dsn/dsn/network"
+	"github.com/dsn/dsn/staking"
 	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/types"
 	"github.com/dsn/dsn/vm"
@@ -353,6 +354,33 @@ func (n *Node) nodeAddress() types.Address {
 	return types.Address{}
 }
 
+// consensusID returns the node's canonical ConsensusID derived from its wallet
+// public key (SHA256(pubkey)[:20]), the identity used by the staking registry
+// and block validation. It is distinct from the operator Address().
+func (n *Node) consensusID() types.Address {
+	if n.wallet == nil {
+		return types.Address{}
+	}
+	return types.DeriveConsensusID(n.wallet.PublicKey)
+}
+
+// consensusProposerAtHeight selects the block proposer for height from the
+// ACTIVE staking registry using weighted voting power — the same selection the
+// block validator applies (consensus.WeightedProposerAtHeight over
+// staking.GetActiveValidators). It returns the proposer's ConsensusID, or the
+// zero address when the node has no wallet, the registry read fails, or the
+// active validator set is empty.
+func (n *Node) consensusProposerAtHeight(height uint64) types.Address {
+	if n.wallet == nil {
+		return types.Address{}
+	}
+	active, err := staking.GetActiveValidators(n.State())
+	if err != nil || len(active) == 0 {
+		return types.Address{}
+	}
+	return consensus.WeightedProposerAtHeight(height, active)
+}
+
 // CurrentHeight returns the current chain height.
 func (n *Node) CurrentHeight() uint64 {
 	return n.currentHeight
@@ -450,7 +478,6 @@ func (n *Node) StopConsensus() {
 // runConsensusLoop is the main consensus loop running in a goroutine.
 func (n *Node) runConsensusLoop() {
 	height := n.currentHeight + 1
-	validators := n.validators
 
 	for {
 		select {
@@ -459,9 +486,14 @@ func (n *Node) runConsensusLoop() {
 		default:
 		}
 
-		proposer := consensus.ProposerAtHeight(height, validators)
+		// F1: select the proposer exactly like block validation does — from the
+		// ACTIVE staking registry via WeightedProposerAtHeight over ConsensusIDs.
+		// The old static operator-address set (n.validators) + ProposerAtHeight
+		// never matched validation, so every block this node built was rejected
+		// with ErrWrongProposer.
+		proposer := n.consensusProposerAtHeight(height)
 
-		if proposer == n.nodeAddress() {
+		if proposer != (types.Address{}) && proposer == n.consensusID() {
 			// I am the proposer — build and gossip block
 			signer := &walletSigner{kp: n.wallet}
 			// TODO: Get evidence from evidence pool

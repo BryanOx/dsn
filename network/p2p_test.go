@@ -1,6 +1,7 @@
 package network
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
@@ -226,6 +227,50 @@ func TestP2PNode_OutboundReceivesBlock(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout: outbound connection never read the broadcast block")
+	}
+}
+
+// TestP2PNode_OutboundReceivesVote verifies that a consensus vote broadcast
+// by the remote node is received on the OUTBOUND connection and forwarded to
+// the vote handler, decoded from the raw Vote encoding.
+func TestP2PNode_OutboundReceivesVote(t *testing.T) {
+	n1, _ := NewP2PNode(0)
+	defer n1.Close()
+	n2, _ := NewP2PNode(0)
+	defer n2.Close()
+
+	if err := n1.Connect(n2.Addr()); err != nil {
+		t.Fatal(err)
+	}
+
+	received := make(chan *types.Vote, 1)
+	n1.SetVoteHandler(func(vote *types.Vote) {
+		received <- vote
+	})
+
+	time.Sleep(100 * time.Millisecond)
+
+	vote := &types.Vote{
+		VoteType:  types.VotePrecommit,
+		Height:    42,
+		Round:     0,
+		BlockHash: types.ZeroHash,
+		Validator: types.Address{0x01, 0x02, 0x03},
+	}
+	var buf bytes.Buffer
+	if err := vote.Encode(&buf); err != nil {
+		t.Fatal(err)
+	}
+	voteMsg := append([]byte{byte(MsgTypeVote)}, buf.Bytes()...)
+	n2.Broadcast(voteMsg)
+
+	select {
+	case got := <-received:
+		if got.VoteType != types.VotePrecommit || got.Height != 42 || got.Round != 0 {
+			t.Fatalf("vote mismatch: got %+v", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: outbound connection never delivered the vote")
 	}
 }
 

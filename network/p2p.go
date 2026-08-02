@@ -96,6 +96,7 @@ type P2PNode struct {
 	connMu       sync.RWMutex
 	txHandler    func(tx *types.Transaction)
 	blockHandler func(data []byte)
+	voteHandler  func(vote *types.Vote)
 	stopCh       chan struct{}
 	// Connection rate limiter
 	connLimiter *connectionLimiter
@@ -316,6 +317,9 @@ func (n *P2PNode) readLoop(conn net.Conn, remoteAddr string, id PeerID) {
 		} else if msgType == MsgTypeTransaction {
 			// Transaction message (with type byte)
 			n.handleTransaction(msgBuf[1:], id)
+		} else if msgType == MsgTypeVote {
+			// Vote message
+			n.handleVote(msgBuf, id)
 		} else if isKnown {
 			// Other known protocol messages (PEX, block range, ping/pong)
 			// Process based on type
@@ -350,6 +354,21 @@ func (n *P2PNode) handleTransaction(data []byte, peerID PeerID) {
 
 	if n.txHandler != nil {
 		go n.txHandler(tx)
+	}
+}
+
+// handleVote processes an incoming vote message and forwards it to the voteHandler.
+// The vote payload is the raw Vote encoding (type byte already stripped by the dispatcher).
+func (n *P2PNode) handleVote(data []byte, peerID PeerID) {
+	vote := &types.Vote{}
+	if err := vote.Decode(bytes.NewReader(data[1:])); err != nil {
+		// Penalize via PeerManager for decode failure
+		n.pm.ReportFailure(peerID, 2)
+		return
+	}
+
+	if n.voteHandler != nil {
+		n.voteHandler(vote)
 	}
 }
 
@@ -471,6 +490,11 @@ func (n *P2PNode) SetTxHandler(handler func(tx *types.Transaction)) {
 // SetBlockHandler registers a callback for incoming blocks.
 func (n *P2PNode) SetBlockHandler(handler func(data []byte)) {
 	n.blockHandler = handler
+}
+
+// SetVoteHandler registers a callback for incoming consensus votes.
+func (n *P2PNode) SetVoteHandler(handler func(vote *types.Vote)) {
+	n.voteHandler = handler
 }
 
 // Broadcast sends a message to all connected peers.

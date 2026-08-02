@@ -18,6 +18,7 @@ const (
 	MsgTypeBlockRangeResponse byte = 0x31 // Response with block range
 	MsgTypePing               byte = 0x40 // Keepalive ping
 	MsgTypePong               byte = 0x41 // Keepalive pong
+	MsgTypeVote               byte = 0x42 // Consensus vote (prevote/precommit)
 )
 
 // Max payload size limits.
@@ -46,6 +47,7 @@ var knownMessageTypes = map[byte]bool{
 	MsgTypeBlockRangeResponse: true,
 	MsgTypePing:               true,
 	MsgTypePong:               true,
+	MsgTypeVote:               true,
 }
 
 // maxPayloadByType defines per-type payload limits (currently all 1 MiB).
@@ -61,6 +63,7 @@ var maxPayloadByType = map[byte]uint32{
 	MsgTypeBlockRangeResponse: MaxPayloadSize,
 	MsgTypePing:               MaxPayloadSize,
 	MsgTypePong:               MaxPayloadSize,
+	MsgTypeVote:               MaxPayloadSize,
 }
 
 // FrameMessage creates a framed message with length prefix, message type, and payload.

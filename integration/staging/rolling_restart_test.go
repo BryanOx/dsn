@@ -243,7 +243,7 @@ func applyManualBlock(t *testing.T, n *node.Node, kps []*wallet.KeyPair, txs []*
 		&testMempool{txs: txs},
 		height, prevHash, proposer,
 		&consensusSigner{kp: proposerKP},
-		n.Hasher(), 100, nil,
+		n.Hasher(), 100, nil, 1,
 	)
 	require.NoError(t, err, "build block at height %d", height)
 

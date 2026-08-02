@@ -37,7 +37,7 @@ type MempoolI interface {
 // The vm parameter is optional - if provided, contract transactions will be executed by the VM.
 func BuildBlock(s *state.InMemoryState, vm *vm.VM, mp MempoolI, height uint64, prevHash types.Hash,
 	proposer types.Address, signer Signer, hasher types.Hasher, maxTxs int,
-	evidence []types.Evidence) (*types.Block, error) {
+	evidence []types.Evidence, blockTimeSec uint64) (*types.Block, error) {
 
 	// 0. Process evidence BEFORE BeginBlock so slashing affects epoch transitions
 	for _, ev := range evidence {
@@ -47,7 +47,7 @@ func BuildBlock(s *state.InMemoryState, vm *vm.VM, mp MempoolI, height uint64, p
 	}
 
 	// 1. BeginBlock — system transitions
-	epoch, valSetHash, err := BeginBlock(s, height, uint64(1))
+	epoch, valSetHash, err := BeginBlock(s, height, blockTimeSec)
 	if err != nil {
 		return nil, fmt.Errorf("begin block: %w", err)
 	}

@@ -368,7 +368,7 @@ func TestBuildBlock_WithEvidence(t *testing.T) {
 	ev := createDoubleSignEvidence(t, 1, 0, 1, types.VotePrevote, true)
 
 	// Build block with evidence
-	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, addr, &mockSigner{}, hasher, 100, []types.Evidence{ev})
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, addr, &mockSigner{}, hasher, 100, []types.Evidence{ev}, 1)
 	require.NoError(t, err)
 	require.NotNil(t, block)
 
@@ -400,11 +400,11 @@ func TestBuildBlock_WithEvidence_StateRootChange(t *testing.T) {
 	ev := createDoubleSignEvidence(t, 1, 0, 1, types.VotePrevote, true)
 
 	// Build block WITH evidence
-	block1, err := BuildBlock(s1, nil, mp1, 1, types.Hash{}, val1ConsensusID, &mockSigner{}, hasher, 100, []types.Evidence{ev})
+	block1, err := BuildBlock(s1, nil, mp1, 1, types.Hash{}, val1ConsensusID, &mockSigner{}, hasher, 100, []types.Evidence{ev}, 1)
 	require.NoError(t, err)
 
 	// Build block WITHOUT evidence
-	block2, err := BuildBlock(s2, nil, mp2, 1, types.Hash{}, val2ConsensusID, &mockSigner{}, hasher, 100, nil)
+	block2, err := BuildBlock(s2, nil, mp2, 1, types.Hash{}, val2ConsensusID, &mockSigner{}, hasher, 100, nil, 1)
 	require.NoError(t, err)
 
 	// State roots MUST differ because evidence affects state
@@ -454,7 +454,7 @@ func TestBuildBlock_MultipleEvidence(t *testing.T) {
 	ev2 := createDoubleSignEvidence(t, 1, 0, 2, types.VotePrecommit, true)
 
 	// Build block with both evidence
-	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, val1ConsensusID, &mockSigner{}, hasher, 100, []types.Evidence{ev1, ev2})
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, val1ConsensusID, &mockSigner{}, hasher, 100, []types.Evidence{ev1, ev2}, 1)
 	require.NoError(t, err)
 	require.NotNil(t, block)
 

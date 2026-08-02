@@ -84,7 +84,7 @@ func TestBuildBlock_Basic(t *testing.T) {
 	validatorAddr := setupTestValidator(s, 100, 100_000)
 	staking.WriteUint64(s, staking.KeyTotalSupply, 10_000_000)
 
-	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorAddr, &mockSigner{}, hasher, 100, nil)
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorAddr, &mockSigner{}, hasher, 100, nil, 1)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), block.Header.Height)
 	require.Equal(t, validatorAddr, block.Header.Proposer)
@@ -103,7 +103,7 @@ func TestBuildBlock_EmptyMempool(t *testing.T) {
 	// Setup validator (distinct address from sender)
 	validatorAddr := setupTestValidator(s, 100, 100_000)
 
-	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorAddr, &mockSigner{}, hasher, 100, nil)
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorAddr, &mockSigner{}, hasher, 100, nil, 1)
 	require.NoError(t, err)
 	require.Equal(t, 0, len(block.Transactions))
 }
@@ -134,7 +134,7 @@ func TestBuildBlock_TxLimit(t *testing.T) {
 	validatorAddr := setupTestValidator(s, 100, 100_000)
 	staking.WriteUint64(s, staking.KeyTotalSupply, 10_000_000)
 
-	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorAddr, &mockSigner{}, hasher, 3, nil)
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorAddr, &mockSigner{}, hasher, 3, nil, 1)
 	require.NoError(t, err)
 	require.Equal(t, 3, len(block.Transactions))
 }

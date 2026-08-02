@@ -335,7 +335,7 @@ func TestConvergence_RestartMidEpoch(t *testing.T) {
 			&testMempool{txs: txs},
 			height, prevHash, proposer,
 			&consensusSigner{kp: proposerKP},
-			nodes[0].Hasher(), 100, nil,
+			nodes[0].Hasher(), 100, nil, 1,
 		)
 		require.NoError(t, err)
 
@@ -590,7 +590,7 @@ func TestConvergence_ReplayAfterReconnect(t *testing.T) {
 			&testMempool{txs: txs},
 			height, prevHash, proposer,
 			&consensusSigner{kp: proposerKP},
-			nodes[2].Hasher(), 100, nil,
+			nodes[2].Hasher(), 100, nil, 1,
 		)
 		require.NoError(t, err)
 

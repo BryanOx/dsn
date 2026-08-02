@@ -222,6 +222,7 @@ func (h *BFTTestHarness) buildBlock(proposer *SimValidator, height uint64, prevH
 		h.Hasher,
 		100, // max txs
 		nil, // no evidence
+		1,   // 1s block time
 	)
 	require.NoError(h.t, err, "buildBlock: build failed")
 

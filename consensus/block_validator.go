@@ -34,7 +34,7 @@ var (
 // to verify state root correctness.
 func ValidateBlock(block *types.Block, parentHeader *types.BlockHeader,
 	expectedPrevHash types.Hash, s *state.InMemoryState, hasher types.Hasher,
-	vm *vm.VM) error {
+	vm *vm.VM, blockTimeSec uint64) error {
 
 	if block.Header.Height != parentHeader.Height+1 {
 		return fmt.Errorf("%w: expected %d, got %d", ErrWrongHeight,
@@ -57,7 +57,7 @@ func ValidateBlock(block *types.Block, parentHeader *types.BlockHeader,
 	}
 
 	// 1. Run BeginBlock on fresh state (same as BuildBlock — ensures deterministic replay)
-	_, _, err := BeginBlock(s, block.Header.Height, uint64(1))
+	_, _, err := BeginBlock(s, block.Header.Height, blockTimeSec)
 	if err != nil {
 		return fmt.Errorf("begin block: %w", err)
 	}

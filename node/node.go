@@ -467,7 +467,7 @@ func (n *Node) runConsensusLoop() {
 			// TODO: Get evidence from evidence pool
 			var evidence []types.Evidence
 			block, err := consensus.BuildBlock(n.state, n.vm, n.mempool, height, n.currentTipHash,
-				proposer, signer, n.hasher, n.cfg.MaxTxPerBlock, evidence)
+				proposer, signer, n.hasher, n.cfg.MaxTxPerBlock, evidence, n.cfg.BlockTimeSec)
 			if err == nil {
 				// Gossip block
 				data, err := consensus.EncodeBlockMessage(block)
@@ -573,7 +573,7 @@ func (n *Node) handleBlockMessage(data []byte) {
 		PreviousHash: block.Header.PreviousHash,
 	}
 
-	err = consensus.ValidateBlock(block, parentHeader, expectedPrevHash, n.state, n.hasher, n.vm)
+	err = consensus.ValidateBlock(block, parentHeader, expectedPrevHash, n.state, n.hasher, n.vm, n.cfg.BlockTimeSec)
 	if err != nil {
 		return
 	}
@@ -628,7 +628,7 @@ func (n *Node) handleFork(block *types.Block) {
 		PreviousHash: block.Header.PreviousHash,
 	}
 
-	err := consensus.ValidateBlock(block, parentHeader, expectedPrevHash, n.state, n.hasher, n.vm)
+	err := consensus.ValidateBlock(block, parentHeader, expectedPrevHash, n.state, n.hasher, n.vm, n.cfg.BlockTimeSec)
 	if err != nil {
 		return
 	}

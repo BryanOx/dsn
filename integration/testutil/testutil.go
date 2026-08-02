@@ -269,7 +269,7 @@ func (tn *TestNode) MineBlock(t testing.TB) *types.Block {
 		state, tn.Node.VM(), tn.Node.Mempool(),
 		height, prevHash, proposer,
 		&walletSigner{tn.Wallet}, tn.Node.Hasher(),
-		tn.Node.Config().MaxTxPerBlock, nil,
+		tn.Node.Config().MaxTxPerBlock, nil, 1,
 	)
 	if err != nil {
 		t.Fatalf("MineBlock: build block: %v", err)
@@ -280,7 +280,7 @@ func (tn *TestNode) MineBlock(t testing.TB) *types.Block {
 		Height:       height - 1,
 		PreviousHash: prevHash,
 	}
-	if err := consensus.ValidateBlock(block, parentHeader, prevHash, state, tn.Node.Hasher(), tn.Node.VM()); err != nil {
+	if err := consensus.ValidateBlock(block, parentHeader, prevHash, state, tn.Node.Hasher(), tn.Node.VM(), 1); err != nil {
 		t.Fatalf("MineBlock: validate block: %v", err)
 	}
 

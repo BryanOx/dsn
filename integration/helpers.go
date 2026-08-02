@@ -190,6 +190,7 @@ func MineBlock(t *testing.T, n *node.Node, proposerKP *wallet.KeyPair, allKeyPai
 		hasher,
 		n.Config().MaxTxPerBlock,
 		nil, // no evidence
+		1,
 	)
 	require.NoError(t, err, "MineBlock: build block failed")
 
@@ -361,6 +362,7 @@ func MineBlockWithTxs(t *testing.T, n *node.Node, allKeyPairs []*wallet.KeyPair,
 		hasher,
 		n.Config().MaxTxPerBlock,
 		nil, // no evidence
+		1,
 	)
 	require.NoError(t, err, "MineBlockWithTxs: build block failed")
 

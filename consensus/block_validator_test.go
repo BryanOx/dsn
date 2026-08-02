@@ -195,7 +195,7 @@ func TestValidateBlock_Valid(t *testing.T) {
 	mp.Submit(tx)
 
 	// Use consensusID as proposer
-	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil)
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil, 1)
 	require.NoError(t, err)
 
 	// Attach commit proof - use consensusID
@@ -213,20 +213,20 @@ func TestValidateBlock_Valid(t *testing.T) {
 	_, _, _ = setupValidatorForTest(freshS, 1, 100_000)
 
 	parent := &types.BlockHeader{Height: 0}
-	err = ValidateBlock(block, parent, types.ZeroHash, freshS, hasher, nil)
+	err = ValidateBlock(block, parent, types.ZeroHash, freshS, hasher, nil, 1)
 	require.NoError(t, err, "valid block should pass")
 }
 
 func TestValidateBlock_WrongHeight(t *testing.T) {
 	hasher, s, mp, _, _, _, validatorPrivKey, validatorConsensusID := setupTest(t)
-	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil)
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil, 1)
 	require.NoError(t, err)
 
 	// Attach commit proof (needed since block is height>0, but validation will fail at height check first)
 	attachCommitProof(t, block, s, validatorConsensusID, validatorPrivKey)
 
 	parent := &types.BlockHeader{Height: 5}
-	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil)
+	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil, 1)
 	require.Error(t, err, "expected error for wrong height")
 }
 
@@ -311,7 +311,7 @@ func TestValidateBlock_WrongProposer(t *testing.T) {
 	// So validator 2 IS the expected proposer! We need the block to have a DIFFERENT proposer.
 	// Fix: build the block with validator 2's addr, but validator 1 should have been the proposer.
 	// Actually let's swap: build with validator 1 as proposer, but validator 2 is expected.
-	block2, err := BuildBlock(s, nil, mp, 1, types.Hash{}, consensusID1, &mockSigner{}, hasher, 100, nil)
+	block2, err := BuildBlock(s, nil, mp, 1, types.Hash{}, consensusID1, &mockSigner{}, hasher, 100, nil, 1)
 	require.NoError(t, err)
 	require.Equal(t, consensusID1, block2.Header.Proposer)
 
@@ -319,21 +319,21 @@ func TestValidateBlock_WrongProposer(t *testing.T) {
 	attachCommitProof(t, block2, s, consensusID2, privKey2)
 
 	parent := &types.BlockHeader{Height: 0}
-	err = ValidateBlock(block2, parent, types.ZeroHash, freshS, hasher, nil)
+	err = ValidateBlock(block2, parent, types.ZeroHash, freshS, hasher, nil, 1)
 	require.Error(t, err, "expected error for wrong proposer")
 	require.Contains(t, err.Error(), "wrong proposer")
 }
 
 func TestValidateBlock_EmptyBlock(t *testing.T) {
 	hasher, s, mp, _, _, _, validatorPrivKey, validatorConsensusID := setupTest(t)
-	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil)
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil, 1)
 	require.NoError(t, err)
 
 	// Attach commit proof - use consensusID
 	attachCommitProof(t, block, s, validatorConsensusID, validatorPrivKey)
 
 	parent := &types.BlockHeader{Height: 0}
-	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil)
+	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil, 1)
 	require.NoError(t, err, "empty block should be valid")
 }
 
@@ -394,7 +394,7 @@ func TestValidateBlock_CommitProof_MutatedSignatures(t *testing.T) {
 	s, validators := setupMultiValidator(t, 1, []uint64{100_000})
 	mp := mempool.New(10000, 300*time.Second, s)
 
-	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validators[0].ConsensusID, &mockSigner{}, hasher, 100, nil)
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validators[0].ConsensusID, &mockSigner{}, hasher, 100, nil, 1)
 	require.NoError(t, err)
 
 	// Attach commit proof - use consensusID
@@ -406,7 +406,7 @@ func TestValidateBlock_CommitProof_MutatedSignatures(t *testing.T) {
 	block.CommitProof.Precommits[0].Signature[0] ^= 0xFF
 
 	parent := &types.BlockHeader{Height: 0}
-	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil)
+	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil, 1)
 	require.Error(t, err, "mutated signature should fail")
 	require.Contains(t, err.Error(), "signature")
 }
@@ -414,7 +414,7 @@ func TestValidateBlock_CommitProof_MutatedSignatures(t *testing.T) {
 func TestValidateBlock_CommitProof_DuplicateValidator(t *testing.T) {
 	// Use setupTest to get a valid block with commit proof, then manually add duplicate
 	hasher, s, mp, _, _, _, validatorPrivKey, validatorConsensusID := setupTest(t)
-	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil)
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil, 1)
 	require.NoError(t, err)
 
 	// Get valid commit proof using attachCommitProof (this ensures proposer is correct)
@@ -432,7 +432,7 @@ func TestValidateBlock_CommitProof_DuplicateValidator(t *testing.T) {
 	block.CommitProof.Precommits = append(block.CommitProof.Precommits, block.CommitProof.Precommits[0])
 
 	parent := &types.BlockHeader{Height: 0}
-	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil)
+	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil, 1)
 	// With 2 precommits and 1 validator, we expect "more precommits than validators" first
 	// This is actually correct behavior - count check catches this before duplicate check
 	require.Error(t, err, "duplicate or too many precommits should fail")
@@ -444,7 +444,7 @@ func TestValidateBlock_CommitProof_InvalidVote(t *testing.T) {
 	s, validators := setupMultiValidator(t, 2, []uint64{100_000, 200_000})
 	mp := mempool.New(10000, 300*time.Second, s)
 
-	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validators[1].ConsensusID, &mockSigner{}, hasher, 100, nil)
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validators[1].ConsensusID, &mockSigner{}, hasher, 100, nil, 1)
 	require.NoError(t, err)
 
 	// Build commit proof manually with invalid vote (empty signature)
@@ -499,14 +499,14 @@ func TestValidateBlock_CommitProof_InvalidVote(t *testing.T) {
 	}
 
 	parent := &types.BlockHeader{Height: 0}
-	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil)
+	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil, 1)
 	require.Error(t, err, "invalid vote should fail")
 	require.Contains(t, err.Error(), "vote")
 }
 
 func TestValidateBlock_CommitProof_WrongTotalPower(t *testing.T) {
 	hasher, s, mp, _, _, _, validatorPrivKey, validatorConsensusID := setupTest(t)
-	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil)
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil, 1)
 	require.NoError(t, err)
 
 	attachCommitProof(t, block, s, validatorConsensusID, validatorPrivKey)
@@ -515,14 +515,14 @@ func TestValidateBlock_CommitProof_WrongTotalPower(t *testing.T) {
 	block.CommitProof.TotalPower = block.CommitProof.TotalPower + 1
 
 	parent := &types.BlockHeader{Height: 0}
-	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil)
+	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil, 1)
 	require.Error(t, err, "wrong total power should fail")
 	require.Contains(t, err.Error(), "total power")
 }
 
 func TestValidateBlock_CommitProof_WrongSetHash(t *testing.T) {
 	hasher, s, mp, _, _, _, validatorPrivKey, validatorConsensusID := setupTest(t)
-	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil)
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil, 1)
 	require.NoError(t, err)
 
 	attachCommitProof(t, block, s, validatorConsensusID, validatorPrivKey)
@@ -531,7 +531,7 @@ func TestValidateBlock_CommitProof_WrongSetHash(t *testing.T) {
 	block.CommitProof.SetHash[0] ^= 0xFF
 
 	parent := &types.BlockHeader{Height: 0}
-	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil)
+	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil, 1)
 	require.Error(t, err, "wrong set hash should fail")
 	require.Contains(t, err.Error(), "set hash")
 }
@@ -543,7 +543,7 @@ func TestValidateBlock_CommitProof_PrecommitsNotSorted(t *testing.T) {
 
 	// Note: validator with higher address (addr2) should sign first to create unsorted order
 	// But to get 2/3 majority we need at least 300k of 300k total
-	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validators[1].ConsensusID, &mockSigner{}, hasher, 100, nil)
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validators[1].ConsensusID, &mockSigner{}, hasher, 100, nil, 1)
 	require.NoError(t, err)
 
 	hasherObj := types.SHA256Hasher{}
@@ -609,14 +609,14 @@ func TestValidateBlock_CommitProof_PrecommitsNotSorted(t *testing.T) {
 	block.CommitProof = proof
 
 	parent := &types.BlockHeader{Height: 0}
-	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil)
+	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil, 1)
 	require.Error(t, err, "unsorted precommits should fail")
 	require.Contains(t, err.Error(), "sorted")
 }
 
 func TestValidateBlock_CommitProof_TooManyPrecommits(t *testing.T) {
 	hasher, s, mp, _, _, _, validatorPrivKey, validatorConsensusID := setupTest(t)
-	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil)
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil, 1)
 	require.NoError(t, err)
 
 	attachCommitProof(t, block, s, validatorConsensusID, validatorPrivKey)
@@ -625,14 +625,14 @@ func TestValidateBlock_CommitProof_TooManyPrecommits(t *testing.T) {
 	block.CommitProof.Precommits = append(block.CommitProof.Precommits, block.CommitProof.Precommits...)
 
 	parent := &types.BlockHeader{Height: 0}
-	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil)
+	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil, 1)
 	require.Error(t, err, "too many precommits should fail")
 	require.Contains(t, err.Error(), "more precommits")
 }
 
 func TestValidateBlock_CommitProof_EmptyPrecommits(t *testing.T) {
 	hasher, s, mp, _, _, _, _, validatorConsensusID := setupTest(t)
-	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil)
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil, 1)
 	require.NoError(t, err)
 
 	// Build commit proof manually with empty precommits
@@ -653,7 +653,7 @@ func TestValidateBlock_CommitProof_EmptyPrecommits(t *testing.T) {
 	}
 
 	parent := &types.BlockHeader{Height: 0}
-	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil)
+	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil, 1)
 	require.Error(t, err, "empty precommits should fail")
 	require.Contains(t, err.Error(), "power")
 }

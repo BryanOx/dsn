@@ -163,6 +163,7 @@ func runDevnet(cmd *cobra.Command, args []string) error {
 					hasher,
 					100, // max txs per block
 					nil, // no evidence
+					3,   // matches the 3s devnet block ticker
 				)
 				if err != nil {
 					log.Printf("Block production error at height %d: %v", height, err)

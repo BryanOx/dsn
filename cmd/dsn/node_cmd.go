@@ -3,12 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/dsn/dsn/config"
 	"github.com/dsn/dsn/node"
+	"github.com/dsn/dsn/rpc"
+	"github.com/dsn/dsn/rpc/service"
 	"github.com/spf13/cobra"
 )
 
@@ -120,6 +123,19 @@ func runNodeStart(cmd *cobra.Command, args []string) error {
 
 	if err := n.Start(ctx); err != nil {
 		return fmt.Errorf("node start failed: %w", err)
+	}
+
+	// Start JSON-RPC server if enabled.
+	// rpc.Server exposes no shutdown; its lifetime is tied to the process.
+	if cfg.RPC.Enabled && cfg.RPC.Port > 0 {
+		svc := service.NewNodeService(n)
+		rpcServer := rpc.NewWithService(svc)
+		go func() {
+			fmt.Printf("RPC server listening on http://localhost:%d\n", cfg.RPC.Port)
+			if err := rpcServer.Serve(fmt.Sprintf(":%d", cfg.RPC.Port)); err != nil {
+				log.Printf("RPC server error: %v", err)
+			}
+		}()
 	}
 
 	// Step 5: Wait for shutdown signal

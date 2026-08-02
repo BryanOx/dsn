@@ -1,6 +1,7 @@
 package screens
 
 import (
+	"encoding/binary"
 	"fmt"
 	"strings"
 	"time"
@@ -28,6 +29,7 @@ type SendModel struct {
 	err       string
 	done      bool
 	confirmed bool
+	nonce     uint64 // tracks current nonce for transactions
 }
 
 func NewSend(cl *client.Client, kp *wallet.KeyPair) *SendModel {
@@ -46,6 +48,7 @@ func NewSend(cl *client.Client, kp *wallet.KeyPair) *SendModel {
 		kp:       kp,
 		toInput:  to,
 		amtInput: amt,
+		nonce:    1, // TODO: fetch from dsn_getAccount RPC for accuracy
 	}
 }
 
@@ -115,16 +118,27 @@ func (m *SendModel) sendTx() tea.Cmd {
 		var amount uint64
 		fmt.Sscanf(amt, "%d", &amount)
 
+		// Parse recipient address from string
+		recipientAddr, err := types.ParseAddress(to)
+		if err != nil {
+			return sendResultMsg{err: fmt.Errorf("invalid recipient address: %w", err)}
+		}
+
+		// Build payload: 20 bytes recipient address + 8 bytes amount (big-endian)
+		payload := make([]byte, 28)
+		copy(payload[:20], recipientAddr.Bytes()) // recipient address bytes
+		binary.BigEndian.PutUint64(payload[20:28], amount)
+
 		tx := types.NewTransaction(
-			1,                             // version (uint16)
-			0,                             // chainID (uint32)
-			m.kp.Address(),                // sender
-			1,                             // nonce (simplified)
-			[]byte(to),                    // payload (recipient address as bytes)
-			[]byte(fmt.Sprintf("%d", amount)), // constraints (amount as string)
-			10,                            // maxFee (fixed for TUI)
-			100000,                        // gasLimit
-			uint64(time.Now().Unix()),     // timestamp
+			1,                         // version (uint16)
+			0,                         // chainID (uint32)
+			m.kp.Address(),            // sender
+			m.nonce,                   // nonce (tracked, increment after send)
+			payload,                   // payload: recipient(20) + amount(8)
+			nil,                       // constraints (none for basic transfer)
+			10,                        // maxFee (fixed for TUI)
+			100000,                    // gasLimit
+			uint64(time.Now().Unix()), // timestamp
 		)
 
 		intentID, err := tx.ComputeIntentID(hasher)
@@ -139,6 +153,13 @@ func (m *SendModel) sendTx() tea.Cmd {
 		}
 
 		result, err := m.client.SendTransaction(tx)
+		if err != nil {
+			return sendResultMsg{intentID: result, err: err}
+		}
+
+		// Increment nonce after successful send
+		m.nonce++
+
 		return sendResultMsg{intentID: result, err: err}
 	}
 }

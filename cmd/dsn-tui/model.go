@@ -11,15 +11,16 @@ import (
 
 // rootModel is the top-level Bubbletea model.
 type rootModel struct {
-	client      *client.Client
-	kp          *wallet.KeyPair
-	activeTab   int
-	width       int
-	errMsg      string
+	client    *client.Client
+	kp        *wallet.KeyPair
+	activeTab int
+	width     int
+	errMsg    string
 
 	dashboard *screens.DashboardModel
 	balance   *screens.BalanceModel
 	send      *screens.SendModel
+	txFiles   *screens.TxFilesModel
 	pending   *screens.PendingModel
 	walletScr *screens.WalletModel
 
@@ -49,6 +50,7 @@ func newModel(rpcURL string, walletPath string) *rootModel {
 	m.dashboard = screens.NewDashboard(cl)
 	m.balance = screens.NewBalance(cl)
 	m.send = screens.NewSend(cl, kp)
+	m.txFiles = screens.NewTxFiles(cl, kp)
 	m.pending = screens.NewPending(cl)
 	m.walletScr = screens.NewWallet(cl, kp)
 
@@ -109,9 +111,13 @@ func (m *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updated, sendCmd := m.send.Update(msg)
 		m.send = updated
 		cmd = sendCmd
-	case 3: // Pending
+	case 3: // Tx Files
+		updated, txCmd := m.txFiles.Update(msg)
+		m.txFiles = updated
+		cmd = txCmd
+	case 4: // Pending
 		return m, cmd
-	case 4: // Wallet
+	case 5: // Wallet
 		return m, cmd
 	}
 
@@ -128,6 +134,8 @@ func (m *rootModel) onTabChange() {
 	case 1:
 		m.balance.Init()
 	case 3:
+		m.txFiles.Init()
+	case 4:
 		m.pending.Init()
 	}
 }
@@ -136,7 +144,7 @@ func (m *rootModel) refreshCurrent() {
 	switch m.activeTab {
 	case 0:
 		m.dashboard.Update()
-	case 3:
+	case 4:
 		m.pending.Update()
 	}
 }
@@ -152,8 +160,10 @@ func (m *rootModel) View() string {
 	case 2:
 		screen = m.send.View(m.width)
 	case 3:
-		screen = m.pending.View(m.width)
+		screen = m.txFiles.View(m.width)
 	case 4:
+		screen = m.pending.View(m.width)
+	case 5:
 		screen = m.walletScr.View(m.width)
 	}
 

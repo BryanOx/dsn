@@ -71,11 +71,12 @@ const (
 	tabDashboard = " Dashboard "
 	tabBalance   = " Balance "
 	tabSend      = " Send "
+	tabTxFiles   = " Tx Files "
 	tabPending   = " Pending "
 	tabWallet    = " Wallet "
 )
 
-var allTabs = []string{tabDashboard, tabBalance, tabSend, tabPending, tabWallet}
+var allTabs = []string{tabDashboard, tabBalance, tabSend, tabTxFiles, tabPending, tabWallet}
 
 func renderTabs(active int) string {
 	var rendered []string

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/dsn/dsn/types"
 	wallet2 "github.com/dsn/dsn/wallet"
@@ -24,8 +25,8 @@ var walletCmd = &cobra.Command{
 
 Examples:
   dsn wallet generate
-  dsn wallet generate --output mywallet.json
-  dsn wallet sign tx.json --key mywallet.json
+  dsn wallet generate --output wallets/mywallet.json
+  dsn wallet sign transactions/tx.json --key wallets/mywallet.json
   dsn wallet nonce 0x1234567890abcdef`,
 }
 
@@ -41,7 +42,7 @@ The generated key pair includes:
 
 Examples:
   dsn wallet generate
-  dsn wallet generate --output mywallet.json`,
+  dsn wallet generate --output wallets/mywallet.json`,
 	RunE: runWalletGenerate,
 }
 
@@ -60,8 +61,8 @@ The transaction file should contain unsigned transaction fields:
 }
 
 Examples:
-  dsn wallet sign tx.json
-  dsn wallet sign tx.json --key mywallet.json`,
+  dsn wallet sign transactions/tx.json
+  dsn wallet sign transactions/tx.json --key wallets/mywallet.json`,
 	Args: cobra.ExactArgs(1),
 	RunE: runWalletSign,
 }
@@ -91,11 +92,11 @@ func init() {
 	rootCmd.AddCommand(walletCmd)
 
 	// wallet generate flags
-	walletGenerateCmd.Flags().StringVarP(&walletFlags.output, "output", "o", "wallet.json", "output file path")
+	walletGenerateCmd.Flags().StringVarP(&walletFlags.output, "output", "o", "wallets/wallet.json", "output file path")
 	walletCmd.AddCommand(walletGenerateCmd)
 
 	// wallet sign flags
-	walletSignCmd.Flags().StringVarP(&walletFlags.key, "key", "k", "wallet.json", "wallet key file")
+	walletSignCmd.Flags().StringVarP(&walletFlags.key, "key", "k", "wallets/wallet.json", "wallet key file")
 	walletCmd.AddCommand(walletSignCmd)
 
 	// wallet nonce flags
@@ -127,11 +128,12 @@ func runWalletGenerate(cmd *cobra.Command, args []string) error {
 
 // UnsignedTransaction represents an unsigned transaction from a file
 type UnsignedTransaction struct {
-	Sender   string `json:"sender"`
-	Nonce    uint64 `json:"nonce"`
-	Payload  string `json:"payload,omitempty"`
-	GasLimit uint64 `json:"gasLimit"`
-	MaxFee   uint64 `json:"maxFee"`
+	Sender    string `json:"sender"`
+	Nonce     uint64 `json:"nonce"`
+	Payload   string `json:"payload,omitempty"`
+	GasLimit  uint64 `json:"gasLimit"`
+	MaxFee    uint64 `json:"maxFee"`
+	Timestamp uint64 `json:"timestamp,omitempty"`
 }
 
 // SignedTransaction represents a signed transaction
@@ -172,13 +174,16 @@ func runWalletSign(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create transaction - use payload for data
+	// Always use current timestamp (avoids stale timestamps from script pipelines)
+	ts := uint64(time.Now().Unix())
 	tx := &types.Transaction{
-		Sender:   kp.Address(),
-		Nonce:    unsignedTx.Nonce,
-		Payload:  payload,
-		GasLimit: unsignedTx.GasLimit,
-		MaxFee:   unsignedTx.MaxFee,
-		TxType:   types.TxTypeStandard,
+		Sender:    kp.Address(),
+		Nonce:     unsignedTx.Nonce,
+		Payload:   payload,
+		GasLimit:  unsignedTx.GasLimit,
+		MaxFee:    unsignedTx.MaxFee,
+		Timestamp: ts,
+		TxType:    types.TxTypeStandard,
 	}
 
 	// Sign transaction
@@ -186,6 +191,9 @@ func runWalletSign(cmd *cobra.Command, args []string) error {
 	if err := kp.Sign(tx, hasher); err != nil {
 		return fmt.Errorf("failed to sign transaction: %w", err)
 	}
+
+	// Update unsigned tx fields that were auto-populated
+	unsignedTx.Timestamp = ts
 
 	// Create signed transaction output
 	signedTx := SignedTransaction{

@@ -64,6 +64,10 @@ type GetEventsRequest struct {
 	Filter service.EventFilterParams `json:"filter"`
 }
 
+type GetValidatorRequest struct {
+	Address string `json:"address"`
+}
+
 type GetValidatorsRequest struct {
 	Epoch *uint64 `json:"epoch,omitempty"`
 }
@@ -160,6 +164,14 @@ func (h *Handler) handleGetEvents(ctx context.Context, req *GetEventsRequest) ([
 	return h.service.GetEvents(ctx, filter)
 }
 
+// handleGetValidator implements dsn_getValidator.
+func (h *Handler) handleGetValidator(ctx context.Context, req *GetValidatorRequest) (*service.ValidatorResult, error) {
+	if req.Address == "" {
+		return nil, fmt.Errorf("%w: address is required", service.ErrInvalidParams)
+	}
+	return h.service.GetValidator(ctx, req.Address)
+}
+
 // handleGetValidators implements dsn_getValidators.
 func (h *Handler) handleGetValidators(ctx context.Context, req *GetValidatorsRequest) ([]service.ValidatorResult, error) {
 	return h.service.GetValidators(ctx, req.Epoch)
@@ -187,6 +199,16 @@ func (h *Handler) handleGetTransactionReceipt(ctx context.Context, req *GetTrans
 		return nil, fmt.Errorf("%w: txHash is required", service.ErrInvalidParams)
 	}
 	return h.service.GetTransactionReceipt(ctx, req.TxHash)
+}
+
+// handleGetStateRoot implements dsn_getStateRoot.
+func (h *Handler) handleGetStateRoot(ctx context.Context) (*service.StateRootResult, error) {
+	return h.service.GetStateRoot(ctx)
+}
+
+// handleGetPendingTxs implements dsn_getPendingTxs.
+func (h *Handler) handleGetPendingTxs(ctx context.Context) ([]service.TransactionResult, error) {
+	return h.service.GetPendingTxs(ctx)
 }
 
 // Helper to parse request parameters
@@ -276,6 +298,23 @@ func parseGetEventsRequest(params json.RawMessage) (*GetEventsRequest, error) {
 	var req GetEventsRequest
 	if err := json.Unmarshal(params, &req); err != nil {
 		return nil, err
+	}
+	return &req, nil
+}
+
+func parseGetValidatorRequest(params json.RawMessage) (*GetValidatorRequest, error) {
+	var req GetValidatorRequest
+	if err := json.Unmarshal(params, &req); err != nil {
+		// Try positional
+		var args []interface{}
+		if err := json.Unmarshal(params, &args); err != nil {
+			return nil, err
+		}
+		if len(args) > 0 {
+			if addr, ok := args[0].(string); ok {
+				req.Address = addr
+			}
+		}
 	}
 	return &req, nil
 }

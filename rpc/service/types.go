@@ -11,33 +11,33 @@ import (
 // BlockResult represents block data returned by RPC.
 type BlockResult struct {
 	Number       uint64              `json:"number"`
-	Hash         string               `json:"hash"`
-	ParentHash   string               `json:"parentHash"`
-	Timestamp    uint64               `json:"timestamp"`
-	Transactions []TransactionResult  `json:"transactions"`
-	Events       []EventResult        `json:"events"`
+	Hash         string              `json:"hash"`
+	ParentHash   string              `json:"parentHash"`
+	Timestamp    uint64              `json:"timestamp"`
+	Transactions []TransactionResult `json:"transactions"`
+	Events       []EventResult       `json:"events"`
 }
 
 // TransactionResult represents transaction data with receipt.
 type TransactionResult struct {
-	Hash       string          `json:"hash"`
-	Sender     string          `json:"sender"`
-	Recipient  string          `json:"recipient"`
-	IntentID   string          `json:"intentId"`
-	Nonce      uint64          `json:"nonce"`
-	Value      string          `json:"value"`
-	MaxFee     string          `json:"maxFee"`
-	GasLimit   uint64          `json:"gasLimit"`
-	Data       string          `json:"data"`
-	Receipt    *ReceiptResult  `json:"receipt,omitempty"`
+	Hash      string         `json:"hash"`
+	Sender    string         `json:"sender"`
+	Recipient string         `json:"recipient"`
+	IntentID  string         `json:"intentId"`
+	Nonce     uint64         `json:"nonce"`
+	Value     string         `json:"value"`
+	MaxFee    string         `json:"maxFee"`
+	GasLimit  uint64         `json:"gasLimit"`
+	Data      string         `json:"data"`
+	Receipt   *ReceiptResult `json:"receipt,omitempty"`
 }
 
 // ReceiptResult represents transaction receipt.
 type ReceiptResult struct {
-	Status       string `json:"status"`
-	GasUsed      uint64 `json:"gasUsed"`
-	BlockNumber  uint64 `json:"blockNumber"`
-	BlockHash    string `json:"blockHash"`
+	Status      string `json:"status"`
+	GasUsed     uint64 `json:"gasUsed"`
+	BlockNumber uint64 `json:"blockNumber"`
+	BlockHash   string `json:"blockHash"`
 }
 
 // AccountResult represents account data.
@@ -51,16 +51,16 @@ type AccountResult struct {
 
 // ContractResult represents contract data.
 type ContractResult struct {
-	Address   string          `json:"address"`
-	Metadata  *ContractMeta   `json:"metadata,omitempty"`
-	CodeHash  string          `json:"codeHash"`
+	Address  string        `json:"address"`
+	Metadata *ContractMeta `json:"metadata,omitempty"`
+	CodeHash string        `json:"codeHash"`
 }
 
 // ContractMeta represents contract metadata.
 type ContractMeta struct {
-	Name        string `json:"name,omitempty"`
-	Version     string `json:"version,omitempty"`
-	Entrypoint  string `json:"entrypoint,omitempty"`
+	Name       string `json:"name,omitempty"`
+	Version    string `json:"version,omitempty"`
+	Entrypoint string `json:"entrypoint,omitempty"`
 }
 
 // CallResult represents result of a local contract call.
@@ -105,9 +105,17 @@ type EventResult struct {
 
 // ValidatorResult represents validator info.
 type ValidatorResult struct {
-	Address    string `json:"address"`
-	Power      uint64 `json:"power"`
-	Commission uint64 `json:"commission"`
+	ConsensusID     string `json:"consensusId"`
+	PublicKey       string `json:"publicKey"`
+	Address         string `json:"address"`
+	RewardAddress   string `json:"rewardAddress"`
+	BondedStake     string `json:"bondedStake"`
+	Status          string `json:"status"`
+	VotingPower     uint64 `json:"votingPower"`
+	Commission      uint16 `json:"commission"`
+	JailedUntil     uint64 `json:"jailedUntil"`
+	ActivationEpoch uint64 `json:"activationEpoch"`
+	UnstakeEpoch    uint64 `json:"unstakeEpoch"`
 }
 
 // SupplyResult represents token supply metrics.
@@ -117,14 +125,19 @@ type SupplyResult struct {
 	Staked      string `json:"staked"`
 }
 
+// StateRootResult represents the current state root hash.
+type StateRootResult struct {
+	StateRoot string `json:"state_root"`
+}
+
 // EventFilter represents filter for event queries.
 type EventFilter struct {
-	Contract   string
-	Topics     []string
-	FromBlock  uint64
-	ToBlock    uint64
-	Offset     uint64
-	Limit      uint64
+	Contract  string
+	Topics    []string
+	FromBlock uint64
+	ToBlock   uint64
+	Offset    uint64
+	Limit     uint64
 }
 
 // PaginationParams represents pagination for list queries.
@@ -218,15 +231,15 @@ func AccountToResult(addr string, balance string, nonce uint64, codeHash, storag
 // ContractToResult converts contract metadata to ContractResult.
 func ContractToResult(addr string, meta *types.ContractMetadata, codeHash types.Hash) ContractResult {
 	result := ContractResult{
-		Address:   addr,
-		CodeHash:  hashToHex(codeHash),
+		Address:  addr,
+		CodeHash: hashToHex(codeHash),
 	}
 
 	if meta != nil {
 		result.Metadata = &ContractMeta{
-			Name:        hashToHex(meta.ContractID),
-			Version:     fmt.Sprintf("%d", meta.BlockHeight),
-			Entrypoint:  "",
+			Name:       hashToHex(meta.ContractID),
+			Version:    fmt.Sprintf("%d", meta.BlockHeight),
+			Entrypoint: "",
 		}
 	}
 

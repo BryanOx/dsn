@@ -375,7 +375,7 @@ func getNonce(rpcURL, addr string) (uint64, error) {
 		return 0, err
 	}
 
-	if result, ok := resp["result"].(map[string]interface{}); ok {
+	if result, ok := resp.(map[string]interface{}); ok {
 		if nonce, ok := result["nonce"].(float64); ok {
 			return uint64(nonce), nil
 		}
@@ -386,7 +386,7 @@ func getNonce(rpcURL, addr string) (uint64, error) {
 }
 
 // submitTransaction submits a transaction to the RPC
-func submitTransaction(rpcURL string, tx *types.Transaction) (map[string]interface{}, error) {
+func submitTransaction(rpcURL string, tx *types.Transaction) (interface{}, error) {
 	// Encode transaction to map
 	txData := map[string]interface{}{
 		"version":   tx.Version,
@@ -402,10 +402,15 @@ func submitTransaction(rpcURL string, tx *types.Transaction) (map[string]interfa
 		"txType":    tx.TxType,
 	}
 
+	txJSON, err := json.Marshal(txData)
+	if err != nil {
+		return nil, err
+	}
+
 	req := map[string]interface{}{
 		"jsonrpc": "2.0",
-		"method":  "dsn_submitTransaction",
-		"params":  txData,
+		"method":  "dsn_sendTransaction",
+		"params":  map[string]interface{}{"tx": string(txJSON)},
 		"id":      1,
 	}
 
@@ -414,11 +419,11 @@ func submitTransaction(rpcURL string, tx *types.Transaction) (map[string]interfa
 		return nil, err
 	}
 
-	return resp["result"].(map[string]interface{}), nil
+	return resp, nil
 }
 
 // getValidatorStatus queries the RPC for validator status
-func getValidatorStatus(rpcURL, addr string) (map[string]interface{}, error) {
+func getValidatorStatus(rpcURL, addr string) (interface{}, error) {
 	req := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"method":  "dsn_getValidator",
@@ -431,14 +436,11 @@ func getValidatorStatus(rpcURL, addr string) (map[string]interface{}, error) {
 		return nil, err
 	}
 
-	if result, ok := resp["result"].(map[string]interface{}); ok {
-		return result, nil
-	}
-	return nil, nil
+	return resp, nil
 }
 
 // doRPCRequest performs a JSON-RPC request
-func doRPCRequest(url string, req interface{}) (map[string]interface{}, error) {
+func doRPCRequest(url string, req interface{}) (interface{}, error) {
 	jsonBytes, err := json.Marshal(req)
 	if err != nil {
 		return nil, err
@@ -460,7 +462,7 @@ func doRPCRequest(url string, req interface{}) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("RPC error: %v", errObj)
 	}
 
-	result, ok := rpcResp["result"].(map[string]interface{})
+	result, ok := rpcResp["result"]
 	if !ok {
 		return nil, fmt.Errorf("invalid response: no result")
 	}

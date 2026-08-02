@@ -69,30 +69,52 @@ type Config struct {
 	// This is slower but ensures durability across crashes.
 	// When false (default), uses async writes for better performance.
 	FSync bool
+
+	// TLSCertFile is the path to the TLS certificate file.
+	// When set, the RPC server will serve HTTPS instead of HTTP.
+	TLSCertFile string
+
+	// TLSKeyFile is the path to the TLS private key file.
+	TLSKeyFile string
+
+	// RPCApiKey is an optional API key required for all RPC requests.
+	// When set, requests without a matching X-API-Key header are rejected.
+	RPCApiKey string
+
+	// RPCApiKeyHeader is the header name for API key auth (default: X-API-Key).
+	RPCApiKeyHeader string
+
+	// BlockTimeSec is the block time in seconds for economic calculations (default: 1).
+	BlockTimeSec uint64
 }
 
 func DefaultConfig() Config {
 	return Config{
-		ChainID:         0,
-		DataDir:         "", // empty = in-memory only. Set to a path for persistent storage.
-		MempoolMaxSize:  10000,
-		MempoolTTL:      300 * time.Second,
-		RPCPort:         8545,
-		P2PPort:         0, // 0 = P2P disabled (use env var DSN_P2P_PORT to enable)
-		Validators:      []types.Address{},
-		MaxTxPerBlock:   100,
-		ProposerTimeout:       5 * time.Second,
-		GenesisFile:            "",    // genesis file path
-		ValidatorKeyFile:       "",    // validator key file path
-		MaxPeers:               50,     // max P2P peers
-		MetricsPort:            9464,   // Prometheus metrics port
-		IndexerEnabled:        false,  // disabled by default
-		SnapshotInterval:       10,    // snapshot every 10 epochs
-		FastSyncEnabled:        false,  // normal sync by default
+		ChainID:                 0,
+		DataDir:                 "", // empty = in-memory only. Set to a path for persistent storage.
+		MempoolMaxSize:          10000,
+		MempoolTTL:              300 * time.Second,
+		RPCPort:                 8545,
+		P2PPort:                 0, // 0 = P2P disabled (use env var DSN_P2P_PORT to enable)
+		Validators:              []types.Address{},
+		MaxTxPerBlock:           100,
+		ProposerTimeout:         5 * time.Second,
+		GenesisFile:             "",    // genesis file path
+		ValidatorKeyFile:        "",    // validator key file path
+		MaxPeers:                50,    // max P2P peers
+		MetricsPort:             9464,  // Prometheus metrics port
+		IndexerEnabled:          false, // disabled by default
+		SnapshotInterval:        10,    // snapshot every 10 epochs
+		FastSyncEnabled:         false, // normal sync by default
 		TrustedCheckpointHeight: 0,
-		TrustedCheckpointHash:  "",
-		VMTimeoutSeconds:       30,    // 30 second VM execution timeout
-		FSync:                  false, // async writes by default
+		TrustedCheckpointHash:   "",
+		VMTimeoutSeconds:        30,          // 30 second VM execution timeout
+		FSync:                   false,       // async writes by default
+		TLSCertFile:             "",          // no TLS by default
+		TLSKeyFile:              "",          // no TLS by default
+		RPCApiKey:               "",          // no API key by default
+		RPCApiKeyHeader:         "X-API-Key", // default header name
+		BlockTimeSec:            1,           // 1 second block time by default
 	}
 }
 
@@ -142,6 +164,11 @@ func ConfigFromEnv() Config {
 			cfg.SnapshotInterval = n
 		}
 	}
+	if v := os.Getenv("DSN_BLOCK_TIME_SEC"); v != "" {
+		if n, err := strconv.ParseUint(v, 10, 64); err == nil && n > 0 {
+			cfg.BlockTimeSec = n
+		}
+	}
 	if v := os.Getenv("DSN_FAST_SYNC"); v != "" {
 		cfg.FastSyncEnabled = v == "true" || v == "1"
 	}
@@ -156,6 +183,18 @@ func ConfigFromEnv() Config {
 	if v := os.Getenv("DSN_BOOTSTRAP_PEERS"); v != "" {
 		// Comma-separated list of "ip:port" addresses
 		cfg.BootstrapPeers = parseBootstrapPeers(v)
+	}
+	if v := os.Getenv("DSN_TLS_CERT_FILE"); v != "" {
+		cfg.TLSCertFile = v
+	}
+	if v := os.Getenv("DSN_TLS_KEY_FILE"); v != "" {
+		cfg.TLSKeyFile = v
+	}
+	if v := os.Getenv("DSN_RPC_API_KEY"); v != "" {
+		cfg.RPCApiKey = v
+	}
+	if v := os.Getenv("DSN_RPC_API_KEY_HEADER"); v != "" {
+		cfg.RPCApiKeyHeader = v
 	}
 
 	return cfg

@@ -93,7 +93,7 @@ export interface Pagination {
 export interface RPCRequest {
   jsonrpc: string;
   method: string;
-  params?: unknown[];
+  params?: unknown;
   id: number;
 }
 

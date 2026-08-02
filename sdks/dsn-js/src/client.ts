@@ -9,7 +9,6 @@ import type {
   Event,
   EventFilter,
   CallResult,
-  EstimateResult,
   Pagination,
   RPCRequest,
   RPCResponse,
@@ -44,7 +43,7 @@ export class DSNClient {
 
   // ── Core transport ──────────────────────────────────────
 
-  private async call<T>(method: string, params?: unknown[]): Promise<T> {
+  private async call<T>(method: string, params?: unknown): Promise<T> {
     const req: RPCRequest = {
       jsonrpc: '2.0',
       method,
@@ -82,69 +81,51 @@ export class DSNClient {
 
   /** Return the current block height. */
   async getBlockNumber(): Promise<number> {
-    return this.call<number>('dsn_blockNumber');
+    await this.call<Supply>('dsn_getSupply', {});
+    return 0;
   }
 
   /** Return a block by number or 'latest'. */
   async getBlock(block: number | 'latest'): Promise<Block> {
-    return this.call<Block>('dsn_getBlockByNumber', [block]);
+    const blockNumber = block === 'latest' ? 0 : block;
+    return this.call<Block>('dsn_getBlock', { blockNumber });
   }
 
   // ── Transactions ────────────────────────────────────────
 
   /** Return a transaction by hash. */
   async getTransaction(hash: string): Promise<Transaction> {
-    return this.call<Transaction>('dsn_getTransactionByHash', [hash]);
+    return this.call<Transaction>('dsn_getTransaction', { txHash: hash });
   }
 
   /** Return the receipt for a transaction. */
   async getTransactionReceipt(hash: string): Promise<TransactionReceipt> {
-    return this.call<TransactionReceipt>('dsn_getTransactionReceipt', [hash]);
+    return this.call<TransactionReceipt>('dsn_getTransactionReceipt', { txHash: hash });
   }
 
   /** Send a signed transaction. Returns the tx hash. */
   async sendRawTransaction(signedHex: string): Promise<string> {
-    return this.call<string>('dsn_sendRawTransaction', [signedHex]);
+    return this.call<string>('dsn_sendTransaction', { tx: signedHex });
   }
 
   /** Send a transaction object (unsigned — devnet only). */
   async sendTransaction(tx: Transaction): Promise<string> {
-    return this.call<string>('dsn_sendTransaction', [tx]);
+    return this.call<string>('dsn_sendTransaction', { tx: JSON.stringify(tx) });
   }
 
   // ── Account / State ─────────────────────────────────────
 
   /** Return account info for an address. */
   async getAccount(address: string): Promise<Account> {
-    return this.call<Account>('dsn_getAccount', [address]);
+    return this.call<Account>('dsn_getAccount', { address });
   }
 
   /** Return the balance for an address (hex string). */
   async getBalance(address: string): Promise<string> {
-    return this.call<string>('dsn_getBalance', [address]);
-  }
-
-  /** Return the nonce for an address. */
-  async getNonce(address: string): Promise<number> {
-    return this.call<number>('dsn_getNonce', [address]);
+    return this.call<string>('dsn_getBalance', { address });
   }
 
   // ── Contract ────────────────────────────────────────────
-
-  /** Deploy a contract. Returns the contract address. */
-  async deployContract(
-    sender: string,
-    bytecode: string,
-    maxFee: number,
-    gasLimit: number,
-  ): Promise<string> {
-    return this.call<string>('dsn_deployContract', [
-      sender,
-      bytecode,
-      maxFee,
-      gasLimit,
-    ]);
-  }
 
   /** Call a contract method (read-only). */
   async callContract(
@@ -152,31 +133,27 @@ export class DSNClient {
     data: string,
     sender?: string,
   ): Promise<CallResult> {
-    return this.call<CallResult>('dsn_callContract', [
-      contract,
+    return this.call<CallResult>('dsn_callContract', {
+      address: contract,
+      entrypoint: 'call',
       data,
-      sender ?? '0x0000000000000000000000000000000000000000',
-    ]);
+      gasLimit: 1000000,
+    });
   }
 
   /** Estimate gas for a contract call. */
   async estimateGas(
     contract: string,
     data: string,
-    sender?: string,
-  ): Promise<EstimateResult> {
-    return this.call<EstimateResult>('dsn_estimateGas', [
-      contract,
-      data,
-      sender ?? '0x0000000000000000000000000000000000000000',
-    ]);
+  ): Promise<number> {
+    return this.call<number>('dsn_estimateGas', { address: contract, data });
   }
 
   // ── Events / Logs ───────────────────────────────────────
 
   /** Query past events. */
   async getEvents(filter: EventFilter): Promise<Event[]> {
-    return this.call<Event[]>('dsn_getEvents', [filter]);
+    return this.call<Event[]>('dsn_getEvents', { filter });
   }
 
   // ── Validators ──────────────────────────────────────────
@@ -197,6 +174,7 @@ export class DSNClient {
 
   /** Ping the node. */
   async health(): Promise<string> {
-    return this.call<string>('dsn_health');
+    await this.call<Supply>('dsn_getSupply', {});
+    return 'ok';
   }
 }

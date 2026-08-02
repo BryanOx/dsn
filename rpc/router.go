@@ -18,10 +18,33 @@ type Router struct {
 	rateLimiter  *middleware.RateLimiter
 }
 
+// RouterConfig holds optional configuration for the router.
+type RouterConfig struct {
+	TLSEnabled   bool
+	ApiKey       string
+	ApiKeyHeader string
+}
+
+// DefaultRouterConfig returns a default router config.
+func DefaultRouterConfig() RouterConfig {
+	return RouterConfig{
+		TLSEnabled:   false,
+		ApiKey:       "",
+		ApiKeyHeader: "X-API-Key",
+	}
+}
+
 // NewRouter creates a gorilla/mux router with all RPC and REST routes.
 // The service parameter is used to handle RPC method calls.
-func NewRouter(svc service.NodeService) *Router {
+// The optional config parameter enables TLS and API key authentication.
+func NewRouter(svc service.NodeService, cfg ...RouterConfig) *Router {
 	router := mux.NewRouter()
+
+	// Get config or use defaults
+	config := DefaultRouterConfig()
+	if len(cfg) > 0 {
+		config = cfg[0]
+	}
 
 	// Create WebSocket hub
 	hub := ws.NewHub()
@@ -40,26 +63,50 @@ func NewRouter(svc service.NodeService) *Router {
 		rateLimiter:  rateLimiter,
 	}
 
-	// JSON-RPC handler with middleware chain:
-	// 1. Rate limiting (100 req/s, burst 200)
-	// 2. Request body size limit (1 MiB)
-	// 3. Request ID generation
-	// 4. Metrics collection
-	// 5. JSON-RPC handling
-	rpcHandler := middleware.BodySizeLimit(middleware.MaxBodySize)(
-		rateLimiter.Middleware(
-			telemetry.NewRequestIDMiddleware(
-				telemetry.NewMetricsMiddleware(handleJSONRPC(svc)),
-			),
-		),
-	)
-	router.HandleFunc("/", rpcHandler.ServeHTTP).Methods(http.MethodPost)
+	// Build middleware chain (outermost to innermost):
+	// 1. Security headers (applied first)
+	// 2. Rate limiting (100 req/s, burst 200)
+	// 3. API key authentication
+	// 4. Request body size limit (1 MiB)
+	// 5. Request ID generation
+	// 6. Metrics collection
+	// 7. JSON-RPC handling
 
-	// WebSocket endpoint with request ID middleware
-	router.HandleFunc("/ws", hub.HandleWebSocket)
+	// Start with the JSON-RPC handler as http.Handler
+	var rpcHandler http.Handler = handleJSONRPC(svc)
 
-	// Health check endpoint
-	router.HandleFunc("/health", handleHealth).Methods(http.MethodGet)
+	// Add metrics middleware
+	rpcHandler = telemetry.NewMetricsMiddleware(rpcHandler)
+
+	// Add request ID middleware
+	rpcHandler = telemetry.NewRequestIDMiddleware(rpcHandler)
+
+	// Add body size limit
+	rpcHandler = middleware.BodySizeLimit(middleware.MaxBodySize)(rpcHandler)
+
+	// Add API key authentication (if configured)
+	if config.ApiKey != "" {
+		authMiddleware := middleware.NewAuthMiddleware(config.ApiKey, config.ApiKeyHeader)
+		rpcHandler = authMiddleware.Middleware(rpcHandler)
+	}
+
+	// Add rate limiting
+	rpcHandler = rateLimiter.Middleware(rpcHandler)
+
+	// Add security headers (outermost)
+	rpcHandler = middleware.SecurityHeadersMiddleware(config.TLSEnabled)(rpcHandler)
+
+	router.Handle("/", rpcHandler).Methods(http.MethodPost)
+
+	// WebSocket endpoint with security headers
+	var wsHandler http.Handler = http.HandlerFunc(hub.HandleWebSocket)
+	wsHandler = middleware.SecurityHeadersMiddleware(config.TLSEnabled)(wsHandler)
+	router.Handle("/ws", wsHandler).Methods(http.MethodGet, http.MethodPost)
+
+	// Health check endpoint with security headers
+	var healthHandler http.Handler = http.HandlerFunc(handleHealth)
+	healthHandler = middleware.SecurityHeadersMiddleware(config.TLSEnabled)(healthHandler)
+	router.Handle("/health", healthHandler).Methods(http.MethodGet)
 
 	return r
 }

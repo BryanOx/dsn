@@ -57,7 +57,7 @@ export class TransactionBuilder {
   /** Build the transaction object. Nonce is resolved via the client if not set. */
   async build(client: DSNClient): Promise<Transaction> {
     const nonce =
-      this.nonce ?? (await client.getNonce(this.sender));
+      this.nonce ?? (await client.getAccount(this.sender)).nonce;
 
     if (!this.sender) throw new Error('dsn: sender address required');
 

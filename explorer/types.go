@@ -53,7 +53,7 @@ type EventItem struct {
 type ValidatorInfo struct {
 	Address    string `json:"address"`
 	Power      uint64 `json:"power"`
-	Commission uint64 `json:"commission"`
+	Commission uint16 `json:"commission"`
 }
 
 // SupplyInfo represents token supply metrics.
@@ -67,7 +67,7 @@ type SupplyInfo struct {
 type ContractInfo struct {
 	Address      string        `json:"address"`
 	CodeHash     string        `json:"codeHash"`
-	Metadata    *ContractMeta `json:"metadata,omitempty"`
+	Metadata     *ContractMeta `json:"metadata,omitempty"`
 	RecentEvents []EventItem   `json:"recentEvents,omitempty"`
 }
 

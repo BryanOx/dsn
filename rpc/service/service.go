@@ -38,6 +38,9 @@ type NodeService interface {
 	// GetValidators returns validator list for the given epoch.
 	GetValidators(ctx context.Context, epoch *uint64) ([]ValidatorResult, error)
 
+	// GetValidator returns validator info for a given operator address.
+	GetValidator(ctx context.Context, address string) (*ValidatorResult, error)
+
 	// GetSupply returns token supply metrics.
 	GetSupply(ctx context.Context) (*SupplyResult, error)
 
@@ -46,6 +49,12 @@ type NodeService interface {
 
 	// GetTransactionReceipt returns the receipt for a transaction.
 	GetTransactionReceipt(ctx context.Context, txHash string) (*TransactionReceipt, error)
+
+	// GetStateRoot returns the current state root hash.
+	GetStateRoot(ctx context.Context) (*StateRootResult, error)
+
+	// GetPendingTxs returns pending transactions from the mempool.
+	GetPendingTxs(ctx context.Context) ([]TransactionResult, error)
 }
 
 // CallRequest represents a contract call request.
@@ -63,12 +72,12 @@ type EstimateRequest struct {
 
 // EventFilterParams represents event filter parameters from RPC.
 type EventFilterParams struct {
-	Contract   string
-	Topics     []string
-	FromBlock  *uint64
-	ToBlock    *uint64
-	Offset     *uint64
-	Limit      *uint64
+	Contract  string
+	Topics    []string
+	FromBlock *uint64
+	ToBlock   *uint64
+	Offset    *uint64
+	Limit     *uint64
 }
 
 // ToEventFilter converts params to EventFilter with defaults.

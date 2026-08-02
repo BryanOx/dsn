@@ -15,8 +15,8 @@ import (
 
 // Error codes
 const (
-	ErrCodeNotFound       = 404
-	ErrCodeBadRequest     = 400
+	ErrCodeNotFound      = 404
+	ErrCodeBadRequest    = 400
 	ErrCodeInternalError = 500
 	ErrCodeIndexerNA     = 503
 )
@@ -297,9 +297,9 @@ func handleContract(idx *indexer.Indexer, svc service.NodeService) http.HandlerF
 
 		// Build contract info
 		info := ContractInfo{
-			Address:   address,
-			CodeHash:  contractResult.CodeHash,
-			Metadata:  nil,
+			Address:  address,
+			CodeHash: contractResult.CodeHash,
+			Metadata: nil,
 		}
 
 		// Add metadata if available
@@ -369,7 +369,7 @@ func handleValidators(svc service.NodeService) http.HandlerFunc {
 		for i, v := range validators {
 			result[i] = ValidatorInfo{
 				Address:    v.Address,
-				Power:      v.Power,
+				Power:      v.VotingPower,
 				Commission: v.Commission,
 			}
 		}

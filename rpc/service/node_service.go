@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/dsn/dsn/node"
+	"github.com/dsn/dsn/staking"
 	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/types"
 )
@@ -192,11 +193,11 @@ func (s *nodeService) CallContract(ctx context.Context, address, entrypoint, dat
 
 	// Build call transaction with the specified entrypoint
 	tx := &types.CallContractTx{
-		ContractID:  contractID,
-		Sender:      types.Address{}, // zero address for read-only simulation
-		Entrypoint:  entrypoint,
-		Calldata:    calldata,
-		GasLimit:    gasLimit,
+		ContractID: contractID,
+		Sender:     types.Address{}, // zero address for read-only simulation
+		Entrypoint: entrypoint,
+		Calldata:   calldata,
+		GasLimit:   gasLimit,
 	}
 
 	// Execute via VM with current block context (use 0 for simulation)
@@ -212,10 +213,10 @@ func (s *nodeService) CallContract(ctx context.Context, address, entrypoint, dat
 	}
 
 	return &CallResult{
-		Data:       hex.EncodeToString(result.ReturnData),
-		GasUsed:    result.GasUsed,
-		Reverted:   result.Reverted,
-		Events:     eventsToResults(result.Events),
+		Data:     hex.EncodeToString(result.ReturnData),
+		GasUsed:  result.GasUsed,
+		Reverted: result.Reverted,
+		Events:   eventsToResults(result.Events),
 	}, nil
 }
 
@@ -268,16 +269,16 @@ func (s *nodeService) EstimateGas(ctx context.Context, address, data string) (ui
 func (s *nodeService) SendTransaction(ctx context.Context, txJSON string) (string, error) {
 	// Parse JSON into a temporary struct
 	var rawTx struct {
-		Sender    string `json:"sender"`
-		Nonce     uint64 `json:"nonce"`
-		ChainID   uint32 `json:"chainId"`
-		Payload   string `json:"payload,omitempty"`
+		Sender      string `json:"sender"`
+		Nonce       uint64 `json:"nonce"`
+		ChainID     uint32 `json:"chainId"`
+		Payload     string `json:"payload,omitempty"`
 		Constraints string `json:"constraints,omitempty"`
-		GasLimit  uint64 `json:"gasLimit"`
-		MaxFee    uint64 `json:"maxFee"`
-		Timestamp uint64 `json:"timestamp"`
-		Signature string `json:"signature"`
-		TxType    uint8  `json:"txType,omitempty"`
+		GasLimit    uint64 `json:"gasLimit"`
+		MaxFee      uint64 `json:"maxFee"`
+		Timestamp   uint64 `json:"timestamp"`
+		Signature   string `json:"signature"`
+		TxType      uint8  `json:"txType,omitempty"`
 	}
 
 	if err := json.Unmarshal([]byte(txJSON), &rawTx); err != nil {
@@ -338,7 +339,7 @@ func (s *nodeService) SendTransaction(ctx context.Context, txJSON string) (strin
 		Payload:     payload,
 		Constraints: constraints,
 		GasLimit:    rawTx.GasLimit,
-		MaxFee:       rawTx.MaxFee,
+		MaxFee:      rawTx.MaxFee,
 		Timestamp:   rawTx.Timestamp,
 		Signature:   signature,
 		TxType:      types.TxType(rawTx.TxType),
@@ -372,13 +373,41 @@ func (s *nodeService) GetEvents(ctx context.Context, filter EventFilter) ([]Even
 	return nil, errors.New("event querying not available: requires event indexer (Phase 6)")
 }
 
-// GetValidators returns validator list for the given epoch.
-// Requires active staking state synchronization to query validator set.
+// GetValidator returns validator info for a given operator address.
+func (s *nodeService) GetValidator(ctx context.Context, address string) (*ValidatorResult, error) {
+	addr, err := types.ParseAddress(address)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid address: %v", ErrInvalidParams, err)
+	}
+
+	v, err := staking.GetValidatorByOperator(s.node.State(), addr)
+	if err != nil {
+		if errors.Is(err, staking.ErrValidatorNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	return validatorToResult(v), nil
+}
+
+// GetValidators returns the current active validator set.
 func (s *nodeService) GetValidators(ctx context.Context, epoch *uint64) ([]ValidatorResult, error) {
-	// Check if state has validator data available
-	// StateDB interface doesn't expose validator queries yet
-	// Validator set tracking requires staking state integration
-	return nil, errors.New("validator set query not available: requires active staking state synchronization")
+	activeAddrs, err := staking.GetActiveValidatorAddresses(s.node.State())
+	if err != nil {
+		return nil, fmt.Errorf("failed to query active validators: %w", err)
+	}
+
+	results := make([]ValidatorResult, 0, len(activeAddrs))
+	for _, addr := range activeAddrs {
+		v, err := staking.GetValidatorByOperator(s.node.State(), addr)
+		if err != nil {
+			continue
+		}
+		results = append(results, *validatorToResult(v))
+	}
+
+	return results, nil
 }
 
 // GetSupply returns token supply metrics.
@@ -405,8 +434,42 @@ func (s *nodeService) GetSupply(ctx context.Context) (*SupplyResult, error) {
 
 // GetCurrentHeight returns the current chain height.
 func (s *nodeService) GetCurrentHeight() uint64 {
-	// Would be exposed from node in full implementation
-	return 0
+	return s.node.CurrentHeight()
+}
+
+// GetStateRoot returns the current state root hash.
+func (s *nodeService) GetStateRoot(ctx context.Context) (*StateRootResult, error) {
+	stateRoot := s.node.State().GetStateRoot()
+	return &StateRootResult{
+		StateRoot: "0x" + hex.EncodeToString(stateRoot[:]),
+	}, nil
+}
+
+// GetPendingTxs returns pending transactions from the mempool.
+func (s *nodeService) GetPendingTxs(ctx context.Context) ([]TransactionResult, error) {
+	pendingTxs := s.node.PendingTxs()
+	results := make([]TransactionResult, len(pendingTxs))
+	for i, tx := range pendingTxs {
+		results[i] = TransactionToResult(tx, 0, 0, 0, types.Hash{})
+	}
+	return results, nil
+}
+
+// validatorToResult converts a staking.Validator to ValidatorResult.
+func validatorToResult(v *staking.Validator) *ValidatorResult {
+	return &ValidatorResult{
+		ConsensusID:     v.ConsensusID.String(),
+		PublicKey:       "0x" + hex.EncodeToString(v.PublicKey[:]),
+		Address:         v.OperatorAddress.String(),
+		RewardAddress:   v.RewardAddress.String(),
+		BondedStake:     v.BondedStake.String(),
+		Status:          v.Status.String(),
+		VotingPower:     v.VotingPower,
+		Commission:      v.CommissionRate,
+		JailedUntil:     v.JailedUntil,
+		ActivationEpoch: v.ActivationEpoch,
+		UnstakeEpoch:    v.UnstakeEpoch,
+	}
 }
 
 // eventsToResults converts VM events to RPC event results.

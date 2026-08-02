@@ -174,26 +174,26 @@
     // ── Overview ──
     async function loadOverview() {
       try {
-        const [blockNum, validators, supply] = await Promise.all([
-          rpc('dsn_blockNumber'),
+        const [blocksResp, validators, supply] = await Promise.all([
+          fetch('/api/v1/blocks').then(r => r.json()).catch(() => ({ blocks: [] })),
           rpc('dsn_getValidators').catch(() => []),
           rpc('dsn_getSupply').catch(() => ({ total: '0', circulating: '0', staked: '0' })),
         ]);
-        document.getElementById('block-number').textContent = blockNum ?? '?';
+        const blocks = blocksResp.blocks || [];
+        const latestBlock = blocks[blocks.length - 1];
+        document.getElementById('block-number').textContent = latestBlock?.number ?? '?';
         document.getElementById('validator-count').textContent = Array.isArray(validators) ? validators.length : '?';
         document.getElementById('supply').textContent = supply.total ?? '?';
         document.getElementById('staked').textContent = supply.staked ?? '?';
+        document.getElementById('tx-count').textContent = 0;
 
-        const block = await rpc('dsn_getBlockByNumber', [blockNum ?? 0]);
-        document.getElementById('tx-count').textContent = block?.transactions?.length ?? 0;
-
-        if (block) {
+        if (latestBlock) {
           document.getElementById('latest-block').innerHTML = [
-            renderRow('Hash', block.hash),
-            renderRow('Number', block.number),
-            renderRow('Parent Hash', block.parentHash),
-            renderRow('Timestamp', block.timestamp ? new Date(block.timestamp * 1000).toISOString() : '--'),
-            renderRow('Transactions', block.transactions?.length ?? 0),
+            renderRow('Number', latestBlock.number),
+            renderRow('Hash', latestBlock.hash),
+            renderRow('Parent Hash', latestBlock.parentHash),
+            renderRow('Timestamp', latestBlock.timestamp ? new Date(latestBlock.timestamp * 1000).toISOString() : '--'),
+            renderRow('Transactions', latestBlock.txCount ?? latestBlock.transactions?.length ?? 0),
           ].join('');
         }
       } catch (e) {
@@ -210,7 +210,7 @@
       const el = document.getElementById('block-result');
       el.innerHTML = '<div class="loading">Loading...</div>';
       try {
-        const block = await rpc('dsn_getBlockByNumber', [num]);
+        const block = await rpc('dsn_getBlock', {"blockNumber": num});
         if (!block) { el.innerHTML = '<div class="error-box">Block not found</div>'; return; }
         el.innerHTML = `<div class="card">${[
           renderRow('Number', block.number),
@@ -230,7 +230,7 @@
       const el = document.getElementById('tx-result');
       el.innerHTML = '<div class="loading">Loading...</div>';
       try {
-        const tx = await rpc('dsn_getTransactionByHash', [hash]);
+        const tx = await rpc('dsn_getTransaction', {"txHash": hash});
         if (!tx) { el.innerHTML = '<div class="error-box">Transaction not found</div>'; return; }
         el.innerHTML = `<div class="card">${[
           renderRow('Hash', tx.hash),
@@ -252,15 +252,14 @@
       const el = document.getElementById('account-result');
       el.innerHTML = '<div class="loading">Loading...</div>';
       try {
-        const [account, balance, nonce] = await Promise.all([
-          rpc('dsn_getAccount', [addr]),
-          rpc('dsn_getBalance', [addr]),
-          rpc('dsn_getNonce', [addr]),
+        const [account, balance] = await Promise.all([
+          rpc('dsn_getAccount', {"address": addr}),
+          rpc('dsn_getBalance', {"address": addr}),
         ]);
         el.innerHTML = `<div class="card">${[
           renderRow('Address', addr),
           renderRow('Balance', balance ?? '0'),
-          renderRow('Nonce', nonce ?? 0),
+          renderRow('Nonce', account?.nonce ?? 0),
           account ? renderRow('Code Hash', account.codeHash) : '',
           account ? renderRow('Storage Root', account.storageRoot) : '',
         ].join('')}</div>`;
@@ -274,7 +273,7 @@
       const el = document.getElementById('contract-result');
       el.innerHTML = '<div class="loading">Loading...</div>';
       try {
-        const contract = await rpc('dsn_getAccount', [addr]);
+        const contract = await rpc('dsn_getAccount', {"address": addr});
         if (!contract) { el.innerHTML = '<div class="error-box">Contract not found</div>'; return; }
         el.innerHTML = `<div class="card">${[
           renderRow('Address', addr),
@@ -309,7 +308,7 @@
       const el = document.getElementById('events-result');
       el.innerHTML = '<div class="loading">Loading...</div>';
       try {
-        const events = await rpc('dsn_getEvents', [{ contract, fromBlock, toBlock }]);
+        const events = await rpc('dsn_getEvents', {filter: {contract, fromBlock, toBlock}}).catch(() => []);
         if (!events || !events.length) { el.innerHTML = '<div class="card">No events found.</div>'; return; }
         el.innerHTML = `<div class="card"><table><thead><tr><th>Contract</th><th>Topics</th><th>Block</th></tr></thead><tbody>${
           events.map(e =>

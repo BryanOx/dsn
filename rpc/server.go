@@ -48,8 +48,47 @@ func New(n *node.Node) *Server {
 }
 
 // NewWithService creates a new RPC server with a NodeService.
+// This is the backward-compatible constructor.
 func NewWithService(svc service.NodeService) *Server {
-	router := NewRouter(svc)
+	return NewWithServiceAndConfig(svc, DefaultRouterConfig())
+}
+
+// NewWithServiceAndConfig creates a new RPC server with a NodeService and config.
+func NewWithServiceAndConfig(svc service.NodeService, cfg RouterConfig) *Server {
+	router := NewRouter(svc, cfg)
+	return &Server{
+		service:      svc,
+		handler:      NewHandler(svc),
+		router:       router,
+		subscription: router.SubscriptionHandler(),
+	}
+}
+
+// SecurityConfig holds security configuration for the RPC server.
+type SecurityConfig struct {
+	TLSCertFile     string
+	TLSKeyFile      string
+	RPCApiKey       string
+	RPCApiKeyHeader string
+}
+
+// NewWithSecurityConfig creates a new RPC server with a NodeService and security config.
+// This is used when TLS or API key authentication is required.
+func NewWithSecurityConfig(svc service.NodeService, secCfg SecurityConfig) *Server {
+	routerCfg := DefaultRouterConfig()
+	if secCfg.TLSCertFile != "" && secCfg.TLSKeyFile != "" {
+		routerCfg.TLSEnabled = true
+	}
+	if secCfg.RPCApiKey != "" {
+		routerCfg.ApiKey = secCfg.RPCApiKey
+	}
+	if secCfg.RPCApiKeyHeader != "" {
+		routerCfg.ApiKeyHeader = secCfg.RPCApiKeyHeader
+	} else {
+		routerCfg.ApiKeyHeader = "X-API-Key"
+	}
+
+	router := NewRouter(svc, routerCfg)
 	return &Server{
 		service:      svc,
 		handler:      NewHandler(svc),
@@ -147,6 +186,8 @@ func (s *Server) handleRequest(ctx context.Context, req *RPCRequest) *RPCRespons
 	case "dsn_getEvents":
 		return s.handleRPCGetEvents(ctx, req)
 	// Validator methods
+	case "dsn_getValidator":
+		return s.handleRPCGetValidator(ctx, req)
 	case "dsn_getValidators":
 		return s.handleRPCGetValidators(ctx, req)
 	// Supply methods
@@ -338,6 +379,24 @@ func (s *Server) handleRPCGetEvents(ctx context.Context, req *RPCRequest) *RPCRe
 	return successResponse(req.ID, result)
 }
 
+// dsn_getValidator handler
+func (s *Server) handleRPCGetValidator(ctx context.Context, req *RPCRequest) *RPCResponse {
+	reqParams, err := parseGetValidatorRequest(req.Params)
+	if err != nil {
+		return errorResponse(req.ID, -32602, "invalid params: "+err.Error())
+	}
+
+	result, err := s.handler.handleGetValidator(ctx, reqParams)
+	if err != nil {
+		if err == service.ErrNotFound {
+			return errorResponse(req.ID, -32000, "validator not found")
+		}
+		return errorResponse(req.ID, -32000, err.Error())
+	}
+
+	return successResponse(req.ID, result)
+}
+
 // dsn_getValidators handler
 func (s *Server) handleRPCGetValidators(ctx context.Context, req *RPCRequest) *RPCResponse {
 	reqParams, err := parseGetValidatorsRequest(req.Params)
@@ -366,15 +425,19 @@ func (s *Server) handleRPCGetSupply(ctx context.Context, req *RPCRequest) *RPCRe
 // Legacy handlers for backward compatibility
 
 func (s *Server) handleLegacyGetStateRoot(ctx context.Context, req *RPCRequest) *RPCResponse {
-	// Placeholder - would return current state root
-	return successResponse(req.ID, map[string]string{
-		"state_root": "0x0000000000000000000000000000000000000000000000000000000000000000",
-	})
+	result, err := s.handler.handleGetStateRoot(ctx)
+	if err != nil {
+		return errorResponse(req.ID, -32000, err.Error())
+	}
+	return successResponse(req.ID, result)
 }
 
 func (s *Server) handleLegacyGetPendingTxs(ctx context.Context, req *RPCRequest) *RPCResponse {
-	// Get from service - would need to add method
-	return successResponse(req.ID, []interface{}{})
+	result, err := s.handler.handleGetPendingTxs(ctx)
+	if err != nil {
+		return errorResponse(req.ID, -32000, err.Error())
+	}
+	return successResponse(req.ID, result)
 }
 
 // Response helpers
@@ -407,4 +470,13 @@ func writeError(w http.ResponseWriter, code int, msg string, id interface{}) {
 // Serve starts the HTTP RPC server.
 func (s *Server) Serve(addr string) error {
 	return http.ListenAndServe(addr, s.router)
+}
+
+// ServeTLS starts the HTTPS RPC server with TLS.
+// If certFile or keyFile is empty, it falls back to Serve (HTTP).
+func (s *Server) ServeTLS(certFile, keyFile, addr string) error {
+	if certFile == "" || keyFile == "" {
+		return s.Serve(addr)
+	}
+	return http.ListenAndServeTLS(addr, certFile, keyFile, s.router)
 }

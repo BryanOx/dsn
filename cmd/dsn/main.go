@@ -10,6 +10,7 @@ import (
 
 	"github.com/dsn/dsn/node"
 	"github.com/dsn/dsn/rpc"
+	"github.com/dsn/dsn/rpc/service"
 	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/types"
 	"github.com/dsn/dsn/wallet"
@@ -85,11 +86,36 @@ func legacyMain() {
 	}
 
 	// Start RPC server
-	rpcServer := rpc.New(n)
+	var rpcServer *rpc.Server
+	secCfg := rpc.SecurityConfig{
+		TLSCertFile:     cfg.TLSCertFile,
+		TLSKeyFile:      cfg.TLSKeyFile,
+		RPCApiKey:       cfg.RPCApiKey,
+		RPCApiKeyHeader: cfg.RPCApiKeyHeader,
+	}
+
+	// Create service layer
+	svc := service.NewNodeService(n)
+
+	// Use security config if TLS or API key is configured
+	if cfg.TLSCertFile != "" || cfg.TLSKeyFile != "" || cfg.RPCApiKey != "" {
+		rpcServer = rpc.NewWithSecurityConfig(svc, secCfg)
+	} else {
+		rpcServer = rpc.NewWithService(svc)
+	}
+
 	go func() {
-		fmt.Printf("RPC server listening on %s\n", *rpcAddr)
-		if err := rpcServer.Serve(*rpcAddr); err != nil {
-			log.Fatal(err)
+		// Check if TLS is configured
+		if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
+			fmt.Printf("RPC server listening on https://%s (TLS enabled)\n", *rpcAddr)
+			if err := rpcServer.ServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile, *rpcAddr); err != nil {
+				log.Fatal(err)
+			}
+		} else {
+			fmt.Printf("RPC server listening on %s\n", *rpcAddr)
+			if err := rpcServer.Serve(*rpcAddr); err != nil {
+				log.Fatal(err)
+			}
 		}
 	}()
 

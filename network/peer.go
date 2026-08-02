@@ -84,19 +84,19 @@ var (
 
 // Peer represents a P2P network peer with connection and scoring information.
 type Peer struct {
-	ID              PeerID
-	Address         string
-	Conn            net.Conn
-	State           PeerState
-	Score           int
-	LastSeen        time.Time
-	Latency         time.Duration // rolling average
-	SyncHeight      uint64
-	MessageCount    uint64
-	FailCount       uint64
-	ConnectedSince  time.Time
-	BanExpiry       time.Time // zero = not banned
-	mu              sync.RWMutex
+	ID             PeerID
+	Address        string
+	Conn           net.Conn
+	State          PeerState
+	Score          int
+	LastSeen       time.Time
+	Latency        time.Duration // rolling average
+	SyncHeight     uint64
+	MessageCount   uint64
+	FailCount      uint64
+	ConnectedSince time.Time
+	BanExpiry      time.Time // zero = not banned
+	mu             sync.RWMutex
 
 	// Internal tracking for scoring rules
 	lastBlockSuccess time.Time
@@ -245,37 +245,37 @@ func DecodePeerRecord(r io.Reader) (PeerRecord, error) {
 // peerToRecord converts a Peer to a PeerRecord for persistence.
 func peerToRecord(p *Peer) PeerRecord {
 	return PeerRecord{
-		Version:    2,
-		ID:        p.ID,
-		Address:   p.Address,
-		Score:     p.Score,
-		Latency:   p.Latency.Nanoseconds(),
-		LastSeen:  p.LastSeen.Unix(),
-		FirstSeen: 0, // not tracked in Peer currently
-		IsBanned:  p.State == PeerBanned,
-		State:     p.State,
-		SyncHeight: p.SyncHeight,
-		MessageCount: p.MessageCount,
-		FailCount:  p.FailCount,
+		Version:        2,
+		ID:             p.ID,
+		Address:        p.Address,
+		Score:          p.Score,
+		Latency:        p.Latency.Nanoseconds(),
+		LastSeen:       p.LastSeen.Unix(),
+		FirstSeen:      0, // not tracked in Peer currently
+		IsBanned:       p.State == PeerBanned,
+		State:          p.State,
+		SyncHeight:     p.SyncHeight,
+		MessageCount:   p.MessageCount,
+		FailCount:      p.FailCount,
 		ConnectedSince: p.ConnectedSince.Unix(),
-		BanExpiry:  p.BanExpiry.Unix(),
+		BanExpiry:      p.BanExpiry.Unix(),
 	}
 }
 
 // recordToPeer converts a PeerRecord to a Peer.
 func recordToPeer(pr PeerRecord) *Peer {
 	peer := &Peer{
-		ID:         pr.ID,
-		Address:    pr.Address,
-		State:      pr.State,
-		Score:      pr.Score,
-		Latency:    time.Duration(pr.Latency),
-		LastSeen:   time.Unix(pr.LastSeen, 0),
-		SyncHeight: pr.SyncHeight,
-		MessageCount: pr.MessageCount,
-		FailCount:  pr.FailCount,
+		ID:             pr.ID,
+		Address:        pr.Address,
+		State:          pr.State,
+		Score:          pr.Score,
+		Latency:        time.Duration(pr.Latency),
+		LastSeen:       time.Unix(pr.LastSeen, 0),
+		SyncHeight:     pr.SyncHeight,
+		MessageCount:   pr.MessageCount,
+		FailCount:      pr.FailCount,
 		ConnectedSince: time.Unix(pr.ConnectedSince, 0),
-		BanExpiry:  time.Unix(pr.BanExpiry, 0),
+		BanExpiry:      time.Unix(pr.BanExpiry, 0),
 	}
 	if pr.IsBanned {
 		peer.State = PeerBanned
@@ -324,12 +324,12 @@ func (pm *PeerManager) AddPeer(id PeerID, addr string) *Peer {
 	}
 
 	peer := &Peer{
-		ID:        id,
-		Address:   addr,
-		State:     PeerDisconnected,
-		Score:     0,
-		LastSeen:  time.Now(),
-		Latency:   0,
+		ID:         id,
+		Address:    addr,
+		State:      PeerDisconnected,
+		Score:      0,
+		LastSeen:   time.Now(),
+		Latency:    0,
 		SyncHeight: 0,
 	}
 
@@ -680,17 +680,17 @@ func (pm *PeerManager) LoadPeers() error {
 			} else {
 				// Fall back to gob for backward compatibility with old data
 				var persistPeer struct {
-					ID              PeerID
-					Address         string
-					State           PeerState
-					Score           int
-					LastSeen        time.Time
-					Latency         time.Duration
-					SyncHeight      uint64
-					MessageCount    uint64
-					FailCount       uint64
-					ConnectedSince  time.Time
-					BanExpiry       time.Time
+					ID             PeerID
+					Address        string
+					State          PeerState
+					Score          int
+					LastSeen       time.Time
+					Latency        time.Duration
+					SyncHeight     uint64
+					MessageCount   uint64
+					FailCount      uint64
+					ConnectedSince time.Time
+					BanExpiry      time.Time
 				}
 
 				dec := gob.NewDecoder(bytes.NewReader(v))
@@ -699,17 +699,17 @@ func (pm *PeerManager) LoadPeers() error {
 				}
 
 				peer = &Peer{
-					ID:              persistPeer.ID,
-					Address:         persistPeer.Address,
-					State:           persistPeer.State,
-					Score:           persistPeer.Score,
-					LastSeen:        persistPeer.LastSeen,
-					Latency:         persistPeer.Latency,
-					SyncHeight:      persistPeer.SyncHeight,
-					MessageCount:    persistPeer.MessageCount,
-					FailCount:       persistPeer.FailCount,
-					ConnectedSince:  persistPeer.ConnectedSince,
-					BanExpiry:       persistPeer.BanExpiry,
+					ID:             persistPeer.ID,
+					Address:        persistPeer.Address,
+					State:          persistPeer.State,
+					Score:          persistPeer.Score,
+					LastSeen:       persistPeer.LastSeen,
+					Latency:        persistPeer.Latency,
+					SyncHeight:     persistPeer.SyncHeight,
+					MessageCount:   persistPeer.MessageCount,
+					FailCount:      persistPeer.FailCount,
+					ConnectedSince: persistPeer.ConnectedSince,
+					BanExpiry:      persistPeer.BanExpiry,
 				}
 			}
 

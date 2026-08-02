@@ -31,15 +31,15 @@ func (e *ConfigError) Wrap(err error) *ConfigError {
 
 // Error codes
 const (
-	ErrCodePathRequired    = "CONFIG_PATH_REQUIRED"
-	ErrCodeFileNotFound    = "CONFIG_FILE_NOT_FOUND"
-	ErrCodeReadFailed      = "CONFIG_READ_FAILED"
-	ErrCodeParseFailed     = "CONFIG_PARSE_FAILED"
+	ErrCodePathRequired     = "CONFIG_PATH_REQUIRED"
+	ErrCodeFileNotFound     = "CONFIG_FILE_NOT_FOUND"
+	ErrCodeReadFailed       = "CONFIG_READ_FAILED"
+	ErrCodeParseFailed      = "CONFIG_PARSE_FAILED"
 	ErrCodeValidationFailed = "CONFIG_VALIDATION_FAILED"
-	ErrCodeInvalidPort     = "CONFIG_INVALID_PORT"
-	ErrCodeInvalidMaxPeers = "CONFIG_INVALID_MAX_PEERS"
+	ErrCodeInvalidPort      = "CONFIG_INVALID_PORT"
+	ErrCodeInvalidMaxPeers  = "CONFIG_INVALID_MAX_PEERS"
 	ErrCodeDataDirRequired  = "CONFIG_DATA_DIR_REQUIRED"
-	ErrCodeInvalidChainID  = "CONFIG_INVALID_CHAIN_ID"
+	ErrCodeInvalidChainID   = "CONFIG_INVALID_CHAIN_ID"
 )
 
 // Predefined configuration errors

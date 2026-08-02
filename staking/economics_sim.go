@@ -20,22 +20,22 @@ type EconomicParams struct {
 
 // YearlyProjection holds the simulated state after one year
 type YearlyProjection struct {
-	Year              int
-	StartSupply       uint64
-	EndSupply         uint64
-	AnnualIssuance    uint64
-	TreasuryInflow    uint64
-	FeeRevenue        uint64
-	FeeBurn           uint64
-	TotalBurned       uint64
-	TreasuryBalance   uint64
-	MinValidatorROI   float64
-	MaxValidatorROI   float64
-	AvgValidatorROI   float64
-	Nakamoto1_3       int // validators needed for 33% power
-	Nakamoto1_2       int // validators needed for 50% power
-	Nakamoto2_3       int // validators needed for 66% power
-	GiniCoefficient   float64
+	Year            int
+	StartSupply     uint64
+	EndSupply       uint64
+	AnnualIssuance  uint64
+	TreasuryInflow  uint64
+	FeeRevenue      uint64
+	FeeBurn         uint64
+	TotalBurned     uint64
+	TreasuryBalance uint64
+	MinValidatorROI float64
+	MaxValidatorROI float64
+	AvgValidatorROI float64
+	Nakamoto1_3     int // validators needed for 33% power
+	Nakamoto1_2     int // validators needed for 50% power
+	Nakamoto2_3     int // validators needed for 66% power
+	GiniCoefficient float64
 }
 
 // Simulate runs the economic simulation for the given number of years
@@ -268,7 +268,7 @@ func calculateGini(stakes []uint64) float64 {
 	}
 
 	// Gini coefficient formula
-	gini := (2 * float64(weightedSum)) / (float64(n) * float64(sumStakes)) - float64(n+1)/float64(n)
+	gini := (2*float64(weightedSum))/(float64(n)*float64(sumStakes)) - float64(n+1)/float64(n)
 
 	return gini
 }

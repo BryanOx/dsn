@@ -13,18 +13,18 @@ type siblingsMap map[[32]byte]types.Hash
 
 // SMT implements a Sparse Merkle Tree with 256-bit path.
 type SMT struct {
-	root    types.Hash
-	hasher  types.Hasher
-	siblings siblingsMap  // flat map: path → sibling hash (only non-zero)
-	values  map[[32]byte][]byte // pathPrefix → raw value
+	root     types.Hash
+	hasher   types.Hasher
+	siblings siblingsMap         // flat map: path → sibling hash (only non-zero)
+	values   map[[32]byte][]byte // pathPrefix → raw value
 }
 
 func NewSMT(hasher types.Hasher) *SMT {
 	return &SMT{
-		root:    types.Hash{},
-		hasher:  hasher,
+		root:     types.Hash{},
+		hasher:   hasher,
 		siblings: make(siblingsMap),
-		values:  make(map[[32]byte][]byte),
+		values:   make(map[[32]byte][]byte),
 	}
 }
 

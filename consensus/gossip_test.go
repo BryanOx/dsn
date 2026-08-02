@@ -21,7 +21,7 @@ func TestBlockMessage_EncodeDecode(t *testing.T) {
 		},
 		Transactions: []types.Transaction{
 			{
-				Version:  1,
+				Version:   1,
 				ChainID:   1,
 				IntentID:  types.Hash{99},
 				Sender:    types.Address{1},
@@ -31,8 +31,8 @@ func TestBlockMessage_EncodeDecode(t *testing.T) {
 				Timestamp: 1234567890,
 			},
 		},
-		FeeSummary:   types.NewFeeSummary(100),
-		Signature:    []byte{1, 2, 3, 4},
+		FeeSummary: types.NewFeeSummary(100),
+		Signature:  []byte{1, 2, 3, 4},
 	}
 
 	data, err := EncodeBlockMessage(block)

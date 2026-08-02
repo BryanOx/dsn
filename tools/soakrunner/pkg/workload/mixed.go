@@ -8,13 +8,13 @@ import (
 
 // MixedConfig holds configuration for mixed workload
 type MixedConfig struct {
-	NumAccounts    int
-	TPS            int
-	ChainID        uint32
-	MaxFee         uint64
-	GasLimit       uint64
-	TransferRatio  float64
-	WASMRatio      float64
+	NumAccounts   int
+	TPS           int
+	ChainID       uint32
+	MaxFee        uint64
+	GasLimit      uint64
+	TransferRatio float64
+	WASMRatio     float64
 }
 
 // mixedGenerator combines transfer and WASM workloads

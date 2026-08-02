@@ -12,8 +12,8 @@ import (
 func TestRateLimiterBasic(t *testing.T) {
 	config := RateLimiterConfig{
 		RequestsPerSecond: 10,
-		BurstSize:        20,
-		 CleanupInterval: 1 * time.Minute,
+		BurstSize:         20,
+		CleanupInterval:   1 * time.Minute,
 	}
 
 	rl := NewRateLimiter(config)
@@ -225,7 +225,7 @@ func TestRateLimiterConcurrent(t *testing.T) {
 func TestRateLimiterTokenBucketRefill(t *testing.T) {
 	config := RateLimiterConfig{
 		RequestsPerSecond: 10, // 10 tokens per second
-		BurstSize:         5, // Start with 5
+		BurstSize:         5,  // Start with 5
 		CleanupInterval:   1 * time.Minute,
 	}
 

@@ -9,10 +9,10 @@ import (
 // TestSlashAmount_Calculation tests the slash amount calculation with various percentages and stakes.
 func TestSlashAmount_Calculation(t *testing.T) {
 	tests := []struct {
-		name        string
-		slashPct    uint64
-		stake       uint64
-		want        uint64
+		name     string
+		slashPct uint64
+		stake    uint64
+		want     uint64
 	}{
 		{"5% of 100000", 500, 100000, 5000},
 		{"10% of 100000", 1000, 100000, 10000},
@@ -403,8 +403,8 @@ func TestSetGetSlashParams(t *testing.T) {
 	custom := SlashParams{
 		PercentDoublePrevote:   750,  // 7.5%
 		PercentDoublePrecommit: 1500, // 15%
-		PercentInvalidCommit:  2500, // 25%
-		JailEpochs:            20,
+		PercentInvalidCommit:   2500, // 25%
+		JailEpochs:             20,
 	}
 	if err := SetSlashParams(s, custom); err != nil {
 		t.Fatalf("SetSlashParams error: %v", err)

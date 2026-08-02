@@ -36,7 +36,7 @@ type PeerDiscovery struct {
 func NewPeerDiscovery(pm *PeerManager, bootstrapAddrs []string, p2p *P2PNode) *PeerDiscovery {
 	return &PeerDiscovery{
 		pm:              pm,
-		bootstrapAddrs: bootstrapAddrs,
+		bootstrapAddrs:  bootstrapAddrs,
 		p2p:             p2p,
 		stopCh:          make(chan struct{}),
 		logger:          log.Default(),

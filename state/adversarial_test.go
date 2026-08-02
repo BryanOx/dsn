@@ -44,9 +44,9 @@ func TestAdversarial_CorruptedSnapshot(t *testing.T) {
 	t.Run("modified data", func(t *testing.T) {
 		modified := make([]byte, len(data))
 		copy(modified, data)
-		modified[0] ^= 0xFF // Flip first byte
+		modified[0] ^= 0xFF               // Flip first byte
 		modified[len(modified)-1] ^= 0xFF // Flip last byte
-		hash := SnapshotHash(data) // Use original hash
+		hash := SnapshotHash(data)        // Use original hash
 
 		err := RestoreFromSnapshot(ps, modified, hash)
 		if err == nil {

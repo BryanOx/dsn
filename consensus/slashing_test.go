@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/dsn/dsn/mempool"
-	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/staking"
+	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/types"
 	"github.com/stretchr/testify/require"
 )
@@ -232,12 +232,12 @@ func TestProcessEvidence_UnsupportedType(t *testing.T) {
 
 	// Create an InvalidCommitEvidence (unsupported in v1)
 	proof := &types.CommitProof{
-		Height:    5,
-		BlockHash: types.Hash{1, 2, 3},
-		Precommits: []types.Vote{},
-		TotalPower: 100000,
+		Height:      5,
+		BlockHash:   types.Hash{1, 2, 3},
+		Precommits:  []types.Vote{},
+		TotalPower:  100000,
 		SignedPower: 0,
-		SetHash: types.Hash{},
+		SetHash:     types.Hash{},
 	}
 	ev := &types.InvalidCommitEvidence{
 		Proof:  *proof,
@@ -280,7 +280,7 @@ func TestProcessBlockEvidence_EmptyList(t *testing.T) {
 
 	// Create empty block
 	block := &types.Block{
-		Header: types.BlockHeader{Height: 10},
+		Header:   types.BlockHeader{Height: 10},
 		Evidence: nil,
 	}
 
@@ -310,7 +310,7 @@ func TestProcessBlockEvidence_MultipleEvidence(t *testing.T) {
 
 	// Create block with both evidence
 	block := &types.Block{
-		Header:  types.BlockHeader{Height: 10},
+		Header:   types.BlockHeader{Height: 10},
 		Evidence: []types.Evidence{ev1, ev2},
 	}
 
@@ -340,7 +340,7 @@ func TestProcessBlockEvidence_DoubleSlashInBlock(t *testing.T) {
 
 	// Create block with duplicate evidence
 	block := &types.Block{
-		Header:  types.BlockHeader{Height: 10},
+		Header:   types.BlockHeader{Height: 10},
 		Evidence: []types.Evidence{ev, ev},
 	}
 

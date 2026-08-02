@@ -97,14 +97,14 @@ func NewPageInfo(p Pagination, total uint64) PageInfo {
 
 // PaginatedResponse wraps a response with pagination info.
 type PaginatedResponse[T any] struct {
-	Data   []T     `json:"data"`
+	Data     []T      `json:"data"`
 	PageInfo PageInfo `json:"pageInfo"`
 }
 
 // NewPaginatedResponse creates a new paginated response.
 func NewPaginatedResponse[T any](data []T, p Pagination, total uint64) PaginatedResponse[T] {
 	return PaginatedResponse[T]{
-		Data:   data,
+		Data:     data,
 		PageInfo: NewPageInfo(p, total),
 	}
 }

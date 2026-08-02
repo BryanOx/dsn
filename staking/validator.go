@@ -41,10 +41,11 @@ func (s ValidatorStatus) String() string {
 }
 
 // Allowed state transitions for the validator lifecycle.
-//   pending   -> active
-//   active    -> jailed, unstaking
-//   jailed    -> active
-//   unstaking -> removed
+//
+//	pending   -> active
+//	active    -> jailed, unstaking
+//	jailed    -> active
+//	unstaking -> removed
 var allowedTransitions = map[ValidatorStatus][]ValidatorStatus{
 	ValidatorPending:   {ValidatorActive},
 	ValidatorActive:    {ValidatorJailed, ValidatorUnstaking},
@@ -65,13 +66,13 @@ func IsValidTransition(from, to ValidatorStatus) bool {
 
 // Sentinel errors for validator lifecycle violations.
 var (
-	ErrInvalidTransition    = errors.New("invalid validator status transition")
-	ErrValidatorNotFound    = errors.New("validator not found")
-	ErrValidatorExists      = errors.New("validator already registered")
-	ErrInsufficientStake    = errors.New("insufficient stake for validator")
-	ErrValidatorJailed      = errors.New("validator is jailed")
-	ErrValidatorNotActive   = errors.New("validator is not active")
-	ErrValidatorNotPending  = errors.New("validator is not pending")
+	ErrInvalidTransition     = errors.New("invalid validator status transition")
+	ErrValidatorNotFound     = errors.New("validator not found")
+	ErrValidatorExists       = errors.New("validator already registered")
+	ErrInsufficientStake     = errors.New("insufficient stake for validator")
+	ErrValidatorJailed       = errors.New("validator is jailed")
+	ErrValidatorNotActive    = errors.New("validator is not active")
+	ErrValidatorNotPending   = errors.New("validator is not pending")
 	ErrValidatorNotUnstaking = errors.New("validator is not unstaking")
 )
 
@@ -83,17 +84,17 @@ const CommissionRateMaxBasisPoints uint16 = 10000
 
 // Validator represents an on-chain validator with its full lifecycle state.
 type Validator struct {
-	ConsensusID    types.Address // CANONICAL identity — SHA256(pubkey)[:20]
-	PublicKey      [32]byte      // Ed25519 consensus public key
+	ConsensusID     types.Address // CANONICAL identity — SHA256(pubkey)[:20]
+	PublicKey       [32]byte      // Ed25519 consensus public key
 	OperatorAddress types.Address // Staking/admin account address
-	RewardAddress  types.Address // Future reward destination (default to OperatorAddress)
-	BondedStake    types.Amount
-	Status         ValidatorStatus
-	CommissionRate uint16 // basis points: 0-10000 (0% to 100%)
-	VotingPower    uint64
-	JailedUntil    uint64 // epoch number, 0 = not jailed
+	RewardAddress   types.Address // Future reward destination (default to OperatorAddress)
+	BondedStake     types.Amount
+	Status          ValidatorStatus
+	CommissionRate  uint16 // basis points: 0-10000 (0% to 100%)
+	VotingPower     uint64
+	JailedUntil     uint64 // epoch number, 0 = not jailed
 	ActivationEpoch uint64 // epoch when validator became/will become active
-	UnstakeEpoch   uint64 // epoch when unstaking completes
+	UnstakeEpoch    uint64 // epoch when unstaking completes
 }
 
 // transitionTo moves the validator to a new status, validating the transition.
@@ -107,8 +108,9 @@ func (v *Validator) transitionTo(newStatus ValidatorStatus) error {
 
 // Encode serializes the validator to binary (BigEndian, deterministic).
 // Layout: ConsensusID(20) + PublicKey(32) + OperatorAddress(20) + RewardAddress(20) +
-//         BondedStake(16) + Status(1) + CommissionRate(2) + VotingPower(8) +
-//         JailedUntil(8) + ActivationEpoch(8) + UnstakeEpoch(8) = 143 bytes
+//
+//	BondedStake(16) + Status(1) + CommissionRate(2) + VotingPower(8) +
+//	JailedUntil(8) + ActivationEpoch(8) + UnstakeEpoch(8) = 143 bytes
 func (v *Validator) Encode(w io.Writer) error {
 	// ConsensusID (20 bytes)
 	if _, err := w.Write(v.ConsensusID[:]); err != nil {
@@ -244,7 +246,7 @@ func NewValidator(consensusID types.Address, pubKey [32]byte, operatorAddr types
 		ConsensusID:     consensusID,
 		PublicKey:       pubKey,
 		OperatorAddress: operatorAddr,
-		RewardAddress:  operatorAddr, // default to operator address
+		RewardAddress:   operatorAddr, // default to operator address
 		BondedStake:     stake,
 		Status:          ValidatorPending,
 		CommissionRate:  commission,

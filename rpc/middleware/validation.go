@@ -11,7 +11,7 @@ import (
 // JSONRPCError represents a JSON-RPC error response.
 type JSONRPCError struct {
 	JSONRPC string      `json:"jsonrpc"`
-	Error   *RPCErr    `json:"error"`
+	Error   *RPCErr     `json:"error"`
 	ID      interface{} `json:"id"`
 }
 
@@ -120,9 +120,9 @@ func isValidHex(s string) bool {
 
 // MaxHexLength constants for different use cases
 const (
-	MaxAddressHexLength   = 40 // 20 bytes = 40 hex chars
-	MaxTransactionHash   = 64 // 32 bytes = 64 hex chars
-	MaxDataHexLength     = 1024 * 1024 // 1 MiB of hex = 2 MiB of bytes
+	MaxAddressHexLength = 40          // 20 bytes = 40 hex chars
+	MaxTransactionHash  = 64          // 32 bytes = 64 hex chars
+	MaxDataHexLength    = 1024 * 1024 // 1 MiB of hex = 2 MiB of bytes
 )
 
 // ValidateAddress validates a DSN address string.

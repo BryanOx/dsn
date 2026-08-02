@@ -7,10 +7,10 @@ import (
 
 func TestSentinelErrors(t *testing.T) {
 	tests := []struct {
-		name     string
-		err      error
-		target   error
-		want     bool
+		name   string
+		err    error
+		target error
+		want   bool
 	}{
 		{"ErrInvalidAddress", ErrInvalidAddress, ErrInvalidAddress, true},
 		{"ErrAmountOverflow", ErrAmountOverflow, ErrAmountOverflow, true},

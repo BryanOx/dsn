@@ -56,14 +56,14 @@ func generateSoakTransactions(t *testing.T, nodes []*node.Node, kps []*wallet.Ke
 		nonce := currentNonces[addr] + 1 + uint64(txIndex)
 
 		tx := types.NewTransaction(
-			1,           // version
-			0,           // chainID
-			addr,        // sender
-			nonce,       // nonce
+			1,     // version
+			0,     // chainID
+			addr,  // sender
+			nonce, // nonce
 			[]byte("soak-test"),
-			nil,        // constraints
-			100,        // maxFee
-			1000,       // gasLimit
+			nil,  // constraints
+			100,  // maxFee
+			1000, // gasLimit
 			uint64(time.Now().Unix()),
 		)
 		require.NoError(t, kp.Sign(tx, hasher))

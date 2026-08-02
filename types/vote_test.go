@@ -195,7 +195,7 @@ func TestVoteDecode_Truncated(t *testing.T) {
 	var buf bytes.Buffer
 	binary.Write(&buf, binary.BigEndian, uint8(VotePrevote))
 	binary.Write(&buf, binary.BigEndian, uint64(1)) // height
-	binary.Write(&buf, binary.BigEndian, uint32(0))  // round
+	binary.Write(&buf, binary.BigEndian, uint32(0)) // round
 	// missing rest of data
 
 	v := Vote{}

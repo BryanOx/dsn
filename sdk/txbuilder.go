@@ -16,18 +16,18 @@ import (
 
 // TxBuilder is a fluent builder for transactions.
 type TxBuilder struct {
-	client      *Client
-	from        string
-	to          string
-	nonce       uint64
-	value       *big.Int
-	data        []byte
-	gasLimit    uint64
-	gasPrice    uint64
-	maxFee      uint64
-	timestamp   uint64
-	chainID     uint32
-	version     uint16
+	client    *Client
+	from      string
+	to        string
+	nonce     uint64
+	value     *big.Int
+	data      []byte
+	gasLimit  uint64
+	gasPrice  uint64
+	maxFee    uint64
+	timestamp uint64
+	chainID   uint32
+	version   uint16
 }
 
 // NewTxBuilder creates a new transaction builder.
@@ -222,58 +222,58 @@ func transactionToSDK(tx *types.Transaction) Transaction {
 	}
 
 	return Transaction{
-		Hash:       hex.EncodeToString(tx.IntentID[:]),
-		Sender:     sender,
-		Recipient:  recipient,
-		IntentID:   hex.EncodeToString(tx.IntentID[:]),
-		Nonce:      tx.Nonce,
-		Value:      new(big.Int).SetBytes(tx.Payload).String(),
-		MaxFee:     fmt.Sprintf("%d", tx.MaxFee),
-		GasLimit:   tx.GasLimit,
-		Data:       hex.EncodeToString(tx.Payload),
+		Hash:      hex.EncodeToString(tx.IntentID[:]),
+		Sender:    sender,
+		Recipient: recipient,
+		IntentID:  hex.EncodeToString(tx.IntentID[:]),
+		Nonce:     tx.Nonce,
+		Value:     new(big.Int).SetBytes(tx.Payload).String(),
+		MaxFee:    fmt.Sprintf("%d", tx.MaxFee),
+		GasLimit:  tx.GasLimit,
+		Data:      hex.EncodeToString(tx.Payload),
 	}
 }
 
 // MarshalJSON implements custom JSON marshaling for Transaction.
 func (t *Transaction) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		Hash       string  `json:"hash"`
-		Sender     string  `json:"sender"`
-		Recipient  string  `json:"recipient"`
-		IntentID   string  `json:"intentId"`
-		Nonce      uint64  `json:"nonce"`
-		Value      string  `json:"value"`
-		MaxFee     string  `json:"maxFee"`
-		GasLimit   uint64  `json:"gasLimit"`
-		Data       string  `json:"data"`
-		Receipt    *Receipt `json:"receipt,omitempty"`
+		Hash      string   `json:"hash"`
+		Sender    string   `json:"sender"`
+		Recipient string   `json:"recipient"`
+		IntentID  string   `json:"intentId"`
+		Nonce     uint64   `json:"nonce"`
+		Value     string   `json:"value"`
+		MaxFee    string   `json:"maxFee"`
+		GasLimit  uint64   `json:"gasLimit"`
+		Data      string   `json:"data"`
+		Receipt   *Receipt `json:"receipt,omitempty"`
 	}{
-		Hash:       t.Hash,
-		Sender:     t.Sender,
-		Recipient:  t.Recipient,
-		IntentID:   t.IntentID,
-		Nonce:      t.Nonce,
-		Value:      t.Value,
-		MaxFee:     t.MaxFee,
-		GasLimit:   t.GasLimit,
-		Data:       t.Data,
-		Receipt:    t.Receipt,
+		Hash:      t.Hash,
+		Sender:    t.Sender,
+		Recipient: t.Recipient,
+		IntentID:  t.IntentID,
+		Nonce:     t.Nonce,
+		Value:     t.Value,
+		MaxFee:    t.MaxFee,
+		GasLimit:  t.GasLimit,
+		Data:      t.Data,
+		Receipt:   t.Receipt,
 	})
 }
 
 // UnmarshalJSON implements custom JSON unmarshaling for Transaction.
 func (t *Transaction) UnmarshalJSON(data []byte) error {
 	var tmp struct {
-		Hash       string  `json:"hash"`
-		Sender     string  `json:"sender"`
-		Recipient  string  `json:"recipient"`
-		IntentID   string  `json:"intentId"`
-		Nonce      uint64  `json:"nonce"`
-		Value      string  `json:"value"`
-		MaxFee     string  `json:"maxFee"`
-		GasLimit   uint64  `json:"gasLimit"`
-		Data       string  `json:"data"`
-		Receipt    *Receipt `json:"receipt,omitempty"`
+		Hash      string   `json:"hash"`
+		Sender    string   `json:"sender"`
+		Recipient string   `json:"recipient"`
+		IntentID  string   `json:"intentId"`
+		Nonce     uint64   `json:"nonce"`
+		Value     string   `json:"value"`
+		MaxFee    string   `json:"maxFee"`
+		GasLimit  uint64   `json:"gasLimit"`
+		Data      string   `json:"data"`
+		Receipt   *Receipt `json:"receipt,omitempty"`
 	}
 
 	if err := json.Unmarshal(data, &tmp); err != nil {

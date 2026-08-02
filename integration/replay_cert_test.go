@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/dsn/dsn/node"
-	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/staking"
+	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/types"
 	"github.com/dsn/dsn/wallet"
 	"github.com/stretchr/testify/require"
@@ -123,7 +123,9 @@ func TestReplayCert_GenesisReplay(t *testing.T) {
 	// Create TWO independent nodes
 	nodes, kps := NewMultiNodeNetwork(t, 2)
 	defer func() {
-		for _, n := range nodes { n.Close() }
+		for _, n := range nodes {
+			n.Close()
+		}
 	}()
 
 	hasher := types.SHA256Hasher{}
@@ -182,7 +184,9 @@ func TestReplayCert_EventsReplay(t *testing.T) {
 	// Create TWO independent nodes
 	nodes, kps := NewMultiNodeNetwork(t, 2)
 	defer func() {
-		for _, n := range nodes { n.Close() }
+		for _, n := range nodes {
+			n.Close()
+		}
 	}()
 
 	hasher := types.SHA256Hasher{}
@@ -225,7 +229,9 @@ func TestReplayCert_GasAccounting(t *testing.T) {
 	// Create TWO independent nodes
 	nodes, kps := NewMultiNodeNetwork(t, 2)
 	defer func() {
-		for _, n := range nodes { n.Close() }
+		for _, n := range nodes {
+			n.Close()
+		}
 	}()
 
 	hasher := types.SHA256Hasher{}
@@ -330,7 +336,9 @@ func TestReplayCert_SnapshotReplay(t *testing.T) {
 	// Create a node with multiple validators
 	nodes, kps := NewMultiNodeNetwork(t, 2)
 	defer func() {
-		for _, n := range nodes { n.Close() }
+		for _, n := range nodes {
+			n.Close()
+		}
 	}()
 
 	n := nodes[0]

@@ -8,14 +8,14 @@ import (
 
 // CallContractTx invokes an already-deployed contract by its ContractID.
 type CallContractTx struct {
-	Sender      Address
-	Nonce       uint64
-	ContractID  Hash
-	Entrypoint  string
-	Calldata    []byte
-	MaxFee      uint64
-	GasLimit    uint64
-	Signature   []byte
+	Sender     Address
+	Nonce      uint64
+	ContractID Hash
+	Entrypoint string
+	Calldata   []byte
+	MaxFee     uint64
+	GasLimit   uint64
+	Signature  []byte
 }
 
 // Validate validates the call transaction fields

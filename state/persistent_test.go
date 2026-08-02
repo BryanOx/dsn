@@ -185,7 +185,7 @@ func TestFSyncDeterminism(t *testing.T) {
 	hasher := types.SHA256Hasher{}
 
 	// Create two PersistentStates with different FSync settings
-	ps1, err := NewPersistentState(filepath.Join(dir1, "dsn.db"), hasher, true)  // FSync=true
+	ps1, err := NewPersistentState(filepath.Join(dir1, "dsn.db"), hasher, true) // FSync=true
 	if err != nil {
 		t.Fatal(err)
 	}

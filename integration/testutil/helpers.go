@@ -31,11 +31,11 @@ func BuildTransferTx(sender types.Address, nonce uint64, to types.Address, amoun
 	}
 
 	callTx := &types.CallContractTx{
-		ContractID:  contractID,
-		Sender:      sender,
-		Entrypoint:  "transfer",
-		Calldata:    calldata,
-		GasLimit:    tx.GasLimit,
+		ContractID: contractID,
+		Sender:     sender,
+		Entrypoint: "transfer",
+		Calldata:   calldata,
+		GasLimit:   tx.GasLimit,
 	}
 
 	var buf bytes.Buffer

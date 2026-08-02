@@ -15,8 +15,8 @@ type ConfigFlags struct {
 	configPath string
 
 	// P2P
-	p2pPort      int
-	p2pMaxPeers  int
+	p2pPort        int
+	p2pMaxPeers    int
 	bootstrapPeers string
 
 	// RPC
@@ -29,10 +29,10 @@ type ConfigFlags struct {
 	dataDir string
 
 	// Chain
-	chainID          uint32
-	mempoolSize      int
-	indexer          bool
-	fastSync         bool
+	chainID     uint32
+	mempoolSize int
+	indexer     bool
+	fastSync    bool
 
 	// Logging
 	logLevel string

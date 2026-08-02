@@ -146,7 +146,7 @@ func ApplyTransaction(db *InMemoryState, tx *types.Transaction, hasher types.Has
 		// Using a simple binary encoding compatible with staking.Registry
 		validatorData := make([]byte, 0, 79)
 		validatorData = append(validatorData, regMsg.PubKey...) // 32 bytes
-		validatorData = append(validatorData, tx.Sender[:]...) // 20 bytes
+		validatorData = append(validatorData, tx.Sender[:]...)  // 20 bytes
 		stakeBytes, _ := stakeAmt.MarshalBinary()
 		validatorData = append(validatorData, stakeBytes...) // up to 16 bytes
 		// Pad stake to 16 bytes

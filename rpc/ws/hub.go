@@ -35,10 +35,10 @@ type Hub struct {
 
 // Message represents a WebSocket message.
 type Message struct {
-	Type    string      `json:"type,omitempty"`
-	Event   string      `json:"event,omitempty"`
-	Data    interface{} `json:"data,omitempty"`
-	Error   *WSError    `json:"error,omitempty"`
+	Type  string      `json:"type,omitempty"`
+	Event string      `json:"event,omitempty"`
+	Data  interface{} `json:"data,omitempty"`
+	Error *WSError    `json:"error,omitempty"`
 }
 
 // WSError represents an error in WebSocket communication.
@@ -54,22 +54,22 @@ func (e *WSError) Error() string {
 
 // Client represents a WebSocket client connection.
 type Client struct {
-	hub       *Hub
-	conn      *websocket.Conn
-	send      chan []byte
-	subs      map[string]bool // Track active subscriptions per client
-	subMu     sync.RWMutex
+	hub   *Hub
+	conn  *websocket.Conn
+	send  chan []byte
+	subs  map[string]bool // Track active subscriptions per client
+	subMu sync.RWMutex
 }
 
 // Constants for connection limits and timeouts
 const (
-	MaxConnections      = 100
-	MaxSubscriptions    = 10
-	HeartbeatInterval   = 30 * time.Second
-	PongTimeout         = 10 * time.Second
-	WriteWait           = 10 * time.Second
-	PingPeriod          = (HeartbeatInterval * 9) / 10
-	MaxMessageSize      = 512
+	MaxConnections    = 100
+	MaxSubscriptions  = 10
+	HeartbeatInterval = 30 * time.Second
+	PongTimeout       = 10 * time.Second
+	WriteWait         = 10 * time.Second
+	PingPeriod        = (HeartbeatInterval * 9) / 10
+	MaxMessageSize    = 512
 )
 
 // Upgrader configuration

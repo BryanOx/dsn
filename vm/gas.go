@@ -2,9 +2,9 @@ package vm
 
 // Gas costs for WASM instructions (categories)
 const (
-	GasBaseOp          uint64 = 1   // basic arithmetic, local get/set
-	GasMemoryOp        uint64 = 3   // memory load/store
-	GasControlFlow     uint64 = 5   // branches, calls
+	GasBaseOp           uint64 = 1   // basic arithmetic, local get/set
+	GasMemoryOp         uint64 = 3   // memory load/store
+	GasControlFlow      uint64 = 5   // branches, calls
 	GasNondeterministic uint64 = 100 // operations that need extra verification
 )
 
@@ -21,15 +21,15 @@ const (
 
 // Gas costs for contract deployment
 const (
-	GasDeployBase      uint64 = 1000 // base gas for contract deployment
-	GasPerCodeByte     uint64 = 1    // per byte of WASM code
-	GasPerStorageByte  uint64 = 2    // per byte of storage value
+	GasDeployBase     uint64 = 1000 // base gas for contract deployment
+	GasPerCodeByte    uint64 = 1    // per byte of WASM code
+	GasPerStorageByte uint64 = 2    // per byte of storage value
 )
 
 // GasMeter tracks gas consumption during contract execution.
 type GasMeter struct {
-	Limit    uint64
-	Used     uint64
+	Limit uint64
+	Used  uint64
 }
 
 // NewGasMeter creates a new gas meter with the specified limit.

@@ -18,32 +18,32 @@ func TestEpochTransition_ValidatorActivation(t *testing.T) {
 	// Create initial active validators
 	activeValidators := []*staking.Validator{
 		{
-			ConsensusID:   types.Address{1},
-			PublicKey:        [32]byte{1},
-			VotingPower:   100,
-			Status:        staking.ValidatorActive,
+			ConsensusID: types.Address{1},
+			PublicKey:   [32]byte{1},
+			VotingPower: 100,
+			Status:      staking.ValidatorActive,
 		},
 		{
-			ConsensusID:   types.Address{2},
-			PublicKey:        [32]byte{2},
-			VotingPower:   100,
-			Status:        staking.ValidatorActive,
+			ConsensusID: types.Address{2},
+			PublicKey:   [32]byte{2},
+			VotingPower: 100,
+			Status:      staking.ValidatorActive,
 		},
 	}
 
 	// Create pending validators that should become active at epoch transition
 	pendingValidators := []*staking.Validator{
 		{
-			ConsensusID:   types.Address{3},
-			PublicKey:        [32]byte{3},
-			VotingPower:   150,
-			Status:        staking.ValidatorPending,
+			ConsensusID: types.Address{3},
+			PublicKey:   [32]byte{3},
+			VotingPower: 150,
+			Status:      staking.ValidatorPending,
 		},
 		{
-			ConsensusID:   types.Address{4},
-			PublicKey:        [32]byte{4},
-			VotingPower:   50,
-			Status:        staking.ValidatorPending,
+			ConsensusID: types.Address{4},
+			PublicKey:   [32]byte{4},
+			VotingPower: 50,
+			Status:      staking.ValidatorPending,
 		},
 	}
 
@@ -94,9 +94,9 @@ func TestEpochTransition_ValidatorRemoval(t *testing.T) {
 	// Validator 2 is unstaked (jailed or removed)
 	// In practice, this would be marked as "unbonding" or removed from set
 	unstakedValidator := &staking.Validator{
-		ConsensusID:   types.Address{2},
-		VotingPower:   0,
-		Status:        staking.ValidatorUnstaking,
+		ConsensusID: types.Address{2},
+		VotingPower: 0,
+		Status:      staking.ValidatorUnstaking,
 	}
 
 	// Simulate removing the validator

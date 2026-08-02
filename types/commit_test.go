@@ -7,8 +7,8 @@ import (
 
 func TestCommitProofEncodeDecode_RoundTrip(t *testing.T) {
 	c := CommitProof{
-		Height:      100,
-		BlockHash:   Hash{1, 2, 3, 4},
+		Height:    100,
+		BlockHash: Hash{1, 2, 3, 4},
 		Precommits: []Vote{
 			{
 				VoteType:  VotePrecommit,

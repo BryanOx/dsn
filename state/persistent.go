@@ -22,11 +22,11 @@ var (
 // (validator registry, staking ledger, epochs, etc.).
 // Pure Go, no CGO required.
 type PersistentState struct {
-	db     *bbolt.DB
-	hasher types.Hasher
-	cache  map[types.Address]*Account
+	db      *bbolt.DB
+	hasher  types.Hasher
+	cache   map[types.Address]*Account
 	kvstore map[string][]byte
-	root   types.Hash
+	root    types.Hash
 }
 
 // NewPersistentState opens or creates a BoltDB database at the given path.

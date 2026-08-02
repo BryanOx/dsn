@@ -30,12 +30,12 @@ type RPCError struct {
 
 // Block represents block data from RPC.
 type Block struct {
-	Number       uint64          `json:"number"`
-	Hash         string          `json:"hash"`
-	ParentHash   string          `json:"parentHash"`
-	Timestamp    uint64          `json:"timestamp"`
-	Transactions []Transaction   `json:"transactions"`
-	Events       []Event         `json:"events"`
+	Number       uint64        `json:"number"`
+	Hash         string        `json:"hash"`
+	ParentHash   string        `json:"parentHash"`
+	Timestamp    uint64        `json:"timestamp"`
+	Transactions []Transaction `json:"transactions"`
+	Events       []Event       `json:"events"`
 }
 
 // BlockHeader represents a block header (for subscriptions).
@@ -48,16 +48,16 @@ type BlockHeader struct {
 
 // Transaction represents transaction data from RPC.
 type Transaction struct {
-	Hash       string   `json:"hash"`
-	Sender     string   `json:"sender"`
-	Recipient  string   `json:"recipient"`
-	IntentID   string   `json:"intentId"`
-	Nonce      uint64   `json:"nonce"`
-	Value      string   `json:"value"`
-	MaxFee     string   `json:"maxFee"`
-	GasLimit   uint64   `json:"gasLimit"`
-	Data       string   `json:"data"`
-	Receipt    *Receipt `json:"receipt,omitempty"`
+	Hash      string   `json:"hash"`
+	Sender    string   `json:"sender"`
+	Recipient string   `json:"recipient"`
+	IntentID  string   `json:"intentId"`
+	Nonce     uint64   `json:"nonce"`
+	Value     string   `json:"value"`
+	MaxFee    string   `json:"maxFee"`
+	GasLimit  uint64   `json:"gasLimit"`
+	Data      string   `json:"data"`
+	Receipt   *Receipt `json:"receipt,omitempty"`
 }
 
 // Receipt represents transaction receipt.
@@ -79,16 +79,16 @@ type Account struct {
 
 // Contract represents contract data from RPC.
 type Contract struct {
-	Address   string         `json:"address"`
-	Metadata  *ContractMeta `json:"metadata,omitempty"`
-	CodeHash  string        `json:"codeHash"`
+	Address  string        `json:"address"`
+	Metadata *ContractMeta `json:"metadata,omitempty"`
+	CodeHash string        `json:"codeHash"`
 }
 
 // ContractMeta represents contract metadata.
 type ContractMeta struct {
-	Name        string `json:"name,omitempty"`
-	Version     string `json:"version,omitempty"`
-	Entrypoint  string `json:"entrypoint,omitempty"`
+	Name       string `json:"name,omitempty"`
+	Version    string `json:"version,omitempty"`
+	Entrypoint string `json:"entrypoint,omitempty"`
 }
 
 // CallResult represents result of a local contract call.
@@ -131,12 +131,12 @@ type Supply struct {
 
 // EventFilter represents filter for event queries.
 type EventFilter struct {
-	Contract   string   `json:"contract,omitempty"`
-	Topics     []string `json:"topics,omitempty"`
-	FromBlock  uint64   `json:"fromBlock,omitempty"`
-	ToBlock    uint64   `json:"toBlock,omitempty"`
-	Offset     uint64   `json:"offset,omitempty"`
-	Limit      uint64   `json:"limit,omitempty"`
+	Contract  string   `json:"contract,omitempty"`
+	Topics    []string `json:"topics,omitempty"`
+	FromBlock uint64   `json:"fromBlock,omitempty"`
+	ToBlock   uint64   `json:"toBlock,omitempty"`
+	Offset    uint64   `json:"offset,omitempty"`
+	Limit     uint64   `json:"limit,omitempty"`
 }
 
 // BlockFilter represents filter for getting blocks.
@@ -198,4 +198,3 @@ type GetEventsParams struct {
 type GetValidatorsParams struct {
 	Epoch *uint64 `json:"epoch,omitempty"`
 }
-

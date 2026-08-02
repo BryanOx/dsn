@@ -27,9 +27,9 @@ func DefaultRateLimiterConfig() RateLimiterConfig {
 
 // RateLimiter implements a token bucket rate limiter per IP.
 type RateLimiter struct {
-	config    RateLimiterConfig
-	buckets   map[string]*tokenBucket
-	mu        sync.RWMutex
+	config      RateLimiterConfig
+	buckets     map[string]*tokenBucket
+	mu          sync.RWMutex
 	stopCleanup chan struct{}
 }
 

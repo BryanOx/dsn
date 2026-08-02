@@ -7,9 +7,9 @@ import (
 
 func TestWriteVarBytes(t *testing.T) {
 	tests := []struct {
-		name     string
-		data     []byte
-		wantErr  bool
+		name    string
+		data    []byte
+		wantErr bool
 	}{
 		{"nil slice", nil, false},
 		{"empty slice", []byte{}, false},

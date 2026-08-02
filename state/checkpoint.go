@@ -21,9 +21,9 @@ type Checkpoint struct {
 
 // Bucket names for checkpoint and snapshot persistence.
 var (
-	checkpointsBucket     = []byte("checkpoints")
-	snapshotsBucket       = []byte("snapshots")
-	latestCheckpointKey   = []byte("latest")
+	checkpointsBucket   = []byte("checkpoints")
+	snapshotsBucket     = []byte("snapshots")
+	latestCheckpointKey = []byte("latest")
 )
 
 // encodeCheckpoint serializes a Checkpoint into a deterministic byte slice.

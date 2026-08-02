@@ -583,7 +583,7 @@ func TestDecodeEvidence_UnknownType(t *testing.T) {
 	// Write unknown evidence type
 	var buf bytes.Buffer
 	binary.Write(&buf, binary.BigEndian, uint8(255)) // unknown type
-	buf.Write([]byte{1, 2, 3})                      // dummy data
+	buf.Write([]byte{1, 2, 3})                       // dummy data
 
 	_, err := DecodeEvidence(bytes.NewReader(buf.Bytes()))
 	if err == nil {

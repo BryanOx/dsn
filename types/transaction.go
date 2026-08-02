@@ -10,9 +10,9 @@ import (
 type TxType uint8
 
 const (
-	TxTypeStandard            TxType = 0 // Standard transfer transaction
-	TxTypeDeployContract      TxType = 1 // Contract deployment
-	TxTypeCallContract        TxType = 2 // Contract call
+	TxTypeStandard              TxType = 0 // Standard transfer transaction
+	TxTypeDeployContract        TxType = 1 // Contract deployment
+	TxTypeCallContract          TxType = 2 // Contract call
 	TxTypeValidatorRegistration TxType = 3 // Validator registration
 )
 
@@ -292,15 +292,15 @@ func NewValidatorRegistrationTx(sender Address, nonce uint64, msg *ValidatorRegi
 	}
 
 	return &Transaction{
-		Version:     1,
-		ChainID:     chainID,
-		Sender:      sender,
-		Nonce:       nonce,
-		Payload:     payload,
-		MaxFee:      maxFee,
-		GasLimit:    50000, // sufficient for registration
-		Timestamp:   timestamp,
-		TxType:      TxTypeValidatorRegistration,
+		Version:   1,
+		ChainID:   chainID,
+		Sender:    sender,
+		Nonce:     nonce,
+		Payload:   payload,
+		MaxFee:    maxFee,
+		GasLimit:  50000, // sufficient for registration
+		Timestamp: timestamp,
+		TxType:    TxTypeValidatorRegistration,
 	}, nil
 }
 

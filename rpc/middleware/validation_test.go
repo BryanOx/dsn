@@ -62,8 +62,8 @@ func TestValidateAddress(t *testing.T) {
 // TestValidateBlockHash tests block hash validation.
 func TestValidateBlockHash(t *testing.T) {
 	tests := []struct {
-		name  string
-		hash  string
+		name    string
+		hash    string
 		wantErr bool
 	}{
 		{"empty is allowed", "", false},
@@ -87,8 +87,8 @@ func TestValidateBlockHash(t *testing.T) {
 // TestValidateTransactionHash tests transaction hash validation.
 func TestValidateTransactionHash(t *testing.T) {
 	tests := []struct {
-		name  string
-		hash  string
+		name    string
+		hash    string
 		wantErr bool
 	}{
 		{"empty is allowed", "", false},
@@ -111,9 +111,9 @@ func TestValidateTransactionHash(t *testing.T) {
 // TestValidateGasLimit tests gas limit validation.
 func TestValidateGasLimit(t *testing.T) {
 	tests := []struct {
-		name      string
-		gasLimit  uint64
-		wantErr   bool
+		name     string
+		gasLimit uint64
+		wantErr  bool
 	}{
 		{"zero is allowed", 0, false},
 		{"valid limit passes", 100000, false},
@@ -136,11 +136,11 @@ func TestValidateGasLimit(t *testing.T) {
 // TestParseAndValidateHex tests hex parsing and validation.
 func TestParseAndValidateHex(t *testing.T) {
 	tests := []struct {
-		name       string
-		input      string
-		maxLen     int
-		wantBytes  string
-		wantErr    bool
+		name      string
+		input     string
+		maxLen    int
+		wantBytes string
+		wantErr   bool
 	}{
 		{"empty returns nil", "", 100, "", false},
 		{"valid hex parses", "0xabcdef", 100, "\xab\xcd\xef", false},

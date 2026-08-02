@@ -23,12 +23,12 @@ import (
 
 // TestNode wraps a node.Node for integration tests
 type TestNode struct {
-	Node     *node.Node
-	Config   node.Config
-	Wallet   *wallet.KeyPair
-	Txs      []*types.Transaction
-	Results  []*vm.ExecutionResult
-	Blocks   []*types.Block
+	Node    *node.Node
+	Config  node.Config
+	Wallet  *wallet.KeyPair
+	Txs     []*types.Transaction
+	Results []*vm.ExecutionResult
+	Blocks  []*types.Block
 }
 
 // walletSigner wraps a wallet.KeyPair to implement consensus.Signer interface
@@ -75,8 +75,8 @@ func NewTestNode(t testing.TB, validators []types.Address, opts ...TestNodeOptio
 			Address:      fmt.Sprintf("0x%x", addr[:]),
 			PubKey:       fmt.Sprintf("0x%x", pubKey[:]),
 			ConsensusKey: fmt.Sprintf("0x%x", pubKey[:20]), // Use first 20 bytes as consensus key
-			Stake:        100000, // Minimum stake for testing
-			Commission:   "1000", // 10% commission
+			Stake:        100000,                           // Minimum stake for testing
+			Commission:   "1000",                           // 10% commission
 		}
 	}
 
@@ -91,10 +91,10 @@ func NewTestNode(t testing.TB, validators []types.Address, opts ...TestNodeOptio
 			MaxGasPerBlock:   10000000,
 		},
 		EpochParams: genesis.EpochParams{
-			BlocksPerEpoch:       100,
+			BlocksPerEpoch:        100,
 			UnstakeCooldownEpochs: 2,
-			MaxValidators:        100,
-			MinimumStake:         1000,
+			MaxValidators:         100,
+			MinimumStake:          1000,
 		},
 		InflationParams: genesis.InflationParams{
 			Enabled: false,
@@ -117,10 +117,10 @@ func NewTestNode(t testing.TB, validators []types.Address, opts ...TestNodeOptio
 	}
 
 	cfg := node.DefaultConfig()
-	cfg.DataDir = ""                  // ephemeral in-memory
-	cfg.GenesisFile = genesisPath     // Set genesis file path
-	cfg.P2PPort = 0                   // no P2P
-	cfg.RPCPort = 0                   // no RPC
+	cfg.DataDir = ""              // ephemeral in-memory
+	cfg.GenesisFile = genesisPath // Set genesis file path
+	cfg.P2PPort = 0               // no P2P
+	cfg.RPCPort = 0               // no RPC
 	cfg.Validators = validators
 	cfg.MaxTxPerBlock = 100
 	cfg.ProposerTimeout = time.Second
@@ -220,11 +220,11 @@ func (tn *TestNode) CallContract(t testing.TB, contractID types.Address, entrypo
 
 	// Execute without committing (read-only)
 	result, err := tn.Node.VM().Execute(&types.CallContractTx{
-		ContractID:  contractHash,
-		Sender:      tn.Wallet.Address(),
-		Entrypoint:  entrypoint,
-		Calldata:    calldata,
-		GasLimit:    1000000,
+		ContractID: contractHash,
+		Sender:     tn.Wallet.Address(),
+		Entrypoint: entrypoint,
+		Calldata:   calldata,
+		GasLimit:   1000000,
 	}, tn.Node.State(), tn.Node.CurrentHeight()+1, uint64(time.Now().Unix()), 0)
 
 	if err != nil {
@@ -368,7 +368,7 @@ func CompareState(t testing.TB, nodes []*TestNode) StateComparison {
 				return StateComparison{
 					StateRootsMatch: true,
 					EventsMatch:     false,
-					Details:        fmt.Sprintf("events count mismatch node %d: %d vs %d", i+1, len(refEvents), len(nodeEvents)),
+					Details:         fmt.Sprintf("events count mismatch node %d: %d vs %d", i+1, len(refEvents), len(nodeEvents)),
 				}
 			}
 		}
@@ -376,10 +376,10 @@ func CompareState(t testing.TB, nodes []*TestNode) StateComparison {
 
 	return StateComparison{
 		StateRootsMatch: true,
-		GasMatch:         true,
-		EventsMatch:      true,
-		HeightsMatch:     true,
-		Details:          "all nodes match",
+		GasMatch:        true,
+		EventsMatch:     true,
+		HeightsMatch:    true,
+		Details:         "all nodes match",
 	}
 }
 

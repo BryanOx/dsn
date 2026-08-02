@@ -16,10 +16,10 @@ import (
 
 // Server is the Explorer HTTP server.
 type Server struct {
-	router *mux.Router
-	srv    *http.Server
+	router  *mux.Router
+	srv     *http.Server
 	indexer *indexer.Indexer
-	service  service.NodeService
+	service service.NodeService
 }
 
 // NewServer creates a new Explorer server instance.

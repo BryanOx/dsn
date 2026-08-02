@@ -177,8 +177,8 @@ func TestValidateConfig_MissingRequired(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := DefaultConfig()
 			// Ensure defaults don't trigger errors
-			cfg.P2P.Port = 3000  // Set valid P2P port
-			cfg.RPC.Port = 8545  // Set valid RPC port
+			cfg.P2P.Port = 3000 // Set valid P2P port
+			cfg.RPC.Port = 8545 // Set valid RPC port
 
 			tt.modify(&cfg)
 

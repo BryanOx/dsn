@@ -71,18 +71,18 @@ type FastSyncEngine struct {
 	advertisingPeers []string // peer addresses that advertised this snapshot
 
 	// Download state
-	scheduler        *ChunkScheduler
-	totalChunks      uint32
-	snapData         []byte // reassembled data
-	collectedChunks  map[uint32]*state.SnapshotChunk
-	requestTimes     map[uint32]time.Time // track when each chunk was last requested
-	lastRequestID    uint64
+	scheduler       *ChunkScheduler
+	totalChunks     uint32
+	snapData        []byte // reassembled data
+	collectedChunks map[uint32]*state.SnapshotChunk
+	requestTimes    map[uint32]time.Time // track when each chunk was last requested
+	lastRequestID   uint64
 
 	// Config
-	maxQueryRetries   int
-	chunkTimeout      time.Duration
-	maxConcurrent     int // max concurrent chunk requests per peer
-	queryRetryCount   int
+	maxQueryRetries int
+	chunkTimeout    time.Duration
+	maxConcurrent   int // max concurrent chunk requests per peer
+	queryRetryCount int
 
 	// Callbacks
 	onStateChange func(oldState, newState SyncState)
@@ -93,7 +93,7 @@ type FastSyncEngine struct {
 // NewFastSyncEngine creates a new FastSyncEngine.
 func NewFastSyncEngine(pm *PeerManager, p2p *P2PNode, persistent *state.PersistentState) *FastSyncEngine {
 	return &FastSyncEngine{
-		state:            SyncIdle,
+		state:           SyncIdle,
 		pm:              pm,
 		p2p:             p2p,
 		persistent:      persistent,

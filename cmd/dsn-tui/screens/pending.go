@@ -9,10 +9,10 @@ import (
 
 // PendingModel shows pending mempool transactions.
 type PendingModel struct {
-	client   *client.Client
-	txs      []types.Transaction
-	loading  bool
-	err      string
+	client  *client.Client
+	txs     []types.Transaction
+	loading bool
+	err     string
 }
 
 func NewPending(cl *client.Client) *PendingModel {

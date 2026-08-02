@@ -10,11 +10,11 @@ import (
 
 // AbortConfig holds configuration for abort conditions
 type AbortConfig struct {
-	NodeEndpoint       string
-	MaxMemoryGrowthGB  float64 // Max memory growth in GB
-	MaxFinalityStall   time.Duration
-	MaxFailureRate     float64 // Max acceptable failure rate
-	DryRun             bool
+	NodeEndpoint      string
+	MaxMemoryGrowthGB float64 // Max memory growth in GB
+	MaxFinalityStall  time.Duration
+	MaxFailureRate    float64 // Max acceptable failure rate
+	DryRun            bool
 }
 
 // AbortCondition represents a specific abort condition

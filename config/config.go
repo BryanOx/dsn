@@ -220,11 +220,11 @@ type GenesisConfig struct {
 func DefaultConfig() Config {
 	return Config{
 		P2P: P2PConfig{
-			ListenAddr:    "0.0.0.0",
-			Port:          0, // 0 = disabled
-			MaxPeers:      50,
+			ListenAddr:     "0.0.0.0",
+			Port:           0, // 0 = disabled
+			MaxPeers:       50,
 			BootstrapPeers: []string{},
-			PingInterval:  30 * time.Second,
+			PingInterval:   30 * time.Second,
 		},
 		RPC: RPCConfig{
 			Enabled:     true,
@@ -242,10 +242,10 @@ func DefaultConfig() Config {
 			MaxDBSize: 10 * 1024 * 1024 * 1024, // 10GB
 		},
 		Snapshot: SnapshotConfig{
-			Enable:        true,
-			Interval:      10,
-			MaxSnapshots:  5,
-			OutputDir:     "",
+			Enable:       true,
+			Interval:     10,
+			MaxSnapshots: 5,
+			OutputDir:    "",
 		},
 		Validator: ValidatorConfig{
 			KeyFile:        "validator_key.json",
@@ -259,13 +259,13 @@ func DefaultConfig() Config {
 			EnableFileLogging: false,
 		},
 		Chain: ChainConfig{
-			ChainID:                0,
-			MempoolMaxSize:         10000,
-			MempoolTTL:             5 * time.Minute,
-			MaxTxPerBlock:          100,
-			ProposerTimeout:        5 * time.Second,
-			IndexerEnabled:         false,
-			FastSyncEnabled:        false,
+			ChainID:                 0,
+			MempoolMaxSize:          10000,
+			MempoolTTL:              5 * time.Minute,
+			MaxTxPerBlock:           100,
+			ProposerTimeout:         5 * time.Second,
+			IndexerEnabled:          false,
+			FastSyncEnabled:         false,
 			TrustedCheckpointHeight: 0,
 			TrustedCheckpointHash:   "",
 		},

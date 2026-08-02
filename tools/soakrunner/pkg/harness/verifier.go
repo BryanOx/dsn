@@ -8,18 +8,18 @@ import (
 
 // VerifierConfig holds configuration for state verification
 type VerifierConfig struct {
-	NodeEndpoint      string
+	NodeEndpoint       string
 	VerificationBlocks int // How often to verify (every N blocks)
-	DryRun            bool
+	DryRun             bool
 }
 
 // VerificationResult holds the result of state verification
 type VerificationResult struct {
-	BlockHeight       uint64
-	StateRootValid    bool
-	MempoolDrained    bool
-	FinalityOK        bool
-	Errors            []string
+	BlockHeight    uint64
+	StateRootValid bool
+	MempoolDrained bool
+	FinalityOK     bool
+	Errors         []string
 }
 
 // Verifier performs continuous state verification

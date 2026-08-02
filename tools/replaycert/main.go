@@ -16,13 +16,13 @@ import (
 )
 
 type Config struct {
-	BlocksPath       string
-	NodePath          string
-	HashesPath        string
-	CrossPlatform    bool
-	Iterations        int
-	DryRun            bool
-	SaveHashes        bool
+	BlocksPath    string
+	NodePath      string
+	HashesPath    string
+	CrossPlatform bool
+	Iterations    int
+	DryRun        bool
+	SaveHashes    bool
 }
 
 func main() {
@@ -111,10 +111,10 @@ func parseFlags() Config {
 }
 
 type ReplayResult struct {
-	BlockHeight     uint64
-	TranscriptHash  []byte
-	Pass             bool
-	Comparison       *compare.ComparisonReport
+	BlockHeight    uint64
+	TranscriptHash []byte
+	Pass           bool
+	Comparison     *compare.ComparisonReport
 }
 
 type ReplayResults struct {

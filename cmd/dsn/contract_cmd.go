@@ -93,11 +93,11 @@ Example:
 
 // ContractFlags holds contract command flags
 type ContractFlags struct {
-	abi       string
-	gasLimit  uint64
-	rpc       string
-	data      string
-	key       string
+	abi      string
+	gasLimit uint64
+	rpc      string
+	data     string
+	key      string
 }
 
 var contractFlags ContractFlags
@@ -109,7 +109,7 @@ func init() {
 	contractDeployCmd.Flags().StringVar(&contractFlags.abi, "abi", "", "contract ABI file (optional)")
 	contractDeployCmd.Flags().Uint64Var(&contractFlags.gasLimit, "gas-limit", 1000000, "gas limit")
 	contractDeployCmd.Flags().StringVarP(&contractFlags.rpc, "rpc", "r", "http://localhost:8545", "RPC server URL")
-	contractDeployCmd.Flags().StringVarP(&contractFlags.key, "key", "k", "wallet.json", "wallet key file")
+	contractDeployCmd.Flags().StringVarP(&contractFlags.key, "key", "k", "wallets/wallet.json", "wallet key file")
 	contractCmd.AddCommand(contractDeployCmd)
 
 	// contract call flags
@@ -142,32 +142,32 @@ type DeployRequest struct {
 
 // DeployResponse represents a contract deploy response
 type DeployResponse struct {
-	Address   string `json:"address"`
-	TxHash    string `json:"txHash,omitempty"`
-	Success   bool   `json:"success"`
-	Error     string `json:"error,omitempty"`
+	Address string `json:"address"`
+	TxHash  string `json:"txHash,omitempty"`
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
 }
 
 // CallRequest represents a contract call request
 type CallRequest struct {
 	Address    string `json:"address"`
 	Entrypoint string `json:"entrypoint"`
-	Data      string `json:"data,omitempty"`
+	Data       string `json:"data,omitempty"`
 	GasLimit   uint64 `json:"gasLimit"`
 }
 
 // CallResponse represents a contract call response
 type CallResponse struct {
-	Result string `json:"result"`
-	Success bool  `json:"success"`
-	Error  string `json:"error,omitempty"`
+	Result  string `json:"result"`
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
 }
 
 // EstimateRequest represents a gas estimate request
 type EstimateRequest struct {
 	Address    string `json:"address"`
 	Entrypoint string `json:"entrypoint"`
-	Data      string `json:"data,omitempty"`
+	Data       string `json:"data,omitempty"`
 }
 
 // EstimateResponse represents a gas estimate response
@@ -440,4 +440,3 @@ func runContractReceipt(cmd *cobra.Command, args []string) error {
 func init() {
 	// Import is handled at the top of the file
 }
-

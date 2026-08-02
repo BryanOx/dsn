@@ -46,7 +46,7 @@ type Client struct {
 // New creates a new RPC client pointing at the given URL.
 func New(url string) *Client {
 	return &Client{
-		url: url,
+		url:    url,
 		httpDo: (&http.Client{Timeout: 10 * time.Second}).Do,
 	}
 }

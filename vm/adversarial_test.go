@@ -37,8 +37,8 @@ func infiniteLoopWasm() []byte {
 		0x03, 0x7f, // loop (result i32)
 		0x41, 0x01, //   i32.const 1
 		0x0c, 0x00, //   br 0
-		0x0b,       // end loop
-		0x0b,       // end func
+		0x0b, // end loop
+		0x0b, // end func
 	}
 }
 
@@ -65,8 +65,8 @@ func memoryGrowLoopWasm() []byte {
 		0x00,       // local count=0
 		0x41, 0x01, // i32.const 1
 		0x3f, 0x00, // memory.grow
-		0x1a,       // drop
-		0x0b,       // end
+		0x1a, // drop
+		0x0b, // end
 	}
 }
 
@@ -82,11 +82,11 @@ func writeStorageThenRevertWasm() []byte {
 		// type 1: () -> i32
 		0x01, 0x0f, 0x02,
 		0x60, 0x06, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x01, 0x7e, // type 0 (10 bytes: 6x i32 params, 1x i64 result)
-		0x60, 0x00, 0x01, 0x7f,                                       // type 1 (4 bytes)
+		0x60, 0x00, 0x01, 0x7f, // type 1 (4 bytes)
 
 		// Import section: id=2, size=21, 1 import
 		0x02, 0x15, 0x01,
-		0x03, 0x65, 0x6e, 0x76,                         // "env"
+		0x03, 0x65, 0x6e, 0x76, // "env"
 		0x0d, 0x77, 0x72, 0x69, 0x74, 0x65, 0x5f, 0x73, 0x74, 0x6f, 0x72, 0x61, 0x67, 0x65, // "write_storage"
 		0x00, 0x00, // func kind, type 0
 
@@ -104,7 +104,7 @@ func writeStorageThenRevertWasm() []byte {
 		0x04,       // body size=4
 		0x00,       // 0 locals
 		0x41, 0x01, // i32.const 1
-		0x0b,       // end
+		0x0b, // end
 	}
 }
 
@@ -122,7 +122,7 @@ func invalidImportWasm(moduleName, fnName string) []byte {
 
 	// Import section: count(1) + module_len(1) + module + name_len(1) + name + kind(1) + type_idx(1)
 	importSize := 1 + 1 + len(mod) + 1 + len(fn) + 1 + 1 // = 5 + len(mod) + len(fn)
-	wasm = append(wasm, 0x02, byte(importSize), 0x01) // section id=2, size, count=1
+	wasm = append(wasm, 0x02, byte(importSize), 0x01)    // section id=2, size, count=1
 	wasm = append(wasm, byte(len(mod)))
 	wasm = append(wasm, mod...)
 	wasm = append(wasm, byte(len(fn)))
@@ -169,8 +169,8 @@ func readCallerWasm() []byte {
 
 		// Code section: i32.const 0 | call read_caller | end
 		0x0a, 0x08, 0x01,
-		0x06, // body size=6 (0 locals + i32.const + call + end)
-		0x00, // local count=0
+		0x06,       // body size=6 (0 locals + i32.const + call + end)
+		0x00,       // local count=0
 		0x41, 0x00, // i32.const 0
 		0x10, 0x00, // call read_caller (func 0 which is the import)
 		0x0b, // end

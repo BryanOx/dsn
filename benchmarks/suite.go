@@ -70,8 +70,8 @@ func makeTestBlock(height uint64, prevHash types.Hash, txs []*types.Transaction)
 	}
 	return &types.Block{
 		Header: types.BlockHeader{
-			Version:       1,
-			Height:        height,
+			Version:      1,
+			Height:       height,
 			PreviousHash: prevHash,
 			StateRoot:    types.Hash{},
 			TxRoot:       types.Hash{},

@@ -10,18 +10,18 @@ import (
 
 // WASMConfig holds configuration for WASM workload
 type WASMConfig struct {
-	NumAccounts    int
-	TPS            int
-	ChainID        uint32
-	MaxFee         uint64
-	GasLimit       uint64
+	NumAccounts int
+	TPS         int
+	ChainID     uint32
+	MaxFee      uint64
+	GasLimit    uint64
 }
 
 // wasmGenerator generates WASM contract call transactions
 type wasmGenerator struct {
-	cfg         WASMConfig
-	accounts    []types.Address
-	nonceMap    map[[20]byte]uint64
+	cfg          WASMConfig
+	accounts     []types.Address
+	nonceMap     map[[20]byte]uint64
 	contractAddr types.Address
 }
 

@@ -7,21 +7,21 @@ import (
 
 // BurstConfig holds configuration for burst workload
 type BurstConfig struct {
-	NumAccounts       int
-	BaseTPS           int
-	BurstMultiplier   int
-	BurstDuration     time.Duration
-	CooldownDuration  time.Duration
-	ChainID           uint32
-	MaxFee            uint64
-	GasLimit          uint64
+	NumAccounts      int
+	BaseTPS          int
+	BurstMultiplier  int
+	BurstDuration    time.Duration
+	CooldownDuration time.Duration
+	ChainID          uint32
+	MaxFee           uint64
+	GasLimit         uint64
 }
 
 // burstGenerator generates burst traffic pattern
 type burstGenerator struct {
 	cfg             BurstConfig
 	transferGen     Generator
-	currentTPS       int
+	currentTPS      int
 	inBurst         bool
 	burstStartTime  time.Time
 	cooldownEndTime time.Time
@@ -33,13 +33,13 @@ func NewBurstGenerator(cfg interface{}) Generator {
 	if !ok {
 		c = BurstConfig{
 			NumAccounts:      100,
-			BaseTPS:         20,
-			BurstMultiplier: 5,
-			BurstDuration:   30 * time.Second,
+			BaseTPS:          20,
+			BurstMultiplier:  5,
+			BurstDuration:    30 * time.Second,
 			CooldownDuration: 120 * time.Second,
-			ChainID:         1,
-			MaxFee:          10000,
-			GasLimit:        50000,
+			ChainID:          1,
+			MaxFee:           10000,
+			GasLimit:         50000,
 		}
 	}
 

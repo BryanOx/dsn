@@ -10,7 +10,7 @@ import (
 type Detector struct {
 	initialGoroutines int
 	threshold         int
-	mu                 sync.Mutex
+	mu                sync.Mutex
 }
 
 // New creates a new Detector that captures the current goroutine count.

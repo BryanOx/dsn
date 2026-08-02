@@ -111,10 +111,10 @@ func (sh *SignalHandler) Stop() {
 
 // DevnetHotRestart manages the hot restart functionality for devnet.
 type DevnetHotRestart struct {
-	handler     *SignalHandler
-	restartFn   func() error // Function to restart all services
-	mu          sync.Mutex
-	restarting  bool
+	handler    *SignalHandler
+	restartFn  func() error // Function to restart all services
+	mu         sync.Mutex
+	restarting bool
 }
 
 // NewDevnetHotRestart creates a new hot restart manager.

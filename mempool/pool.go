@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dsn/dsn/types"
 	"github.com/dsn/dsn/state"
+	"github.com/dsn/dsn/types"
 	"go.etcd.io/bbolt"
 )
 

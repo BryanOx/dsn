@@ -12,10 +12,10 @@ import (
 type CommitProof struct {
 	Height      uint64
 	BlockHash   Hash
-	Precommits  []Vote   // precommit votes that committed this block
-	TotalPower  uint64   // total voting power of the epoch's validator set
-	SignedPower uint64   // sum of voting power of validators that precommitted
-	SetHash     Hash     // hash of the validator snapshot this proof is against
+	Precommits  []Vote // precommit votes that committed this block
+	TotalPower  uint64 // total voting power of the epoch's validator set
+	SignedPower uint64 // sum of voting power of validators that precommitted
+	SetHash     Hash   // hash of the validator snapshot this proof is against
 }
 
 // HasTwoThirdsMajority returns true if signed power >= 2/3 of total power.

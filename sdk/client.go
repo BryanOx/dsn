@@ -38,12 +38,12 @@ func WithRetry(maxAttempts int, backoff time.Duration) ClientOption {
 
 // Client wraps an HTTP client for making JSON-RPC calls.
 type Client struct {
-	baseURL       string
-	wsURL         string
-	httpClient    *http.Client
-	retryEnabled  bool
-	maxRetries    int
-	retryBackoff  time.Duration
+	baseURL      string
+	wsURL        string
+	httpClient   *http.Client
+	retryEnabled bool
+	maxRetries   int
+	retryBackoff time.Duration
 }
 
 // New creates a new Client with default settings.

@@ -12,11 +12,11 @@ import (
 )
 
 var (
-	cfgPath    string
-	profile    string
-	duration   time.Duration
-	dryRun     bool
-	logLevel   string
+	cfgPath  string
+	profile  string
+	duration time.Duration
+	dryRun   bool
+	logLevel string
 )
 
 func main() {
@@ -100,11 +100,11 @@ func run(cmd *cobra.Command, args []string) error {
 func newHarness(cfg *Config, logger *slog.Logger) (*harness.Harness, error) {
 	h := harness.HarnessConfig{
 		NodeEndpoint: cfg.NodeEndpoint,
-		Duration:    cfg.Duration,
-		TPS:         cfg.TPS,
-		Profile:     cfg.Profile,
-		LogInterval: cfg.LogInterval,
-		DryRun:      cfg.DryRun,
+		Duration:     cfg.Duration,
+		TPS:          cfg.TPS,
+		Profile:      cfg.Profile,
+		LogInterval:  cfg.LogInterval,
+		DryRun:       cfg.DryRun,
 	}
 
 	return harness.NewHarness(h, logger)

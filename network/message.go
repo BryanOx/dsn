@@ -9,21 +9,21 @@ import (
 const (
 	MsgTypeBlock              byte = 0x01 // Block message
 	MsgTypeTransaction        byte = 0x02 // Transaction message
-	MsgTypeSnapshotQuery     byte = 0x10 // Query: "what snapshots do you have?"
-	MsgTypeSnapshotInfo      byte = 0x11 // Response: snapshot metadata
-	MsgTypeSnapshotRequest   byte = 0x12 // Request: "send me chunk N of snapshot X"
-	MsgTypeSnapshotChunk     byte = 0x13 // Response: chunk data
-	MsgTypePeerExchange      byte = 0x20 // Peer exchange
-	MsgTypeBlockRangeRequest byte = 0x30 // Request a range of blocks
+	MsgTypeSnapshotQuery      byte = 0x10 // Query: "what snapshots do you have?"
+	MsgTypeSnapshotInfo       byte = 0x11 // Response: snapshot metadata
+	MsgTypeSnapshotRequest    byte = 0x12 // Request: "send me chunk N of snapshot X"
+	MsgTypeSnapshotChunk      byte = 0x13 // Response: chunk data
+	MsgTypePeerExchange       byte = 0x20 // Peer exchange
+	MsgTypeBlockRangeRequest  byte = 0x30 // Request a range of blocks
 	MsgTypeBlockRangeResponse byte = 0x31 // Response with block range
-	MsgTypePing              byte = 0x40 // Keepalive ping
-	MsgTypePong              byte = 0x41 // Keepalive pong
+	MsgTypePing               byte = 0x40 // Keepalive ping
+	MsgTypePong               byte = 0x41 // Keepalive pong
 )
 
 // Max payload size limits.
 const (
-	MaxPayloadSize         uint32 = 1 * 1024 * 1024 // 1 MiB
-	MaxPeersPerPEX         uint32 = 100
+	MaxPayloadSize            uint32 = 1 * 1024 * 1024 // 1 MiB
+	MaxPeersPerPEX            uint32 = 100
 	MaxBlocksPerRangeResponse uint32 = 100
 )
 
@@ -37,30 +37,30 @@ var (
 var knownMessageTypes = map[byte]bool{
 	MsgTypeBlock:              true,
 	MsgTypeTransaction:        true,
-	MsgTypeSnapshotQuery:     true,
-	MsgTypeSnapshotInfo:      true,
-	MsgTypeSnapshotRequest:   true,
-	MsgTypeSnapshotChunk:     true,
-	MsgTypePeerExchange:      true,
-	MsgTypeBlockRangeRequest: true,
+	MsgTypeSnapshotQuery:      true,
+	MsgTypeSnapshotInfo:       true,
+	MsgTypeSnapshotRequest:    true,
+	MsgTypeSnapshotChunk:      true,
+	MsgTypePeerExchange:       true,
+	MsgTypeBlockRangeRequest:  true,
 	MsgTypeBlockRangeResponse: true,
-	MsgTypePing:              true,
-	MsgTypePong:              true,
+	MsgTypePing:               true,
+	MsgTypePong:               true,
 }
 
 // maxPayloadByType defines per-type payload limits (currently all 1 MiB).
 var maxPayloadByType = map[byte]uint32{
 	MsgTypeBlock:              MaxPayloadSize,
 	MsgTypeTransaction:        MaxPayloadSize,
-	MsgTypeSnapshotQuery:     MaxPayloadSize,
-	MsgTypeSnapshotInfo:      MaxPayloadSize,
-	MsgTypeSnapshotRequest:   MaxPayloadSize,
-	MsgTypeSnapshotChunk:     MaxPayloadSize,
-	MsgTypePeerExchange:      MaxPayloadSize,
-	MsgTypeBlockRangeRequest: MaxPayloadSize,
+	MsgTypeSnapshotQuery:      MaxPayloadSize,
+	MsgTypeSnapshotInfo:       MaxPayloadSize,
+	MsgTypeSnapshotRequest:    MaxPayloadSize,
+	MsgTypeSnapshotChunk:      MaxPayloadSize,
+	MsgTypePeerExchange:       MaxPayloadSize,
+	MsgTypeBlockRangeRequest:  MaxPayloadSize,
 	MsgTypeBlockRangeResponse: MaxPayloadSize,
-	MsgTypePing:              MaxPayloadSize,
-	MsgTypePong:              MaxPayloadSize,
+	MsgTypePing:               MaxPayloadSize,
+	MsgTypePong:               MaxPayloadSize,
 }
 
 // FrameMessage creates a framed message with length prefix, message type, and payload.

@@ -14,13 +14,13 @@ const MaxContractCodeSize = 1 * 1024 * 1024
 // The contract is assigned a deterministic ContractID derived from
 // deployer, nonce, and code hash.
 type DeployContractTx struct {
-	Sender            Address
-	Nonce             uint64
-	WasmCode          []byte
-	CodeHash          Hash
-	MaxFee            uint64
-	GasLimit          uint64
-	Signature         []byte
+	Sender    Address
+	Nonce     uint64
+	WasmCode  []byte
+	CodeHash  Hash
+	MaxFee    uint64
+	GasLimit  uint64
+	Signature []byte
 }
 
 // Validate validates the deploy transaction fields

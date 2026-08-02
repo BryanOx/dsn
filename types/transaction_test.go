@@ -9,15 +9,15 @@ import (
 func TestTransaction_New(t *testing.T) {
 	sender := Address([20]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20})
 	tx := NewTransaction(
-		1,           // version
-		1,           // chainID
-		sender,      // sender
-		42,          // nonce
+		1,                  // version
+		1,                  // chainID
+		sender,             // sender
+		42,                 // nonce
 		[]byte{0x01, 0x02}, // payload
 		[]byte{0x03},       // constraints
-		1000,       // maxFee
-		21000,      // gasLimit
-		1700000000, // timestamp
+		1000,               // maxFee
+		21000,              // gasLimit
+		1700000000,         // timestamp
 	)
 
 	if tx.Version != 1 {

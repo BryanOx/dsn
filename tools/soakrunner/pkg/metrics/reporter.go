@@ -11,19 +11,19 @@ import (
 
 // TestResults holds the final test results
 type TestResults struct {
-	Duration          time.Duration
-	TotalSubmitted    int64
-	TotalFailed       int64
-	AverageTPS        float64
-	FinalBlockHeight  uint64
-	PeakTPS           int
-	ErrorCount        int
+	Duration         time.Duration
+	TotalSubmitted   int64
+	TotalFailed      int64
+	AverageTPS       float64
+	FinalBlockHeight uint64
+	PeakTPS          int
+	ErrorCount       int
 }
 
 // Reporter collects and reports metrics
 type Reporter struct {
-	logger        *slog.Logger
-	startTime     time.Time
+	logger    *slog.Logger
+	startTime time.Time
 	// Counters
 	totalSubmitted atomic.Int64
 	totalFailed    atomic.Int64
@@ -38,7 +38,7 @@ type Reporter struct {
 // NewReporter creates a new metrics reporter
 func NewReporter(logger *slog.Logger) *Reporter {
 	return &Reporter{
-		logger:         logger,
+		logger:          logger,
 		submissionTimes: make([]time.Time, 0),
 	}
 }

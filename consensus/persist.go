@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/dsn/dsn/types"
 	"github.com/dsn/dsn/state"
+	"github.com/dsn/dsn/types"
 	"go.etcd.io/bbolt"
 )
 
@@ -180,7 +180,8 @@ func AtomicStoreBlockAndTip(ps *state.PersistentState, block *types.Block) error
 
 // encodeHeader serializes a BlockHeader to bytes.
 // Layout: Version(8) + Height(8) + PreviousHash(32) + StateRoot(32) + TxRoot(32) +
-//         ReceiptRoot(32) + ValidatorRoot(32) + ValidatorSetHash(32) + Epoch(8) + Timestamp(8) + Proposer(20) = 244 bytes
+//
+//	ReceiptRoot(32) + ValidatorRoot(32) + ValidatorSetHash(32) + Epoch(8) + Timestamp(8) + Proposer(20) = 244 bytes
 const expectedHeaderLen = 244
 
 // encodeHeader serializes a BlockHeader to bytes.

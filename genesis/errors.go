@@ -30,14 +30,14 @@ func (e *GenesisError) Wrap(err error) *GenesisError {
 
 // Error codes
 const (
-	ErrCodePathRequired     = "GENESIS_PATH_REQUIRED"
-	ErrCodeFileNotFound     = "GENESIS_FILE_NOT_FOUND"
-	ErrCodeReadFailed       = "GENESIS_READ_FAILED"
-	ErrCodeParseFailed      = "GENESIS_PARSE_FAILED"
-	ErrCodeMissingChainID   = "GENESIS_MISSING_CHAIN_ID"
+	ErrCodePathRequired       = "GENESIS_PATH_REQUIRED"
+	ErrCodeFileNotFound       = "GENESIS_FILE_NOT_FOUND"
+	ErrCodeReadFailed         = "GENESIS_READ_FAILED"
+	ErrCodeParseFailed        = "GENESIS_PARSE_FAILED"
+	ErrCodeMissingChainID     = "GENESIS_MISSING_CHAIN_ID"
 	ErrCodeMissingGenesisTime = "GENESIS_MISSING_GENESIS_TIME"
-	ErrCodeHashFailed       = "GENESIS_HASH_FAILED"
-	ErrCodeValidationFailed = "GENESIS_VALIDATION_FAILED"
+	ErrCodeHashFailed         = "GENESIS_HASH_FAILED"
+	ErrCodeValidationFailed   = "GENESIS_VALIDATION_FAILED"
 )
 
 // Predefined genesis errors

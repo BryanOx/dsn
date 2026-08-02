@@ -15,19 +15,19 @@ func TestGenesisHash_Deterministic(t *testing.T) {
 		ChainID:       "test-chain-1",
 		InitialHeight: 1,
 		ConsensusParams: ConsensusParams{
-			MaxTxPerBlock:   100,
+			MaxTxPerBlock:    100,
 			MaxBytesPerBlock: 1048576,
-			MaxGasPerBlock:  10000000,
+			MaxGasPerBlock:   10000000,
 		},
 		EpochParams: EpochParams{
-			BlocksPerEpoch:       100,
+			BlocksPerEpoch:        100,
 			UnstakeCooldownEpochs: 21,
-			MaxValidators:        100,
-			MinimumStake:         1000000,
+			MaxValidators:         100,
+			MinimumStake:          1000000,
 		},
 		InflationParams: InflationParams{
-			Enabled:     false,
-			AnnualRate:  "0",
+			Enabled:      false,
+			AnnualRate:   "0",
 			MintPerBlock: 0,
 		},
 		InitialValidators: []ValidatorEntry{
@@ -77,19 +77,19 @@ func TestGenesisHash_SameContentDifferentObjects(t *testing.T) {
 		ChainID:       "test-chain-identical",
 		InitialHeight: 1,
 		ConsensusParams: ConsensusParams{
-			MaxTxPerBlock:   100,
+			MaxTxPerBlock:    100,
 			MaxBytesPerBlock: 1048576,
-			MaxGasPerBlock:  10000000,
+			MaxGasPerBlock:   10000000,
 		},
 		EpochParams: EpochParams{
-			BlocksPerEpoch:       100,
+			BlocksPerEpoch:        100,
 			UnstakeCooldownEpochs: 21,
-			MaxValidators:        100,
-			MinimumStake:         1000000,
+			MaxValidators:         100,
+			MinimumStake:          1000000,
 		},
 		InflationParams: InflationParams{
-			Enabled:     false,
-			AnnualRate:  "0",
+			Enabled:      false,
+			AnnualRate:   "0",
 			MintPerBlock: 0,
 		},
 		InitialValidators: []ValidatorEntry{
@@ -119,19 +119,19 @@ func TestGenesisHash_SameContentDifferentObjects(t *testing.T) {
 		ChainID:       "test-chain-identical",
 		InitialHeight: 1,
 		ConsensusParams: ConsensusParams{
-			MaxTxPerBlock:   100,
+			MaxTxPerBlock:    100,
 			MaxBytesPerBlock: 1048576,
-			MaxGasPerBlock:  10000000,
+			MaxGasPerBlock:   10000000,
 		},
 		EpochParams: EpochParams{
-			BlocksPerEpoch:       100,
+			BlocksPerEpoch:        100,
 			UnstakeCooldownEpochs: 21,
-			MaxValidators:        100,
-			MinimumStake:         1000000,
+			MaxValidators:         100,
+			MinimumStake:          1000000,
 		},
 		InflationParams: InflationParams{
-			Enabled:     false,
-			AnnualRate:  "0",
+			Enabled:      false,
+			AnnualRate:   "0",
 			MintPerBlock: 0,
 		},
 		InitialValidators: []ValidatorEntry{
@@ -187,8 +187,8 @@ func TestGenesisHash_DifferentContentProducesDifferentHash(t *testing.T) {
 		InitialValidators: []ValidatorEntry{
 			{
 				Address:    "0123456789abcdef0123456789abcdef01234567",
-				PubKey:    "abcdef0123456789abcdef0123456789abcdef01",
-				Stake:     10000000,
+				PubKey:     "abcdef0123456789abcdef0123456789abcdef01",
+				Stake:      10000000,
 				Commission: "1000",
 			},
 		},
@@ -218,8 +218,8 @@ func TestGenesisHash_DifferentContentProducesDifferentHash(t *testing.T) {
 		InitialValidators: []ValidatorEntry{
 			{
 				Address:    "0123456789abcdef0123456789abcdef01234567",
-				PubKey:    "abcdef0123456789abcdef0123456789abcdef01",
-				Stake:     10000000,
+				PubKey:     "abcdef0123456789abcdef0123456789abcdef01",
+				Stake:      10000000,
 				Commission: "1000",
 			},
 		},

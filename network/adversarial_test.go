@@ -24,31 +24,31 @@ func TestAdversarial_UnreachableBootstrap(t *testing.T) {
 	// 6. Stop gracefully
 
 	/*
-	unreachablePeers := []string{
-		"/ip4/10.255.255.1/tcp/12345/p2p/QmUnreachable1",
-		"/ip4/10.255.255.2/tcp/12345/p2p/QmUnreachable2",
-	}
+		unreachablePeers := []string{
+			"/ip4/10.255.255.1/tcp/12345/p2p/QmUnreachable1",
+			"/ip4/10.255.255.2/tcp/12345/p2p/QmUnreachable2",
+		}
 
-	discovery := NewDiscovery(nil, nil, unreachablePeers)
+		discovery := NewDiscovery(nil, nil, unreachablePeers)
 
-	// Should not panic
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Errorf("discovery panicked with unreachable peers: %v", r)
-			}
+		// Should not panic
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("discovery panicked with unreachable peers: %v", r)
+				}
+			}()
+
+			discovery.Start()
+
+			// Let it try to connect for a bit
+			time.Sleep(2 * time.Second)
+
+			// Check it's still running
+			discovery.Stop()
 		}()
 
-		discovery.Start()
-
-		// Let it try to connect for a bit
-		time.Sleep(2 * time.Second)
-
-		// Check it's still running
-		discovery.Stop()
-	}()
-
-	// Should exit cleanly without panic
+		// Should exit cleanly without panic
 	*/
 }
 

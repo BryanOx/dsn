@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dsn/dsn/staking"
-	"github.com/dsn/dsn/types"
-	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/mempool"
+	"github.com/dsn/dsn/staking"
+	"github.com/dsn/dsn/state"
+	"github.com/dsn/dsn/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -340,17 +340,17 @@ func TestValidateBlock_EmptyBlock(t *testing.T) {
 // Helper: setupMultiValidator creates a state with multiple validators
 // Returns state and validators with operator address, private key, and consensusID
 func setupMultiValidator(t *testing.T, validatorCount int, stakes []uint64) (*state.InMemoryState, []struct {
-	Addr         types.Address
-	PrivKey      ed25519.PrivateKey
-	ConsensusID  types.Address
+	Addr        types.Address
+	PrivKey     ed25519.PrivateKey
+	ConsensusID types.Address
 }) {
 	hasher := types.SHA256Hasher{}
 	s := state.NewInMemoryState(hasher)
 
 	validators := make([]struct {
-		Addr         types.Address
-		PrivKey      ed25519.PrivateKey
-		ConsensusID  types.Address
+		Addr        types.Address
+		PrivKey     ed25519.PrivateKey
+		ConsensusID types.Address
 	}, validatorCount)
 
 	for i := 0; i < validatorCount; i++ {
@@ -377,9 +377,9 @@ func setupMultiValidator(t *testing.T, validatorCount int, stakes []uint64) (*st
 		s.SetAccount(addr, acc)
 
 		validators[i] = struct {
-			Addr         types.Address
-			PrivKey      ed25519.PrivateKey
-			ConsensusID  types.Address
+			Addr        types.Address
+			PrivKey     ed25519.PrivateKey
+			ConsensusID types.Address
 		}{addr, privKey, consensusID}
 	}
 
@@ -648,7 +648,7 @@ func TestValidateBlock_CommitProof_EmptyPrecommits(t *testing.T) {
 		BlockHash:   headerHash,
 		Precommits:  []types.Vote{}, // Empty!
 		TotalPower:  snap.TotalPower,
-		SignedPower: 0,              // No power
+		SignedPower: 0, // No power
 		SetHash:     snap.SetHash,
 	}
 

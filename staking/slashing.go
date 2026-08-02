@@ -38,8 +38,8 @@ const (
 
 // SlashParams holds the configurable slash parameters.
 type SlashParams struct {
-	PercentDoublePrevote    uint64
-	PercentDoublePrecommit  uint64
+	PercentDoublePrevote   uint64
+	PercentDoublePrecommit uint64
 	PercentInvalidCommit   uint64
 	JailEpochs             uint64
 }
@@ -49,8 +49,8 @@ func DefaultSlashParams() SlashParams {
 	return SlashParams{
 		PercentDoublePrevote:   SlashPercentDoublePrevote,
 		PercentDoublePrecommit: SlashPercentDoublePrecommit,
-		PercentInvalidCommit:  SlashPercentInvalidCommit,
-		JailEpochs:            SlashJailEpochs,
+		PercentInvalidCommit:   SlashPercentInvalidCommit,
+		JailEpochs:             SlashJailEpochs,
 	}
 }
 
@@ -77,8 +77,8 @@ func GetSlashParams(s KVStore) SlashParams {
 	return SlashParams{
 		PercentDoublePrevote:   binary.BigEndian.Uint64(val[0:8]),
 		PercentDoublePrecommit: binary.BigEndian.Uint64(val[8:16]),
-		PercentInvalidCommit:  binary.BigEndian.Uint64(val[16:24]),
-		JailEpochs:            binary.BigEndian.Uint64(val[24:32]),
+		PercentInvalidCommit:   binary.BigEndian.Uint64(val[16:24]),
+		JailEpochs:             binary.BigEndian.Uint64(val[24:32]),
 	}
 }
 

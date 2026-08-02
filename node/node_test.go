@@ -145,13 +145,13 @@ func setupPersistentNode(t *testing.T) (*Node, string) {
 	require.NoError(t, err)
 
 	cfg := Config{
-		DataDir:         dir,
-		P2PPort:         0,
-		Validators:      []types.Address{kp.Address()},
-		MaxTxPerBlock:   100,
-		ProposerTimeout: 100 * time.Millisecond,
-		MempoolMaxSize:  10000,
-		MempoolTTL:      300 * time.Second,
+		DataDir:          dir,
+		P2PPort:          0,
+		Validators:       []types.Address{kp.Address()},
+		MaxTxPerBlock:    100,
+		ProposerTimeout:  100 * time.Millisecond,
+		MempoolMaxSize:   10000,
+		MempoolTTL:       300 * time.Second,
 		SnapshotInterval: 10,
 	}
 
@@ -183,10 +183,10 @@ func TestNewNode_PersistentRecovery(t *testing.T) {
 
 	// Create second node with the same DataDir (recovery)
 	cfg2 := Config{
-		DataDir:         dir,
-		P2PPort:         0,
-		MempoolMaxSize:  10000,
-		MempoolTTL:      300 * time.Second,
+		DataDir:        dir,
+		P2PPort:        0,
+		MempoolMaxSize: 10000,
+		MempoolTTL:     300 * time.Second,
 	}
 
 	n2, err := New(cfg2)
@@ -205,11 +205,11 @@ func TestNewNode_InMemoryPersistence(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg := Config{
-		DataDir:         "", // empty = in-memory only
-		P2PPort:         0,
-		Validators:      []types.Address{kp.Address()},
-		MempoolMaxSize:  10000,
-		MempoolTTL:      300 * time.Second,
+		DataDir:        "", // empty = in-memory only
+		P2PPort:        0,
+		Validators:     []types.Address{kp.Address()},
+		MempoolMaxSize: 10000,
+		MempoolTTL:     300 * time.Second,
 	}
 
 	n, err := New(cfg)
@@ -273,9 +273,9 @@ func TestFastSyncFromCheckpoint_Local(t *testing.T) {
 	// Create target node with fresh persistent storage
 	dir := t.TempDir()
 	cfg := Config{
-		DataDir:         dir,
-		MempoolMaxSize:  10000,
-		MempoolTTL:      300 * time.Second,
+		DataDir:        dir,
+		MempoolMaxSize: 10000,
+		MempoolTTL:     300 * time.Second,
 	}
 	targetNode, err := New(cfg)
 	require.NoError(t, err)

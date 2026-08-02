@@ -20,10 +20,10 @@ func TestDebug_PersistenceRoot(t *testing.T) {
 
 	// Create first node and set up state
 	n1, err := node.New(node.Config{
-		DataDir:         dir,
-		P2PPort:         0,
-		MempoolMaxSize:  10000,
-		MempoolTTL:      300 * time.Second,
+		DataDir:        dir,
+		P2PPort:        0,
+		MempoolMaxSize: 10000,
+		MempoolTTL:     300 * time.Second,
 	})
 	require.NoError(t, err)
 
@@ -45,10 +45,10 @@ func TestDebug_PersistenceRoot(t *testing.T) {
 
 	// Create second node with same data dir — Recover() should rebuild SMT
 	n2, err := node.New(node.Config{
-		DataDir:         dir,
-		P2PPort:         0,
-		MempoolMaxSize:  10000,
-		MempoolTTL:      300 * time.Second,
+		DataDir:        dir,
+		P2PPort:        0,
+		MempoolMaxSize: 10000,
+		MempoolTTL:     300 * time.Second,
 	})
 	require.NoError(t, err)
 	defer n2.Close()

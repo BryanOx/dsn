@@ -21,7 +21,7 @@ const (
 
 // FastSyncState tracks the current fast sync progress for recovery.
 type FastSyncState struct {
-	Mode          SyncMode
+	Mode         SyncMode
 	TargetHeight uint64
 	SnapshotHash [32]byte
 	// SnapshotChunksReceived int

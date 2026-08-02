@@ -12,11 +12,11 @@ import (
 
 // WSSubscription represents a WebSocket subscription.
 type WSSubscription struct {
-	conn      *websocket.Conn
-	channel   interface{}
-	closeCh   chan struct{}
-	mu        sync.Mutex
-	isClosed  bool
+	conn     *websocket.Conn
+	channel  interface{}
+	closeCh  chan struct{}
+	mu       sync.Mutex
+	isClosed bool
 }
 
 // WSMessage represents a WebSocket message.
@@ -217,10 +217,10 @@ func EventFromJSON(data json.RawMessage) (*Event, error) {
 // WSClient represents a WebSocket client with auto-reconnect.
 type WSClient struct {
 	url        string
-	conn        *websocket.Conn
+	conn       *websocket.Conn
 	subs       map[string]chan json.RawMessage
 	mu         sync.Mutex
-	reconnect   bool
+	reconnect  bool
 	maxRetries int
 	backoff    time.Duration
 	ctx        context.Context

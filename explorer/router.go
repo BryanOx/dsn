@@ -43,10 +43,10 @@ func NewRouter(idx *indexer.Indexer, svc service.NodeService) *mux.Router {
 	api.HandleFunc("/supply", handleSupply(svc)).Methods("GET")
 
 	// Middleware (order matters - applied in reverse)
-	r.Use(metricsMiddleware)             // Record metrics
-	r.Use(requestIDMiddleware)          // Add request ID
-	r.Use(corsMiddleware)               // Handle CORS
-	r.Use(contentTypeMiddleware)        // Set content type
+	r.Use(metricsMiddleware)                                // Record metrics
+	r.Use(requestIDMiddleware)                              // Add request ID
+	r.Use(corsMiddleware)                                   // Handle CORS
+	r.Use(contentTypeMiddleware)                            // Set content type
 	r.Use(middleware.BodySizeLimit(middleware.MaxBodySize)) // Limit body size (1 MiB)
 
 	// Health check

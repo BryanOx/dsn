@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/dsn/dsn/types"
 )
@@ -23,9 +24,10 @@ type ValidatorKey struct {
 
 // SaveValidatorKey persists validator key to a three-line hex file.
 // Format:
-//   Line 1: hex(private key) - 64 bytes = 128 hex chars
-//   Line 2: hex(public key)  - 32 bytes = 64 hex chars
-//   Line 3: hex(address)     - 20 bytes = 40 hex chars
+//
+//	Line 1: hex(private key) - 64 bytes = 128 hex chars
+//	Line 2: hex(public key)  - 32 bytes = 64 hex chars
+//	Line 3: hex(address)     - 20 bytes = 40 hex chars
 func SaveValidatorKey(path string, privKey ed25519.PrivateKey, pubKey ed25519.PublicKey) error {
 	addr := deriveAddress(pubKey)
 
@@ -33,7 +35,12 @@ func SaveValidatorKey(path string, privKey ed25519.PrivateKey, pubKey ed25519.Pu
 	data += hex.EncodeToString(pubKey) + "\n"
 	data += hex.EncodeToString(addr[:]) + "\n"
 
-	// Write with secure permissions (0600)
+	// Write with secure permissions (0600), creating the parent directory if needed.
+	if dir := filepath.Dir(path); dir != "." {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return err
+		}
+	}
 	return os.WriteFile(path, []byte(data), 0600)
 }
 

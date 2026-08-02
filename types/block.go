@@ -8,18 +8,18 @@ import (
 )
 
 type BlockHeader struct {
-	Version           uint64
-	Height            uint64
-	PreviousHash      Hash
-	StateRoot         Hash
-	TxRoot            Hash
-	ReceiptRoot       Hash
-	ValidatorRoot     Hash
-	ValidatorSetHash  Hash  // NEW: hash of full active validator set
-	Epoch             uint64 // NEW: epoch this block belongs to
-	Timestamp         uint64
-	Proposer          Address
-	EventsRoot        Hash  // NEW: root hash of all events in this block
+	Version          uint64
+	Height           uint64
+	PreviousHash     Hash
+	StateRoot        Hash
+	TxRoot           Hash
+	ReceiptRoot      Hash
+	ValidatorRoot    Hash
+	ValidatorSetHash Hash   // NEW: hash of full active validator set
+	Epoch            uint64 // NEW: epoch this block belongs to
+	Timestamp        uint64
+	Proposer         Address
+	EventsRoot       Hash // NEW: root hash of all events in this block
 }
 
 type FeeSummary struct {
@@ -44,7 +44,7 @@ type Block struct {
 	FeeSummary   FeeSummary
 	Signature    []byte
 	CommitProof  *CommitProof // may be nil for genesis block
-	Events       []Event       // NEW: contract events emitted during block execution
+	Events       []Event      // NEW: contract events emitted during block execution
 
 	// Evidence is a list of finalized evidence objects to process in this block.
 	// Must be empty for genesis blocks.
@@ -88,7 +88,7 @@ func (h *BlockHeader) HeaderHash(hasher Hasher) (Hash, error) {
 	buf.Write(h.TxRoot[:])
 	buf.Write(h.ReceiptRoot[:])
 	buf.Write(h.ValidatorRoot[:])
-	buf.Write(h.ValidatorSetHash[:]) // Write ValidatorSetHash(32) after ValidatorRoot
+	buf.Write(h.ValidatorSetHash[:])                                     // Write ValidatorSetHash(32) after ValidatorRoot
 	if err := binary.Write(buf, binary.BigEndian, h.Epoch); err != nil { // Write Epoch(8) after ValidatorSetHash
 		return Hash{}, err
 	}

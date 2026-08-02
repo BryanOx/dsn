@@ -53,7 +53,7 @@ func main() {
 		}
 
 		filter := sdk.EventFilter{
-			Contract: *contractAddr,
+			Contract:  *contractAddr,
 			FromBlock: 0,
 			Offset:    offset,
 			Limit:     *limit,

@@ -41,10 +41,10 @@ func indexEvent(db *bbolt.DB, event *types.Event) error {
 
 // EventFilter represents filter criteria for event queries.
 type EventFilter struct {
-	Contract   *types.Hash
-	Topic0     string
-	FromBlock  uint64
-	ToBlock    uint64
+	Contract  *types.Hash
+	Topic0    string
+	FromBlock uint64
+	ToBlock   uint64
 }
 
 // GetEvents retrieves events matching the given filter using prefix scan for efficiency.

@@ -169,11 +169,11 @@ func ProcessEpochTransition(s StakingState, height uint64) error {
 
 // EpochInfo returns summary information about the current epoch state.
 type EpochInfo struct {
-	CurrentEpoch      uint64
-	BlocksPerEpoch    uint64
-	TotalValidators   uint64
-	ActiveValidators  int
-	TotalBonded       types.Amount
+	CurrentEpoch     uint64
+	BlocksPerEpoch   uint64
+	TotalValidators  uint64
+	ActiveValidators int
+	TotalBonded      types.Amount
 }
 
 // GetEpochInfo returns current epoch information.

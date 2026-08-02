@@ -21,7 +21,7 @@ type TransferConfig struct {
 
 // transferGenerator generates random transfer transactions
 type transferGenerator struct {
-	cfg TransferConfig
+	cfg      TransferConfig
 	accounts []types.Address
 	nonceMap map[[20]byte]uint64
 }
@@ -115,6 +115,7 @@ func randInt(max int) int {
 
 // iSum is a simple fallback for random number generation
 var seed = uint32(12345)
+
 func iSum() int {
 	seed = seed*1103515245 + 12345
 	return int(seed >> 16)

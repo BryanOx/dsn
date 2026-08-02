@@ -373,7 +373,7 @@ func TestStoreLoadEvidence(t *testing.T) {
 			Height:    10,
 			Round:     1,
 			BlockHash: types.Hash{4, 5, 6}, // different hash
-			Validator: types.Address{5},     // same validator
+			Validator: types.Address{5},    // same validator
 			Signature: []byte("sig-b"),
 		},
 	}

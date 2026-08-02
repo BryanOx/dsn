@@ -10,26 +10,26 @@ import (
 
 // Config holds all configuration for the soak runner
 type Config struct {
-	NodeEndpoint   string        `yaml:"nodeEndpoint"`
-	Profile        string        `yaml:"profile"`
-	Duration       time.Duration `yaml:"duration"`
-	TPS            int           `yaml:"tps"`
-	NumAccounts    int           `yaml:"numAccounts"`
-	LogInterval    time.Duration `yaml:"logInterval"`
-	DryRun         bool          `yaml:"dryRun"`
-	Profiles       ProfileConfig `yaml:"profiles"`
-	Burst          BurstConfig   `yaml:"burst"`
-	Mixed          MixedConfig   `yaml:"mixed"`
+	NodeEndpoint string        `yaml:"nodeEndpoint"`
+	Profile      string        `yaml:"profile"`
+	Duration     time.Duration `yaml:"duration"`
+	TPS          int           `yaml:"tps"`
+	NumAccounts  int           `yaml:"numAccounts"`
+	LogInterval  time.Duration `yaml:"logInterval"`
+	DryRun       bool          `yaml:"dryRun"`
+	Profiles     ProfileConfig `yaml:"profiles"`
+	Burst        BurstConfig   `yaml:"burst"`
+	Mixed        MixedConfig   `yaml:"mixed"`
 }
 
 // ProfileConfig holds profile-specific configurations
 type ProfileConfig struct {
-	Light     ProfileSettings `yaml:"light"`
-	Moderate  ProfileSettings `yaml:"moderate"`
-	Heavy     ProfileSettings `yaml:"heavy"`
-	Burst     ProfileSettings `yaml:"burst"`
-	WASM      ProfileSettings `yaml:"wasm"`
-	Mixed     ProfileSettings `yaml:"mixed"`
+	Light    ProfileSettings `yaml:"light"`
+	Moderate ProfileSettings `yaml:"moderate"`
+	Heavy    ProfileSettings `yaml:"heavy"`
+	Burst    ProfileSettings `yaml:"burst"`
+	WASM     ProfileSettings `yaml:"wasm"`
+	Mixed    ProfileSettings `yaml:"mixed"`
 }
 
 // ProfileSettings for a specific profile
@@ -40,8 +40,8 @@ type ProfileSettings struct {
 
 // BurstConfig for burst workload
 type BurstConfig struct {
-	BurstMultiplier int           `yaml:"burstMultiplier"`
-	BurstDuration   time.Duration `yaml:"burstDuration"`
+	BurstMultiplier  int           `yaml:"burstMultiplier"`
+	BurstDuration    time.Duration `yaml:"burstDuration"`
 	CooldownDuration time.Duration `yaml:"cooldownDuration"`
 }
 
@@ -138,8 +138,8 @@ func (c *Config) Validate() error {
 func (c *Config) GetBurstConfig() BurstConfig {
 	if c.Burst.BurstMultiplier == 0 {
 		return BurstConfig{
-			BurstMultiplier: 5,
-			BurstDuration:   30 * time.Second,
+			BurstMultiplier:  5,
+			BurstDuration:    30 * time.Second,
 			CooldownDuration: 120 * time.Second,
 		}
 	}

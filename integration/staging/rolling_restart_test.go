@@ -38,7 +38,7 @@ func restartNodeAndRejoin(t *testing.T, n *node.Node) *node.Node {
 		MempoolMaxSize:   10000,
 		MempoolTTL:       300 * time.Second,
 		SnapshotInterval: 10,
-		Validators:      validators,
+		Validators:       validators,
 	})
 	require.NoError(t, err, "recreate node after restart")
 

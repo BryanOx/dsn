@@ -15,13 +15,13 @@ func TestSimulate_BaseCase(t *testing.T) {
 
 	params := EconomicParams{
 		InitialSupply:      1_000_000_000, // 1B initial supply
-		InflationRateBP:    500,            // 5%
+		InflationRateBP:    500,           // 5%
 		BlocksPerEpoch:     100,
 		BlockTimeSec:       1,
 		ActiveValidators:   100,
 		AvgFeePerBlock:     1000,
 		SlashEventsPerYear: 2.0,
-		SlashAvgPct:         5.0,
+		SlashAvgPct:        5.0,
 		OpCostPerYear:      10000,
 		ValidatorStakes:    stakes,
 	}
@@ -101,7 +101,7 @@ func TestSimulate_HighAdoption(t *testing.T) {
 
 	params := EconomicParams{
 		InitialSupply:      10_000_000_000, // 10B initial supply
-		InflationRateBP:    500,             // 5%
+		InflationRateBP:    500,            // 5%
 		BlocksPerEpoch:     100,
 		BlockTimeSec:       1,
 		ActiveValidators:   100,

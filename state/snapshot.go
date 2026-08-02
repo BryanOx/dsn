@@ -18,8 +18,8 @@ const (
 	HashSize               = 32
 	DefaultChunkSize       = 256 * 1024
 	MaxSnapshotEntrySize   = 1 * 1024 * 1024 // 1 MiB per account / KV entry
-	MaxSnapshotKVKeyLength = 256              // bytes
-	MaxSnapshotKVValLength = 1 * 1024 * 1024  // 1 MiB value limit
+	MaxSnapshotKVKeyLength = 256             // bytes
+	MaxSnapshotKVValLength = 1 * 1024 * 1024 // 1 MiB value limit
 )
 
 type Snapshot struct {

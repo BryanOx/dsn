@@ -3,8 +3,8 @@ package consensus
 import (
 	"testing"
 
-	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/staking"
+	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/types"
 	"github.com/dsn/dsn/wallet"
 	"github.com/stretchr/testify/require"
@@ -15,38 +15,38 @@ type ByzantineType int
 
 const (
 	Honest         ByzantineType = 0
-	ByzProposer    ByzantineType = 1  // equivocates as proposer
-	ByzVoter       ByzantineType = 2  // double-votes
-	ByzPartitioned ByzantineType = 3  // isolated from network
+	ByzProposer    ByzantineType = 1 // equivocates as proposer
+	ByzVoter       ByzantineType = 2 // double-votes
+	ByzPartitioned ByzantineType = 3 // isolated from network
 )
 
 // SimValidator represents a simulated validator in the BFT harness
 type SimValidator struct {
-	KeyPair      *wallet.KeyPair
-	ConsensusID  types.Address
-	Byzantine    ByzantineType
+	KeyPair     *wallet.KeyPair
+	ConsensusID types.Address
+	Byzantine   ByzantineType
 	// Track votes to enable double-vote simulation
-	HasVoted     bool
-	VotedBlock   types.Hash
+	HasVoted   bool
+	VotedBlock types.Hash
 }
 
 // BFTTestHarness simulates N validators without P2P networking
 type BFTTestHarness struct {
-	t           testing.TB
-	Validators  []SimValidator
-	State       *state.InMemoryState
-	Snapshots   map[uint64]*staking.ValidatorSnapshot
-	Height      uint64
-	Blocks      map[uint64][]*types.Block  // all blocks per height
-	Commits     map[uint64]*types.Block    // committed blocks
-	Hasher      types.Hasher
-	Config      BFTConfig
+	t          testing.TB
+	Validators []SimValidator
+	State      *state.InMemoryState
+	Snapshots  map[uint64]*staking.ValidatorSnapshot
+	Height     uint64
+	Blocks     map[uint64][]*types.Block // all blocks per height
+	Commits    map[uint64]*types.Block   // committed blocks
+	Hasher     types.Hasher
+	Config     BFTConfig
 }
 
 type BFTConfig struct {
-	NumValidators   int
-	ByzantineIdx    int    // -1 = none
-	ByzantineType   ByzantineType
+	NumValidators int
+	ByzantineIdx  int // -1 = none
+	ByzantineType ByzantineType
 }
 
 // testMempool implements MempoolI for building blocks without real mempool

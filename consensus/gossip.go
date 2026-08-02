@@ -12,7 +12,7 @@ import (
 const (
 	BlockMessageType byte = 0x01
 	MaxBlockSize          = 10 * 1024 * 1024 // 10MB
-	MaxSigLen            = 8192               // 8KB max signature length
+	MaxSigLen             = 8192             // 8KB max signature length
 )
 
 // EncodeBlockMessage serializes a block for gossip.
@@ -32,7 +32,7 @@ func EncodeBlockMessage(block *types.Block) ([]byte, error) {
 	blockBuf.Write(block.Header.TxRoot[:])
 	blockBuf.Write(block.Header.ReceiptRoot[:])
 	blockBuf.Write(block.Header.ValidatorRoot[:])
-	blockBuf.Write(block.Header.ValidatorSetHash[:]) // Add ValidatorSetHash(32) after ValidatorRoot
+	blockBuf.Write(block.Header.ValidatorSetHash[:])                                      // Add ValidatorSetHash(32) after ValidatorRoot
 	if err := binary.Write(&blockBuf, binary.BigEndian, block.Header.Epoch); err != nil { // Add Epoch(8) after ValidatorSetHash
 		return nil, err
 	}

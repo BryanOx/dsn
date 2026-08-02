@@ -26,7 +26,7 @@ func TestWeightedProposerAtHeight_EqualPower(t *testing.T) {
 		{200, types.Address{3}},
 		{300, types.Address{1}}, // wraps around
 		{1, types.Address{1}},   // 1 % 300 = 1, first 100 range
-		{50, types.Address{1}},   // 50 % 300 = 50, first 100 range
+		{50, types.Address{1}},  // 50 % 300 = 50, first 100 range
 		{150, types.Address{2}}, // 150 % 300 = 150, second 100 range
 		{250, types.Address{3}}, // 250 % 300 = 250, third 100 range
 	}
@@ -50,7 +50,7 @@ func TestWeightedProposerAtHeight_UnequalPower(t *testing.T) {
 		height   uint64
 		expected types.Address
 	}{
-		{0, types.Address{1}},  // 0-199: v1
+		{0, types.Address{1}},   // 0-199: v1
 		{100, types.Address{1}}, // 0-199: v1
 		{199, types.Address{1}}, // 0-199: v1
 		{200, types.Address{2}}, // 200-299: v2

@@ -228,7 +228,7 @@ func TestChunkSnapshotMultipleChunks(t *testing.T) {
 
 	// Add many kvstore entries
 	for i := 0; i < 50; i++ {
-		key := string(rune('a' + i%26)) + string(rune('0' + i/26))
+		key := string(rune('a'+i%26)) + string(rune('0'+i/26))
 		s.SetBytes(key, []byte("value_"+key))
 	}
 

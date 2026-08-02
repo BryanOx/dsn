@@ -9,12 +9,12 @@ import (
 
 // TransactionReceipt represents transaction data stored in the indexer.
 type TransactionReceipt struct {
-	Hash        types.Hash      `json:"hash"`
+	Hash        types.Hash         `json:"hash"`
 	Data        *types.Transaction `json:"data"`
-	Status      bool            `json:"status"`
-	GasUsed     uint64          `json:"gas_used"`
-	BlockNumber uint64          `json:"block_number"`
-	Events      []*types.Event  `json:"events"`
+	Status      bool               `json:"status"`
+	GasUsed     uint64             `json:"gas_used"`
+	BlockNumber uint64             `json:"block_number"`
+	Events      []*types.Event     `json:"events"`
 }
 
 // indexTransaction stores a transaction and its receipt.
@@ -28,7 +28,7 @@ func indexTransaction(db *bbolt.DB, tx *types.Transaction, blockNumber uint64, e
 		receipt := TransactionReceipt{
 			Hash:        tx.IntentID,
 			Data:        tx,
-			Status:      true, // default to success
+			Status:      true,        // default to success
 			GasUsed:     tx.GasLimit, // Use GasLimit as placeholder
 			BlockNumber: blockNumber,
 			Events:      events,

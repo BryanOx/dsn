@@ -22,10 +22,10 @@ package wasm
 const (
 	// Memory offsets
 	// ContractID is written by VM at offset 1024 before calling entrypoints
-	contractIDOffset  = 1024
-	callerBufOffset   = 32
-	resultBufOffset   = 64
-	tempBufOffset     = 256
+	contractIDOffset = 1024
+	callerBufOffset  = 32
+	resultBufOffset  = 64
+	tempBufOffset    = 256
 
 	// Sizes
 	callerBufSize = 32
@@ -294,17 +294,17 @@ func TransferUint64(recipient [20]byte, amount uint64) error {
 
 // Error codes returned by host functions
 const (
-	ErrCodeKeyNotFound    = 3
+	ErrCodeKeyNotFound   = 3
 	ErrCodeValueTooLarge = 4
 	ErrCodeWriteFailed   = 5
 )
 
 var (
 	ErrKeyNotFound        = wasmError{"key not found"}
-	ErrKeyTooLarge       = wasmError{"key too large (max 256 bytes)"}
-	ErrValueTooLarge     = wasmError{"value too large (max 65536 bytes)"}
+	ErrKeyTooLarge        = wasmError{"key too large (max 256 bytes)"}
+	ErrValueTooLarge      = wasmError{"value too large (max 65536 bytes)"}
 	ErrStorageWriteFailed = wasmError{"storage write failed"}
-	ErrTransferFailed    = wasmError{"transfer failed"}
+	ErrTransferFailed     = wasmError{"transfer failed"}
 )
 
 type wasmError struct {

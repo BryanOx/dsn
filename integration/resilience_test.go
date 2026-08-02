@@ -65,12 +65,12 @@ func TestResilience_RollingRestart(t *testing.T) {
 
 		// Recreate the node from the same data directory
 		n2, err := node.New(node.Config{
-			DataDir:         dataDir,
-			P2PPort:         0,
-			MempoolMaxSize:  10000,
-			MempoolTTL:      300 * time.Second,
+			DataDir:          dataDir,
+			P2PPort:          0,
+			MempoolMaxSize:   10000,
+			MempoolTTL:       300 * time.Second,
 			SnapshotInterval: 10,
-			Validators:      []types.Address{kps[0].Address(), kps[1].Address(), kps[2].Address()},
+			Validators:       []types.Address{kps[0].Address(), kps[1].Address(), kps[2].Address()},
 		})
 		require.NoError(t, err, "failed to recreate node %d", i)
 		n2.SetWallet(kps[i])
@@ -181,12 +181,12 @@ func TestResilience_CrashLoopRecovery(t *testing.T) {
 
 	// Restart node 2 (first recovery)
 	n2, err := node.New(node.Config{
-		DataDir:         dataDir2,
-		P2PPort:         0,
-		MempoolMaxSize:  10000,
-		MempoolTTL:      300 * time.Second,
+		DataDir:          dataDir2,
+		P2PPort:          0,
+		MempoolMaxSize:   10000,
+		MempoolTTL:       300 * time.Second,
 		SnapshotInterval: 10,
-		Validators:      []types.Address{kps[0].Address(), kps[1].Address(), kps[2].Address()},
+		Validators:       []types.Address{kps[0].Address(), kps[1].Address(), kps[2].Address()},
 	})
 	require.NoError(t, err)
 	n2.SetWallet(kps[2])
@@ -227,12 +227,12 @@ func TestResilience_CrashLoopRecovery(t *testing.T) {
 
 	// Second recovery: restart node 2 again
 	n3, err := node.New(node.Config{
-		DataDir:         dataDir2,
-		P2PPort:         0,
-		MempoolMaxSize:  10000,
-		MempoolTTL:      300 * time.Second,
+		DataDir:          dataDir2,
+		P2PPort:          0,
+		MempoolMaxSize:   10000,
+		MempoolTTL:       300 * time.Second,
 		SnapshotInterval: 10,
-		Validators:      []types.Address{kps[0].Address(), kps[1].Address(), kps[2].Address()},
+		Validators:       []types.Address{kps[0].Address(), kps[1].Address(), kps[2].Address()},
 	})
 	require.NoError(t, err)
 	n3.SetWallet(kps[2])
@@ -322,12 +322,12 @@ func TestResilience_CorruptedSnapshot(t *testing.T) {
 	nodes[0].Close()
 
 	n2, err := node.New(node.Config{
-		DataDir:         dataDir,
-		P2PPort:         0,
-		MempoolMaxSize:  10000,
-		MempoolTTL:      300 * time.Second,
+		DataDir:          dataDir,
+		P2PPort:          0,
+		MempoolMaxSize:   10000,
+		MempoolTTL:       300 * time.Second,
 		SnapshotInterval: 10,
-		Validators:      []types.Address{kps[0].Address(), kps[1].Address()},
+		Validators:       []types.Address{kps[0].Address(), kps[1].Address()},
 	})
 	require.NoError(t, err)
 	n2.SetWallet(kps[0])
@@ -433,12 +433,12 @@ func TestResilience_NetworkPartition(t *testing.T) {
 	// Reconnect the partitioned node
 	t.Log("Reconnecting node 2")
 	n2, err := node.New(node.Config{
-		DataDir:         dataDir2,
-		P2PPort:         0,
-		MempoolMaxSize:  10000,
-		MempoolTTL:      300 * time.Second,
+		DataDir:          dataDir2,
+		P2PPort:          0,
+		MempoolMaxSize:   10000,
+		MempoolTTL:       300 * time.Second,
 		SnapshotInterval: 10,
-		Validators:      []types.Address{kps[0].Address(), kps[1].Address(), kps[2].Address()},
+		Validators:       []types.Address{kps[0].Address(), kps[1].Address(), kps[2].Address()},
 	})
 	require.NoError(t, err)
 	n2.SetWallet(kps[2])
@@ -568,12 +568,12 @@ func TestResilience_KillRestartLoop(t *testing.T) {
 
 		// Restart the killed node
 		n2, err := node.New(node.Config{
-			DataDir:         dataDir,
-			P2PPort:         0,
-			MempoolMaxSize:  10000,
-			MempoolTTL:      300 * time.Second,
+			DataDir:          dataDir,
+			P2PPort:          0,
+			MempoolMaxSize:   10000,
+			MempoolTTL:       300 * time.Second,
 			SnapshotInterval: 10,
-			Validators:      []types.Address{kps[0].Address(), kps[1].Address(), kps[2].Address()},
+			Validators:       []types.Address{kps[0].Address(), kps[1].Address(), kps[2].Address()},
 		})
 		require.NoError(t, err, "failed to restart node on iteration %d", iteration)
 		n2.SetWallet(kps[targetNodeIdx])

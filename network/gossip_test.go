@@ -76,10 +76,11 @@ func TestTokenBucket_AllowN(t *testing.T) {
 		t.Error("AllowN(5) returned false with 10 tokens")
 	}
 
-	// Should have 5 left
+	// Should have 5 left (within epsilon: the bucket refills from elapsed
+	// wall-clock time during execution, so exact float equality is flaky).
 	available := tb.Available()
-	if available != 5 {
-		t.Errorf("Available after AllowN(5) = %v, want 5", available)
+	if available < 4.999 || available > 5.001 {
+		t.Errorf("Available after AllowN(5) = %v, want ~5 (within epsilon)", available)
 	}
 
 	// AllowN(6) should fail (only 5 left)

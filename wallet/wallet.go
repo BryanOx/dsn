@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"path/filepath"
 
 	"github.com/dsn/dsn/types"
 )
@@ -55,7 +56,7 @@ func (kp *KeyPair) SignHash(hash types.Hash) ([]byte, error) {
 	return ed25519.Sign(kp.PrivateKey[:], hash[:]), nil
 }
 
-// SaveKey persists a key pair to a JSON file.
+// SaveKey persists a key pair to a JSON file, creating the parent directory if needed.
 func SaveKey(path string, kp *KeyPair) error {
 	kf := keyFile{
 		PublicKey:  hex.EncodeToString(kp.PublicKey[:]),
@@ -64,6 +65,11 @@ func SaveKey(path string, kp *KeyPair) error {
 	data, err := json.MarshalIndent(kf, "", "  ")
 	if err != nil {
 		return err
+	}
+	if dir := filepath.Dir(path); dir != "." {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return err
+		}
 	}
 	return os.WriteFile(path, data, 0600)
 }

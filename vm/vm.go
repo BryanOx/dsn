@@ -6,17 +6,17 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dsn/dsn/types"
 	"github.com/dsn/dsn/state"
+	"github.com/dsn/dsn/types"
 	"github.com/tetratelabs/wazero"
 )
 
 // VM is the deterministic WASM execution engine.
 type VM struct {
-	runtime           wazero.Runtime
-	hasher            types.Hasher
-	maxDepth          uint32
-	executionTimeout  time.Duration
+	runtime          wazero.Runtime
+	hasher           types.Hasher
+	maxDepth         uint32
+	executionTimeout time.Duration
 }
 
 // WithTimeout sets the execution timeout for the VM.
@@ -46,7 +46,7 @@ type ExecutionResult struct {
 	Events          []types.Event
 	Reverted        bool
 	ContractAddress *types.Address // Set for deploy operations
-	GasLimit        uint64          // Gas limit for the execution
+	GasLimit        uint64         // Gas limit for the execution
 }
 
 // Execute runs a contract call or deployment.
@@ -335,13 +335,13 @@ func (vm *VM) executeCall(ctx context.Context, tx *types.CallContractTx, st stat
 
 // allowedHostFunctions is the whitelist of allowed "env" function imports.
 var allowedHostFunctions = map[string]bool{
-	"read_storage":    true,
-	"write_storage":   true,
-	"emit_event":      true,
-	"read_caller":     true,
-	"read_block_height": true,
+	"read_storage":         true,
+	"write_storage":        true,
+	"emit_event":           true,
+	"read_caller":          true,
+	"read_block_height":    true,
 	"read_block_timestamp": true,
-	"transfer_token":  true,
+	"transfer_token":       true,
 }
 
 // validateImports checks that the compiled module only imports from allowed modules.

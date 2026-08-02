@@ -15,8 +15,8 @@ import (
 // Config represents localnet configuration options.
 type Config struct {
 	NumValidators int
-	OutputDir    string
-	ChainID      string
+	OutputDir     string
+	ChainID       string
 }
 
 // DefaultConfig returns sensible defaults for localnet.
@@ -85,11 +85,11 @@ func GenerateLocalnet(cfg Config) ([]NodeConfig, error) {
 
 		// Add to validators for genesis
 		validators[i] = map[string]interface{}{
-			"address":      kp.Address.String(),
-			"pub_key":      hex.EncodeToString(kp.PublicKey),
+			"address":       kp.Address.String(),
+			"pub_key":       hex.EncodeToString(kp.PublicKey),
 			"consensus_key": hex.EncodeToString(kp.PublicKey),
-			"stake":        1000000,
-			"commission":   "1000",
+			"stake":         1000000,
+			"commission":    "1000",
 		}
 
 		// Generate node config file

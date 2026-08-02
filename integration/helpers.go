@@ -75,14 +75,14 @@ func NewTestNode(t *testing.T) (*node.Node, *wallet.KeyPair) {
 	require.NoError(t, err)
 
 	cfg := node.Config{
-		DataDir:         t.TempDir(),
-		P2PPort:         0,
-		MaxTxPerBlock:   100,
-		ProposerTimeout: 100 * time.Millisecond,
-		MempoolMaxSize:  10000,
-		MempoolTTL:      300 * time.Second,
+		DataDir:          t.TempDir(),
+		P2PPort:          0,
+		MaxTxPerBlock:    100,
+		ProposerTimeout:  100 * time.Millisecond,
+		MempoolMaxSize:   10000,
+		MempoolTTL:       300 * time.Second,
 		SnapshotInterval: 10,
-		Validators:      []types.Address{kp.Address()},
+		Validators:       []types.Address{kp.Address()},
 	}
 
 	n, err := node.New(cfg)
@@ -98,6 +98,7 @@ func NewTestNode(t *testing.T) (*node.Node, *wallet.KeyPair) {
 //   - TempDir for persistent storage
 //   - Wallet/KeyPair
 //   - P2P disabled (P2PPort=0)
+//
 // Returns nodes and their keypairs.
 // Each node must have ALL addresses as Validators.
 func NewMultiNodeNetwork(t *testing.T, n int) ([]*node.Node, []*wallet.KeyPair) {
@@ -282,8 +283,8 @@ func CreateTestTransaction(t *testing.T, senderKP *wallet.KeyPair, hasher types.
 	t.Helper()
 
 	tx := types.NewTransaction(
-		1,                          // version
-		0,                          // chainID
+		1,                         // version
+		0,                         // chainID
 		senderKP.Address(),        // sender
 		1,                         // nonce
 		[]byte("test data"),       // payload

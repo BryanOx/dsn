@@ -71,12 +71,12 @@ func (tb *TokenBucket) Available() float64 {
 
 // GossipEngine handles block and transaction gossip with fan-out and rate limiting.
 type GossipEngine struct {
-	pm        *PeerManager
-	seenSet   *consensus.SeenSet
-	p2p       *P2PNode
-	buckets   map[PeerID]*TokenBucket
-	mu        sync.RWMutex
-	stopCh    chan struct{}
+	pm      *PeerManager
+	seenSet *consensus.SeenSet
+	p2p     *P2PNode
+	buckets map[PeerID]*TokenBucket
+	mu      sync.RWMutex
+	stopCh  chan struct{}
 
 	// Rate limiter settings
 	burstTokens float64

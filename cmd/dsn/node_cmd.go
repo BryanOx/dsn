@@ -14,10 +14,10 @@ import (
 
 // NodeFlags holds flags for the node start command.
 type NodeFlags struct {
-	genesisFile    string
-	validatorKey   string
-	dataDir        string
-	configPath     string
+	genesisFile  string
+	validatorKey string
+	dataDir      string
+	configPath   string
 }
 
 var nodeFlags NodeFlags
@@ -160,24 +160,24 @@ func runNodeStart(cmd *cobra.Command, args []string) error {
 // convertToNodeConfig converts config.Config to node.Config.
 func convertToNodeConfig(cfg *config.Config) node.Config {
 	return node.Config{
-		ChainID:                  cfg.Chain.ChainID,
-		DataDir:                  cfg.Storage.DataDir,
-		MempoolMaxSize:           cfg.Chain.MempoolMaxSize,
-		MempoolTTL:               cfg.Chain.MempoolTTL,
-		RPCPort:                  cfg.RPC.Port,
-		P2PPort:                  cfg.P2P.Port,
-		Validators:               nil, // Will be loaded from DB
-		MaxTxPerBlock:            cfg.Chain.MaxTxPerBlock,
-		ProposerTimeout:          cfg.Chain.ProposerTimeout,
-		GenesisFile:              cfg.Genesis.File,
-		ValidatorKeyFile:         cfg.Validator.KeyFile,
-		MaxPeers:                 cfg.P2P.MaxPeers,
-		MetricsPort:              cfg.Metrics.Port,
-		IndexerEnabled:           cfg.Chain.IndexerEnabled,
-		SnapshotInterval:         cfg.Snapshot.Interval,
-		FastSyncEnabled:          cfg.Chain.FastSyncEnabled,
+		ChainID:                 cfg.Chain.ChainID,
+		DataDir:                 cfg.Storage.DataDir,
+		MempoolMaxSize:          cfg.Chain.MempoolMaxSize,
+		MempoolTTL:              cfg.Chain.MempoolTTL,
+		RPCPort:                 cfg.RPC.Port,
+		P2PPort:                 cfg.P2P.Port,
+		Validators:              nil, // Will be loaded from DB
+		MaxTxPerBlock:           cfg.Chain.MaxTxPerBlock,
+		ProposerTimeout:         cfg.Chain.ProposerTimeout,
+		GenesisFile:             cfg.Genesis.File,
+		ValidatorKeyFile:        cfg.Validator.KeyFile,
+		MaxPeers:                cfg.P2P.MaxPeers,
+		MetricsPort:             cfg.Metrics.Port,
+		IndexerEnabled:          cfg.Chain.IndexerEnabled,
+		SnapshotInterval:        cfg.Snapshot.Interval,
+		FastSyncEnabled:         cfg.Chain.FastSyncEnabled,
 		TrustedCheckpointHeight: cfg.Chain.TrustedCheckpointHeight,
 		TrustedCheckpointHash:   cfg.Chain.TrustedCheckpointHash,
-		BootstrapPeers:           cfg.P2P.BootstrapPeers,
+		BootstrapPeers:          cfg.P2P.BootstrapPeers,
 	}
 }

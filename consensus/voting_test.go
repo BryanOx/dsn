@@ -4,8 +4,8 @@ import (
 	"crypto/ed25519"
 	"testing"
 
-	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/staking"
+	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/types"
 	"github.com/stretchr/testify/require"
 )

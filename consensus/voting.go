@@ -32,11 +32,11 @@ type VotingState struct {
 // NewVotingState creates a voting state for the given height/round and validator snapshot.
 func NewVotingState(height uint64, round uint32, blockHash types.Hash, snapshot *staking.ValidatorSnapshot) *VotingState {
 	return &VotingState{
-		height:    height,
-		round:     round,
-		blockHash: blockHash,
-		snapshot: snapshot,
-		prevotes:  make(map[types.Address]*types.Vote),
+		height:     height,
+		round:      round,
+		blockHash:  blockHash,
+		snapshot:   snapshot,
+		prevotes:   make(map[types.Address]*types.Vote),
 		precommits: make(map[types.Address]*types.Vote),
 	}
 }

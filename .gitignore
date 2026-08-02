@@ -27,6 +27,14 @@ data/
 *.wallet.json
 !example*.wallet.json
 
+# Local key and transaction working folders (never commit keys)
+wallets/
+transactions/
+
+# JS SDK build output and dependencies
+sdks/dsn-js/node_modules/
+sdks/dsn-js/dist/
+
 # SDD planning artifacts (persisted in engram)
 sdd/
 

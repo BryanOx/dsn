@@ -8,8 +8,8 @@ import (
 // RetryConfig holds retry configuration.
 type RetryConfig struct {
 	MaxAttempts int
-	Backoff      time.Duration
-	MaxBackoff   time.Duration
+	Backoff     time.Duration
+	MaxBackoff  time.Duration
 }
 
 // DefaultRetryConfig returns default retry settings.

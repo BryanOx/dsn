@@ -24,10 +24,10 @@ type HarnessConfig struct {
 
 // Harness orchestrates the soak test
 type Harness struct {
-	cfg        HarnessConfig
-	generator  workload.Generator
-	reporter   *metrics.Reporter
-	logger     *slog.Logger
+	cfg       HarnessConfig
+	generator workload.Generator
+	reporter  *metrics.Reporter
+	logger    *slog.Logger
 	// Metrics
 	totalSubmitted atomic.Int64
 	totalFailed    atomic.Int64
@@ -84,8 +84,8 @@ func createGenerator(profile string, tps int) (workload.Generator, error) {
 		gen, err := workload.Get("burst", workload.BurstConfig{
 			NumAccounts:      100,
 			BaseTPS:          20,
-			BurstMultiplier: 5,
-			BurstDuration:   30 * time.Second,
+			BurstMultiplier:  5,
+			BurstDuration:    30 * time.Second,
 			CooldownDuration: 120 * time.Second,
 			ChainID:          1,
 		})

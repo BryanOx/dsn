@@ -14,15 +14,15 @@ import (
 
 // BlockSyncEngine handles block synchronization with peers using range requests.
 type BlockSyncEngine struct {
-	pm          *PeerManager
-	p2p         *P2PNode
-	persistent  *state.PersistentState
-	mu          sync.RWMutex
-	stopCh      chan struct{}
+	pm         *PeerManager
+	p2p        *P2PNode
+	persistent *state.PersistentState
+	mu         sync.RWMutex
+	stopCh     chan struct{}
 
 	// Sync state
 	lastSyncedHeight uint64
-	targetHeight    uint64
+	targetHeight     uint64
 	isSyncing        bool
 
 	// Callbacks
@@ -41,14 +41,14 @@ var lastSyncedHeightKey = []byte("last_synced_height")
 // NewBlockSyncEngine creates a new BlockSyncEngine.
 func NewBlockSyncEngine(pm *PeerManager, p2p *P2PNode, persistent *state.PersistentState) *BlockSyncEngine {
 	return &BlockSyncEngine{
-		pm:              pm,
-		p2p:             p2p,
-		persistent:      persistent,
-		stopCh:          make(chan struct{}),
+		pm:               pm,
+		p2p:              p2p,
+		persistent:       persistent,
+		stopCh:           make(chan struct{}),
 		lastSyncedHeight: 0,
-		targetHeight:    0,
-		isSyncing:       false,
-		pendingRequests: make(map[uint64]time.Time),
+		targetHeight:     0,
+		isSyncing:        false,
+		pendingRequests:  make(map[uint64]time.Time),
 	}
 }
 

@@ -16,58 +16,58 @@ func TestValidatorRegistrationTx_Acceptance(t *testing.T) {
 	t.Skip("integration: requires full transaction flow")
 
 	/*
-	// Create validator key
-	pub, priv, err := ed25519.GenerateKey(nil)
-	require.NoError(t, err)
+		// Create validator key
+		pub, priv, err := ed25519.GenerateKey(nil)
+		require.NoError(t, err)
 
-	validatorAddr, err := types.AddressFromBytes(pub[:20])
-	require.NoError(t, err)
+		validatorAddr, err := types.AddressFromBytes(pub[:20])
+		require.NoError(t, err)
 
-	// Create validator registration message
-	msg := &types.ValidatorRegistrationMsg{
-		PubKey:        pub[:],
-		StakeAmount:   10000000,
-		CommissionRate: 1000,
-		Metadata:      "validator-1",
-	}
+		// Create validator registration message
+		msg := &types.ValidatorRegistrationMsg{
+			PubKey:        pub[:],
+			StakeAmount:   10000000,
+			CommissionRate: 1000,
+			Metadata:      "validator-1",
+		}
 
-	// Create transaction
-	tx, err := types.NewValidatorRegistrationTx(
-		validatorAddr, // sender (same as validator for self-registration)
-		0,              // nonce
-		msg,
-		1000,           // max fee
-		uint64(time.Now().Unix()),
-		1,              // chain ID
-	)
-	require.NoError(t, err)
+		// Create transaction
+		tx, err := types.NewValidatorRegistrationTx(
+			validatorAddr, // sender (same as validator for self-registration)
+			0,              // nonce
+			msg,
+			1000,           // max fee
+			uint64(time.Now().Unix()),
+			1,              // chain ID
+		)
+		require.NoError(t, err)
 
-	// Create mempool
-	pool := NewMempool(DefaultConfig())
+		// Create mempool
+		pool := NewMempool(DefaultConfig())
 
-	// Add transaction to mempool
-	err = pool.AddTx(tx)
-	require.NoError(t, err, "mempool should accept validator registration tx")
+		// Add transaction to mempool
+		err = pool.AddTx(tx)
+		require.NoError(t, err, "mempool should accept validator registration tx")
 
-	// Verify transaction is in mempool
-	if pool.Size() != 1 {
-		t.Errorf("expected 1 transaction in mempool, got %d", pool.Size())
-	}
+		// Verify transaction is in mempool
+		if pool.Size() != 1 {
+			t.Errorf("expected 1 transaction in mempool, got %d", pool.Size())
+		}
 
-	// Get transaction from mempool
-	retrievedTx := pool.GetTx(tx.TxID)
-	if retrievedTx == nil {
-		t.Error("transaction should be retrievable from mempool")
-	}
+		// Get transaction from mempool
+		retrievedTx := pool.GetTx(tx.TxID)
+		if retrievedTx == nil {
+			t.Error("transaction should be retrievable from mempool")
+		}
 
-	// Verify it's a validator registration tx
-	msg2, err := retrievedTx.ValidatorRegistration()
-	if err != nil {
-		t.Errorf("failed to get validator registration: %v", err)
-	}
-	if msg2.StakeAmount != msg.StakeAmount {
-		t.Errorf("stake amount mismatch: %d vs %d", msg2.StakeAmount, msg.StakeAmount)
-	}
+		// Verify it's a validator registration tx
+		msg2, err := retrievedTx.ValidatorRegistration()
+		if err != nil {
+			t.Errorf("failed to get validator registration: %v", err)
+		}
+		if msg2.StakeAmount != msg.StakeAmount {
+			t.Errorf("stake amount mismatch: %d vs %d", msg2.StakeAmount, msg.StakeAmount)
+		}
 	*/
 }
 

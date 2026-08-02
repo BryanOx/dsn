@@ -13,9 +13,9 @@ func TestEpochAtHeight(t *testing.T) {
 		height uint64
 		epoch  uint64
 	}{
-		{0, 0},    // genesis
-		{1, 1},    // first block of epoch 1
-		{99, 1},   // last block of epoch 1
+		{0, 0},     // genesis
+		{1, 1},     // first block of epoch 1
+		{99, 1},    // last block of epoch 1
 		{100, 1},   // last block of epoch 1
 		{101, 2},   // first block of epoch 2
 		{200, 2},   // last block of epoch 2
@@ -84,8 +84,12 @@ func TestProcessEpochTransition_ActivateValidators(t *testing.T) {
 	fundAccount(s, addr2, 200_000)
 	id1, _ := RegisterValidator(s, [32]byte{1}, addr1, types.NewAmount(100_000), 0, 0)
 	id2, _ := RegisterValidator(s, [32]byte{2}, addr2, types.NewAmount(100_000), 0, 0)
-	acc1, _ := s.GetAccount(addr1); acc1.SubBalance(types.NewAmount(100_000)); s.SetAccount(addr1, acc1)
-	acc2, _ := s.GetAccount(addr2); acc2.SubBalance(types.NewAmount(100_000)); s.SetAccount(addr2, acc2)
+	acc1, _ := s.GetAccount(addr1)
+	acc1.SubBalance(types.NewAmount(100_000))
+	s.SetAccount(addr1, acc1)
+	acc2, _ := s.GetAccount(addr2)
+	acc2.SubBalance(types.NewAmount(100_000))
+	s.SetAccount(addr2, acc2)
 
 	// Both should be pending
 	v1, _ := GetValidator(s, id1)
@@ -120,7 +124,9 @@ func TestProcessEpochTransition_RemoveUnstaking(t *testing.T) {
 	fundAccount(s, addr, 200_000)
 
 	id, _ := RegisterValidator(s, [32]byte{1}, addr, types.NewAmount(100_000), 0, 0)
-	acc, _ := s.GetAccount(addr); acc.SubBalance(types.NewAmount(100_000)); s.SetAccount(addr, acc)
+	acc, _ := s.GetAccount(addr)
+	acc.SubBalance(types.NewAmount(100_000))
+	s.SetAccount(addr, acc)
 	ActivateValidator(s, id, 1)
 
 	// Start unstaking with cooldown
@@ -153,7 +159,9 @@ func TestProcessEpochTransition_DeferredUnstaking(t *testing.T) {
 	fundAccount(s, addr, 200_000)
 
 	id, _ := RegisterValidator(s, [32]byte{1}, addr, types.NewAmount(100_000), 0, 0)
-	acc, _ := s.GetAccount(addr); acc.SubBalance(types.NewAmount(100_000)); s.SetAccount(addr, acc)
+	acc, _ := s.GetAccount(addr)
+	acc.SubBalance(types.NewAmount(100_000))
+	s.SetAccount(addr, acc)
 	ActivateValidator(s, id, 1)
 
 	// Start unstaking, cooldown ends at epoch 3
@@ -249,7 +257,9 @@ func TestGetEpochInfo(t *testing.T) {
 	fundAccount(s, addr, 200_000)
 
 	RegisterValidator(s, [32]byte{1}, addr, types.NewAmount(100_000), 0, 0)
-	acc, _ := s.GetAccount(addr); acc.SubBalance(types.NewAmount(100_000)); s.SetAccount(addr, acc)
+	acc, _ := s.GetAccount(addr)
+	acc.SubBalance(types.NewAmount(100_000))
+	s.SetAccount(addr, acc)
 
 	ProcessEpochTransition(s, 100)
 

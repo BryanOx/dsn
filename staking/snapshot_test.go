@@ -11,7 +11,7 @@ import (
 // mockState implements StakingState for testing
 type mockState struct {
 	accounts map[types.Address]*state.Account
-	kv      map[string][]byte
+	kv       map[string][]byte
 }
 
 func newMockState() *mockState {
@@ -93,14 +93,14 @@ func TestCreateAndGetSnapshot(t *testing.T) {
 // TestSnapshotRoundTrip tests binary encode/decode round-trip
 func TestSnapshotRoundTrip(t *testing.T) {
 	v1 := &Validator{
-		BondedStake:  types.NewAmount(100),
-		VotingPower:  100,
-		ConsensusID:  types.Address{1},
+		BondedStake: types.NewAmount(100),
+		VotingPower: 100,
+		ConsensusID: types.Address{1},
 	}
 	v2 := &Validator{
-		BondedStake:  types.NewAmount(200),
-		VotingPower:  200,
-		ConsensusID:  types.Address{2},
+		BondedStake: types.NewAmount(200),
+		VotingPower: 200,
+		ConsensusID: types.Address{2},
 	}
 
 	original := &ValidatorSnapshot{

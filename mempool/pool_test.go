@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dsn/dsn/types"
 	"github.com/dsn/dsn/state"
+	"github.com/dsn/dsn/types"
 )
 
 // Helper to create a test account with valid Ed25519 key

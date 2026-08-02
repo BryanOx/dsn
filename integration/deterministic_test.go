@@ -17,7 +17,9 @@ import (
 func TestDeterministic_TransactionReplay(t *testing.T) {
 	nodes, kps := NewMultiNodeNetwork(t, 3)
 	defer func() {
-		for _, n := range nodes { n.Close() }
+		for _, n := range nodes {
+			n.Close()
+		}
 	}()
 
 	hasher := types.SHA256Hasher{}
@@ -52,7 +54,9 @@ func TestDeterministic_TransactionReplay(t *testing.T) {
 func TestDeterministic_EmptyBlock(t *testing.T) {
 	nodes, kps := NewMultiNodeNetwork(t, 2)
 	defer func() {
-		for _, n := range nodes { n.Close() }
+		for _, n := range nodes {
+			n.Close()
+		}
 	}()
 
 	// Mine empty blocks on both nodes using the same proposer (kps[0])
@@ -68,7 +72,9 @@ func TestDeterministic_EmptyBlock(t *testing.T) {
 func TestDeterministic_MultipleBlocks(t *testing.T) {
 	nodes, kps := NewMultiNodeNetwork(t, 2)
 	defer func() {
-		for _, n := range nodes { n.Close() }
+		for _, n := range nodes {
+			n.Close()
+		}
 	}()
 
 	hasher := types.SHA256Hasher{}

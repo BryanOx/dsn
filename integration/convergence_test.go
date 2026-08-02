@@ -9,8 +9,8 @@ import (
 
 	"github.com/dsn/dsn/consensus"
 	"github.com/dsn/dsn/node"
-	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/staking"
+	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/types"
 	"github.com/dsn/dsn/wallet"
 	"github.com/stretchr/testify/require"
@@ -56,18 +56,18 @@ func generateHeavyLoad(t *testing.T, kps []*wallet.KeyPair, hasher types.Hasher,
 		kp := kps[senderIdx]
 
 		// Nonce continues from previous rounds
-		nonce := baseNonce + uint64((i / len(kps)) + 1)
+		nonce := baseNonce + uint64((i/len(kps))+1)
 
 		// Sender must be the funded validator (kp.Address()), not a random recipient
 		tx := types.NewTransaction(
-			1,           // version
-			0,           // chainID
+			1,            // version
+			0,            // chainID
 			kp.Address(), // sender = funded validator
-			nonce,       // nonce - sequential per sender
+			nonce,        // nonce - sequential per sender
 			[]byte("heavy-load-test"),
-			nil,        // constraints
-			100,        // maxFee
-			1000,       // gasLimit
+			nil,  // constraints
+			100,  // maxFee
+			1000, // gasLimit
 			uint64(time.Now().Unix()+int64(round)),
 		)
 		require.NoError(t, kp.Sign(tx, hasher))
@@ -454,12 +454,12 @@ func TestConvergence_FastSync(t *testing.T) {
 	nodes[1].Close()
 
 	n2, err := node.New(node.Config{
-		DataDir:         dataDir,
-		P2PPort:         0,
-		MempoolMaxSize:  10000,
-		MempoolTTL:      300 * time.Second,
+		DataDir:          dataDir,
+		P2PPort:          0,
+		MempoolMaxSize:   10000,
+		MempoolTTL:       300 * time.Second,
 		SnapshotInterval: 10,
-		Validators:      []types.Address{kps[0].Address(), kps[1].Address()},
+		Validators:       []types.Address{kps[0].Address(), kps[1].Address()},
 	})
 	require.NoError(t, err)
 	defer n2.Close()

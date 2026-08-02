@@ -27,7 +27,9 @@ func TestFramework_SingleNode(t *testing.T) {
 func TestFramework_MultiNodeConvergence(t *testing.T) {
 	nodes, kps := NewMultiNodeNetwork(t, 2)
 	defer func() {
-		for _, n := range nodes { n.Close() }
+		for _, n := range nodes {
+			n.Close()
+		}
 	}()
 
 	hasher := types.SHA256Hasher{}

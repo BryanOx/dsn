@@ -9,8 +9,8 @@ import (
 
 // BlockData represents the serialized block data stored in BoltDB.
 type BlockData struct {
-	Header    *types.BlockHeader `json:"header"`
-	TxCount   int                 `json:"tx_count"`
+	Header     *types.BlockHeader `json:"header"`
+	TxCount    int                `json:"tx_count"`
 	EventCount int                `json:"event_count"`
 }
 

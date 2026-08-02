@@ -339,8 +339,13 @@ func (n *Node) startupPhase7_InitGenesisState(ctx context.Context) error {
 			}
 		}
 
-		// Store genesis state root
-		if _, err := n.persistent.Commit(); err != nil {
+		// Store genesis state via the same path used for every block commit
+		// (accounts + kvstore → persistent cache → BoltDB). A bare
+		// persistent.Commit() persisted an empty cache, so genesis accounts
+		// and kvstore never reached disk and the node re-initialized (or,
+		// worse, booted empty) after every restart.
+		committedRoot, err := n.CommitState()
+		if err != nil {
 			return &StartupError{
 				Phase:   PhaseInitGenesisState,
 				Message: "failed to commit genesis state",
@@ -348,7 +353,16 @@ func (n *Node) startupPhase7_InitGenesisState(ctx context.Context) error {
 			}
 		}
 
-		_ = root // genesis state root initialized
+		// Verify the persisted state root matches the one produced by
+		// genesis init so a corrupted or partial write is caught at boot.
+		persistedRoot := n.persistent.GetStateRoot()
+		if persistedRoot != committedRoot || persistedRoot != root {
+			return &StartupError{
+				Phase:   PhaseInitGenesisState,
+				Message: fmt.Sprintf("genesis state root mismatch: expected %x, got %x", root, persistedRoot),
+			}
+		}
+
 		n.currentHeight.Store(0)
 		n.currentTipHash.Store(&types.Hash{})
 	} else {

@@ -75,17 +75,17 @@ func GenerateLocalnet(cfg Config) ([]NodeConfig, error) {
 		// Create node config
 		nodes[i] = NodeConfig{
 			Index:       i,
-			Address:     kp.Address.String(),
+			Address:     hex.EncodeToString(kp.Address[:]),
 			PublicKey:   hex.EncodeToString(kp.PublicKey),
-			P2PPort:     26656 + i,
-			RPCPort:     8545 + i,
-			MetricsPort: 9464 + i,
+			P2PPort:     26656,
+			RPCPort:     8545,
+			MetricsPort: 9464,
 			IP:          fmt.Sprintf("10.0.1.%d", 10+i),
 		}
 
 		// Add to validators for genesis
 		validators[i] = map[string]interface{}{
-			"address":       kp.Address.String(),
+			"address":       hex.EncodeToString(kp.Address[:]),
 			"pub_key":       hex.EncodeToString(kp.PublicKey),
 			"consensus_key": hex.EncodeToString(kp.PublicKey),
 			"stake":         1000000,
@@ -184,6 +184,7 @@ func generateGenesis(outputDir, chainID string, validators []map[string]interfac
 	}
 
 	genesis := fmt.Sprintf(`{
+    "genesis_version": 1,
     "genesis_time": "%s",
     "chain_id": "%s",
     "initial_height": 1,

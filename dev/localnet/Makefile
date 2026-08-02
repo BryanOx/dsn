@@ -18,7 +18,7 @@ devnet-init:
 
 devnet-up: devnet-init
 	@echo "Starting localnet nodes..."
-	@cd tmp && docker-compose -f ../docker-compose.yml up -d
+	@cd tmp && docker compose -f ../docker-compose.yml up -d
 	@echo "Localnet started!"
 	@echo "  node0: P2P :26656, RPC :8545, Metrics :9464"
 	@echo "  node1: P2P :26657, RPC :8546, Metrics :9465"
@@ -26,16 +26,16 @@ devnet-up: devnet-init
 
 devnet-down:
 	@echo "Stopping localnet nodes..."
-	@cd tmp && docker-compose -f ../docker-compose.yml down || true
+	@cd tmp && docker compose -f ../docker-compose.yml down || true
 
 devnet-reset:
 	@echo "Resetting localnet..."
-	@cd tmp && docker-compose -f ../docker-compose.yml down -v || true
+	@cd tmp && docker compose -f ../docker-compose.yml down -v || true
 	@rm -rf tmp
 	@echo "Localnet reset. Run 'make devnet-up' to restart."
 
 devnet-logs:
-	@cd tmp && docker-compose -f ../docker-compose.yml logs -f
+	@cd tmp && docker compose -f ../docker-compose.yml logs -f
 
 devnet-status:
-	@cd tmp && docker-compose -f ../docker-compose.yml ps
+	@cd tmp && docker compose -f ../docker-compose.yml ps

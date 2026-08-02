@@ -208,6 +208,10 @@ func (ge *GossipEngine) selectPeers(peers []*Peer, n int) []*Peer {
 
 // GossipBlock fans out a block to a subset of connected peers.
 // Fan-out count = max(3, sqrt(N)) where N is the number of connected peers.
+// The data must be a fully-framed block message (consensus.EncodeBlockMessage
+// output, i.e. type byte 0x01 + payload). SendTo adds only the transport
+// length prefix — framing here again would produce a double length prefix
+// that receivers misparse as a legacy transaction.
 func (ge *GossipEngine) GossipBlock(data []byte) {
 	// Compute block hash for dedup
 	blockHash := ge.computeHash(data)
@@ -237,8 +241,6 @@ func (ge *GossipEngine) GossipBlock(data []byte) {
 	selectedPeers := ge.selectPeers(connectedPeers, fanOut)
 
 	// Send to selected peers, checking rate limit
-	framed := FrameMessage(MsgTypeBlock, data)
-
 	for _, peer := range selectedPeers {
 		bucket := ge.getBucket(peer.ID)
 		if !bucket.Allow() {
@@ -246,8 +248,8 @@ func (ge *GossipEngine) GossipBlock(data []byte) {
 			continue
 		}
 
-		// Send to peer using P2PNode
-		if err := ge.p2p.SendTo(peer.Address, framed); err != nil {
+		// Send to peer using P2PNode (adds the transport length prefix)
+		if err := ge.p2p.SendTo(peer.Address, data); err != nil {
 			// Log error or handle peer failure
 			_ = err
 		}

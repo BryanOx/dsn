@@ -15,6 +15,53 @@ func newMockP2PNode(t *testing.T) *P2PNode {
 	return p2p
 }
 
+// TestGossipEngine_ReBroadcastReachesPeer verifies that a block re-broadcast
+// through GossipBlock reaches the peer as a single-framed block message. Before
+// the fix GossipBlock framed the payload with FrameMessage and then SendTo
+// added a second transport length prefix, so receivers misparsed the first
+// frame bytes as a legacy transaction and the block was dropped.
+func TestGossipEngine_ReBroadcastReachesPeer(t *testing.T) {
+	n1, _ := NewP2PNode(0)
+	defer n1.Close()
+	n2, _ := NewP2PNode(0)
+	defer n2.Close()
+
+	if err := n1.Connect(n2.Addr()); err != nil {
+		t.Fatal(err)
+	}
+
+	// The PeerManager must know the peer as connected so SendTo can resolve it.
+	id := PeerIDFromBytes([]byte(n2.Addr()))
+	peer := n1.PeerManager().AddPeer(id, n2.Addr())
+	peer.mu.Lock()
+	peer.State = PeerConnected
+	peer.mu.Unlock()
+
+	ge := NewGossipEngine(n1.PeerManager(), n1)
+	defer ge.Stop()
+
+	received := make(chan []byte, 1)
+	n2.SetBlockHandler(func(data []byte) {
+		received <- data
+	})
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Framed block message (type byte 0x01 + payload), the shape produced by
+	// consensus.EncodeBlockMessage. GossipBlock must pass it through unchanged.
+	blockMsg := []byte{MsgTypeBlock, 0xAA, 0xBB}
+	ge.GossipBlock(blockMsg)
+
+	select {
+	case got := <-received:
+		if len(got) != len(blockMsg) || got[0] != MsgTypeBlock || got[1] != 0xAA || got[2] != 0xBB {
+			t.Fatalf("re-broadcast message corrupted: got %x want %x", got, blockMsg)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: gossip re-broadcast never reached the peer")
+	}
+}
+
 // TestTokenBucket_Initial verifies that a new bucket has maxTokens available.
 func TestTokenBucket_Initial(t *testing.T) {
 	tb := NewTokenBucket(100, 10)

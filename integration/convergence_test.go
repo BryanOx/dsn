@@ -109,6 +109,82 @@ func restartNode(t *testing.T, n *node.Node) *node.Node {
 	return n2
 }
 
+// TestConvergence_ConsensusLoop is the end-to-end two-phase voting regression.
+// Three nodes run the REAL consensus loop: the proposer broadcasts a proof-less
+// proposal, every validator prevotes/precommits over P2P, the proposer attaches
+// the 2/3 commit proof and broadcasts the final block, and all nodes apply it.
+// Convergence on identical state roots proves the receivers only accepted
+// proof-carrying blocks — ValidateBlock rejects nil commit proofs, so a block
+// without one would never be applied and the nodes would stall at height 0.
+func TestConvergence_ConsensusLoop(t *testing.T) {
+	nodes, kps := NewConsensusLoopNetwork(t, 3)
+	for _, n := range nodes {
+		defer n.Close()
+	}
+
+	fundAllAccounts(t, nodes, kps, 100000)
+
+	// Submit transfers to every node's mempool — whichever node is proposer
+	// for height 1 includes them, and every node cleans its mempool on apply.
+	hasher := types.SHA256Hasher{}
+	var txs []*types.Transaction
+	for _, kp := range kps {
+		tx := types.NewTransaction(1, 0, kp.Address(), 1,
+			types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
+			uint64(time.Now().Unix()))
+		require.NoError(t, kp.Sign(tx, hasher))
+		txs = append(txs, tx)
+	}
+	for _, n := range nodes {
+		for _, tx := range txs {
+			require.NoError(t, n.Mempool().Submit(tx))
+		}
+	}
+
+	for _, n := range nodes {
+		n.StartConsensus()
+	}
+	defer func() {
+		for _, n := range nodes {
+			n.StopConsensus()
+		}
+	}()
+
+	const wantHeight = uint64(5)
+	require.Eventually(t, func() bool {
+		for _, n := range nodes {
+			if n.CurrentHeight() < wantHeight {
+				return false
+			}
+		}
+		return true
+	}, 30*time.Second, 100*time.Millisecond)
+
+	// All nodes applied the same proof-carrying blocks.
+	CompareStateRoots(t, nodes)
+
+	// Every block applied by a non-proposer carries a valid commit proof. The
+	// proposer stores headers only, so skip the proposer for each height.
+	activeVals, err := staking.GetActiveValidators(nodes[0].State())
+	require.NoError(t, err)
+	for height := uint64(1); height <= wantHeight; height++ {
+		proposer := consensus.WeightedProposerAtHeight(height, activeVals)
+		for i, n := range nodes {
+			if types.DeriveConsensusID(kps[i].PublicKey) == proposer {
+				continue
+			}
+			block, err := n.GetBlock(height)
+			require.NoError(t, err, "node %d must have applied height %d", i, height)
+			require.NotNil(t, block.CommitProof, "block %d must carry a commit proof", height)
+			require.Equal(t, height, block.CommitProof.Height)
+			headerHash, err := block.HeaderHash(n.Hasher())
+			require.NoError(t, err)
+			require.Equal(t, headerHash, block.CommitProof.BlockHash,
+				"block %d commit proof must reference the block hash", height)
+		}
+	}
+}
+
 // TestConvergence_3Node tests basic state convergence with 3 nodes over 5 rounds.
 func TestConvergence_3Node(t *testing.T) {
 	nodes, kps := NewMultiNodeNetwork(t, 3)

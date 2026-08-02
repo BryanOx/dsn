@@ -428,8 +428,13 @@ func (n *Node) StartConsensus() {
 	if n.consensusRunning {
 		return
 	}
-	// Only start if P2P is enabled AND we have validators
-	if n.p2p == nil || len(n.validators) == 0 {
+	// Only start if P2P is enabled AND the staking registry has active validators
+	// (proposer selection reads from the registry, not the legacy n.validators set).
+	if n.p2p == nil {
+		return
+	}
+	active, err := staking.GetActiveValidators(n.State())
+	if err != nil || len(active) == 0 {
 		return
 	}
 

@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"net"
 	"testing"
 	"time"
 
@@ -144,6 +145,71 @@ func NewMultiNodeNetwork(t *testing.T, n int) ([]*node.Node, []*wallet.KeyPair) 
 	// Register validators in each node's staking state
 	for _, n := range nodes {
 		registerValidatorsInState(t, n.State(), validators, keyPairs)
+	}
+
+	return nodes, keyPairs
+}
+
+// freePort returns an available TCP port for a P2P node.
+func freePort(t *testing.T) int {
+	t.Helper()
+
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port
+}
+
+// NewConsensusLoopNetwork creates N nodes with P2P enabled and fully connected
+// in a mesh, each registered as a validator. Unlike NewMultiNodeNetwork (which
+// disables P2P so blocks are mined manually), these nodes run the real
+// two-phase consensus loop end to end: proposal → prevote/precommit → commit
+// proof → final block.
+func NewConsensusLoopNetwork(t *testing.T, n int) ([]*node.Node, []*wallet.KeyPair) {
+	t.Helper()
+	require.Greater(t, n, 0, "NewConsensusLoopNetwork: must have at least 1 node")
+
+	// Generate keypairs first to get all validator addresses
+	keyPairs := make([]*wallet.KeyPair, n)
+	validators := make([]types.Address, n)
+	for i := 0; i < n; i++ {
+		kp, err := wallet.GenerateKey()
+		require.NoError(t, err)
+		keyPairs[i] = kp
+		validators[i] = kp.Address()
+	}
+
+	// Create nodes with P2P enabled
+	nodes := make([]*node.Node, n)
+	for i := 0; i < n; i++ {
+		cfg := node.Config{
+			DataDir:          t.TempDir(),
+			P2PPort:          freePort(t),
+			MaxTxPerBlock:    100,
+			ProposerTimeout:  50 * time.Millisecond,
+			MempoolMaxSize:   10000,
+			MempoolTTL:       300 * time.Second,
+			SnapshotInterval: 10,
+			Validators:       validators, // All nodes have same validator set
+		}
+
+		node, err := node.New(cfg)
+		require.NoError(t, err)
+		node.SetWallet(keyPairs[i])
+		nodes[i] = node
+	}
+
+	// Register validators in each node's staking state
+	for _, n := range nodes {
+		registerValidatorsInState(t, n.State(), validators, keyPairs)
+	}
+
+	// Fully connect the mesh so every node broadcasts (blocks and votes)
+	// directly to every other node.
+	for i := 0; i < n; i++ {
+		for j := i + 1; j < n; j++ {
+			require.NoError(t, nodes[i].P2P().Connect(nodes[j].P2P().Addr()))
+		}
 	}
 
 	return nodes, keyPairs

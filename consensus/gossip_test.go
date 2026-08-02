@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/dsn/dsn/types"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBlockMessage_EncodeDecode(t *testing.T) {
@@ -17,7 +18,10 @@ func TestBlockMessage_EncodeDecode(t *testing.T) {
 			TxRoot:        types.Hash{7, 8, 9},
 			ReceiptRoot:   types.Hash{10, 11, 12},
 			ValidatorRoot: types.Hash{13, 14, 15},
-			Timestamp:     1234567890,
+			ValidatorSetHash: types.Hash{20, 21},
+			EventsRoot:       types.Hash{16, 17, 18},
+			Epoch:            2,
+			Timestamp:        1234567890,
 		},
 		Transactions: []types.Transaction{
 			{
@@ -59,6 +63,40 @@ func TestBlockMessage_EncodeDecode(t *testing.T) {
 	}
 	if decoded.FeeSummary.TotalFees != 100 {
 		t.Errorf("expected total fees 100, got %d", decoded.FeeSummary.TotalFees)
+	}
+	if decoded.Header.EventsRoot != block.Header.EventsRoot {
+		t.Errorf("expected events root %x, got %x", block.Header.EventsRoot, decoded.Header.EventsRoot)
+	}
+	if decoded.CommitProof != nil {
+		t.Error("expected nil commit proof, got non-nil")
+	}
+}
+
+// TestBlockMessage_EncodeDecode_WithCommitProof verifies that a block carrying
+// a CommitProof survives the gossip codec round-trip unchanged.
+func TestBlockMessage_EncodeDecode_WithCommitProof(t *testing.T) {
+	hasher, s, mp, _, _, _, validatorPrivKey, validatorConsensusID := setupTest(t)
+
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil, 1)
+	require.NoError(t, err)
+	attachCommitProof(t, block, s, validatorConsensusID, validatorPrivKey)
+	require.NotNil(t, block.CommitProof)
+
+	data, err := EncodeBlockMessage(block)
+	require.NoError(t, err)
+
+	decoded, err := DecodeBlockMessage(data)
+	require.NoError(t, err)
+
+	require.NotNil(t, decoded.CommitProof, "commit proof must round-trip")
+	require.Equal(t, block.CommitProof.Height, decoded.CommitProof.Height)
+	require.Equal(t, block.CommitProof.BlockHash, decoded.CommitProof.BlockHash)
+	require.Equal(t, block.CommitProof.TotalPower, decoded.CommitProof.TotalPower)
+	require.Equal(t, block.CommitProof.SignedPower, decoded.CommitProof.SignedPower)
+	require.Equal(t, block.CommitProof.SetHash, decoded.CommitProof.SetHash)
+	require.Equal(t, len(block.CommitProof.Precommits), len(decoded.CommitProof.Precommits))
+	for i := range block.CommitProof.Precommits {
+		require.Equal(t, block.CommitProof.Precommits[i], decoded.CommitProof.Precommits[i])
 	}
 }
 

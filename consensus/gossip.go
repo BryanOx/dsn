@@ -40,6 +40,7 @@ func EncodeBlockMessage(block *types.Block) ([]byte, error) {
 		return nil, err
 	}
 	blockBuf.Write(block.Header.Proposer[:])
+	blockBuf.Write(block.Header.EventsRoot[:])
 
 	// Num txs
 	if err := binary.Write(&blockBuf, binary.BigEndian, uint32(len(block.Transactions))); err != nil {
@@ -80,6 +81,24 @@ func EncodeBlockMessage(block *types.Block) ([]byte, error) {
 		if err := ev.Encode(&blockBuf); err != nil {
 			return nil, err
 		}
+	}
+
+	// Optional commit proof: 1-byte presence flag followed (when present) by a
+	// length-prefixed CommitProof. The flag sits AFTER the events so frames
+	// serialized before the proof existed still decode: reading past the events
+	// hits EOF and the block is returned without a proof.
+	if block.CommitProof != nil {
+		blockBuf.WriteByte(0x01)
+		var proofBuf bytes.Buffer
+		if err := block.CommitProof.Encode(&proofBuf); err != nil {
+			return nil, err
+		}
+		if err := binary.Write(&blockBuf, binary.BigEndian, uint32(proofBuf.Len())); err != nil {
+			return nil, err
+		}
+		blockBuf.Write(proofBuf.Bytes())
+	} else {
+		blockBuf.WriteByte(0x00)
 	}
 
 	// Length-prefixed envelope: [4-byte total len][1-byte type][payload]
@@ -142,6 +161,9 @@ func DecodeBlockMessage(data []byte) (*types.Block, error) {
 	if _, err := io.ReadFull(r, block.Header.Proposer[:]); err != nil {
 		return nil, fmt.Errorf("failed to read proposer: %w", err)
 	}
+	if _, err := io.ReadFull(r, block.Header.EventsRoot[:]); err != nil {
+		return nil, fmt.Errorf("failed to read events root: %w", err)
+	}
 
 	var numTxs uint32
 	if err := binary.Read(r, binary.BigEndian, &numTxs); err != nil {
@@ -193,6 +215,31 @@ func DecodeBlockMessage(data []byte) (*types.Block, error) {
 			return nil, fmt.Errorf("event %d: %w", i, err)
 		}
 		block.Events = append(block.Events, ev)
+	}
+
+	// Try to read the optional commit proof (backward compatible - if EOF, no proof).
+	// The presence flag comes after the events, so frames serialized before the
+	// proof existed decode as proof-less blocks.
+	var hasProof uint8
+	if err := binary.Read(r, binary.BigEndian, &hasProof); err != nil {
+		return block, nil // EOF means no proof (backward compatibility)
+	}
+	if hasProof != 0 {
+		var proofLen uint32
+		if err := binary.Read(r, binary.BigEndian, &proofLen); err != nil {
+			return nil, fmt.Errorf("failed to read commit proof length: %w", err)
+		}
+		if proofLen > MaxBlockSize {
+			return nil, fmt.Errorf("commit proof too long: %d > %d", proofLen, MaxBlockSize)
+		}
+		proofData := make([]byte, proofLen)
+		if _, err := io.ReadFull(r, proofData); err != nil {
+			return nil, fmt.Errorf("failed to read commit proof: %w", err)
+		}
+		block.CommitProof = &types.CommitProof{}
+		if err := block.CommitProof.Decode(bytes.NewReader(proofData)); err != nil {
+			return nil, fmt.Errorf("failed to decode commit proof: %w", err)
+		}
 	}
 
 	return block, nil

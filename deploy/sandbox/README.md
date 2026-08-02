@@ -63,7 +63,18 @@ Run a local 3-validator sandbox cluster:
 
 ```bash
 cd deploy/sandbox
+docker-compose build
 docker-compose up -d
+```
+
+**Note**: The `docker-compose build` step is required on first run to build the DSN node image from the Dockerfile. Subsequent runs can use `docker-compose up -d` directly.
+
+### Building the Node Image
+
+The sandbox uses a locally-built Docker image rather than pulling from a registry. The build context points to `dev/localnet/Dockerfile`:
+
+```bash
+docker-compose build  # Builds dsn/node:sandbox image
 ```
 
 Available services:
@@ -76,6 +87,19 @@ Available services:
 | P2P (validator-0) | 30333 | P2P networking |
 | P2P (validator-1) | 30334 | P2P networking |
 | P2P (validator-2) | 30335 | P2P networking |
+
+### Monitoring
+
+The sandbox includes built-in monitoring with Prometheus and Grafana:
+
+| Service | Port | URL | Credentials |
+|---------|------|-----|--------------|
+| Prometheus | 9090 | http://localhost:9090 | N/A |
+| Grafana | 3000 | http://localhost:3000 | admin / dsn-sandbox |
+
+**Grafana Dashboard**: The DSN dashboard is auto-provisioned from `monitoring/grafana/dsn-dashboard.json`.
+
+**Prometheus Alerts**: Rules from `monitoring/prometheus/rules.yml` are loaded automatically.
 
 ### Access Local Sandbox
 
@@ -95,6 +119,20 @@ Stop the local cluster:
 ```bash
 docker-compose down -v  # -v removes volumes
 ```
+
+## Seed Node Configuration
+
+A seed node config template is provided at `seed.config.toml` for running a non-validating bootstrap peer:
+
+```bash
+# Run as seed node (no validation)
+dsn start --config ./seed.config.toml
+```
+
+Seed nodes:
+- Do not participate in consensus
+- Serve as bootstrap peers for new nodes
+- Expose RPC and metrics on standard ports
 
 ## Faucet
 
@@ -131,7 +169,9 @@ See SANDBOX_KNOWN_LIMITATIONS.md in the DSN repository.
 
 ```
 deploy/sandbox/
-├── genesis.json        # Sandbox genesis configuration
-├── docker-compose.yml  # Local Docker-based sandbox cluster
-└── README.md           # This file
+├── genesis.json         # Sandbox genesis configuration
+├── docker-compose.yml   # Local Docker-based sandbox cluster
+├── prometheus.yml       # Prometheus scrape configuration
+├── seed.config.toml     # Seed node configuration template
+└── README.md            # This file
 ```

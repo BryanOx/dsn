@@ -2,7 +2,10 @@ version: '3.8'
 
 services:
   validator-0:
-    image: dsn/node:latest
+    build:
+      context: ../..
+      dockerfile: dev/localnet/Dockerfile
+    image: dsn/node:sandbox
     container_name: dsn-validator-0
     ports:
       - "30333:30333"
@@ -29,7 +32,10 @@ services:
       start_period: 10s
 
   validator-1:
-    image: dsn/node:latest
+    build:
+      context: ../..
+      dockerfile: dev/localnet/Dockerfile
+    image: dsn/node:sandbox
     container_name: dsn-validator-1
     ports:
       - "30334:30333"
@@ -53,7 +59,10 @@ services:
     restart: unless-stopped
 
   validator-2:
-    image: dsn/node:latest
+    build:
+      context: ../..
+      dockerfile: dev/localnet/Dockerfile
+    image: dsn/node:sandbox
     container_name: dsn-validator-2
     ports:
       - "30335:30333"
@@ -76,6 +85,40 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: dsn-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../../monitoring/prometheus/rules.yml:/etc/prometheus/rules.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - dsn-sandbox
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: dsn-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ../../monitoring/grafana/dsn-dashboard.json:/etc/grafana/provisioning/dashboards/dsn-dashboard.json:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=dsn-sandbox
+      - GF_INSTALL_PLUGINS=
+    networks:
+      - dsn-sandbox
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
 networks:
   dsn-sandbox:
     driver: bridge
@@ -84,3 +127,5 @@ volumes:
   validator-0-data:
   validator-1-data:
   validator-2-data:
+  prometheus-data:
+  grafana-data:

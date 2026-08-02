@@ -1,0 +1,44 @@
+{
+  "genesis_version": 1,
+  "genesis_time": "2026-01-01T00:00:00Z",
+  "chain_id": "dsn-mainnet-1",
+  "initial_height": 1,
+  "consensus_params": {
+    "max_tx_per_block": 100,
+    "max_bytes_per_block": 1048576,
+    "max_gas_per_block": 10000000
+  },
+  "epoch_params": {
+    "blocks_per_epoch": 100,
+    "unstake_cooldown_epochs": 7,
+    "max_validators": 100,
+    "minimum_stake": 100000
+  },
+  "inflation_params": {
+    "enabled": true,
+    "annual_rate": "0.02"
+  },
+  "initial_validators": [
+    {
+      "address": "0x0000000000000000000000000000000000000001",
+      "pub_key": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "consensus_key": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "stake": 100000000000000,
+      "commission": "1000"
+    }
+  ],
+  "initial_balances": [
+    {
+      "address": "0x0000000000000000000000000000000000000001",
+      "amount": 100000000000000
+    },
+    {
+      "address": "0x0000000000000000000000000000000000000002",
+      "amount": 200000000000000
+    }
+  ],
+  "treasury": {
+    "address": "0x0000000000000000000000000000000000000000",
+    "initial_balance": 1000000000000000
+  }
+}

@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules.yml
+
+scrape_configs:
+  - job_name: 'dsn-validators'
+    static_configs:
+      - targets:
+        - 'validator-0:9090'
+        - 'validator-1:9090'
+        - 'validator-2:9090'
+        labels:
+          network: sandbox

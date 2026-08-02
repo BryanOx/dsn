@@ -1,38 +1,42 @@
 groups:
   - name: dsn
     rules:
+      # Recording rules
       - record: dsn:block_time:avg5m
-        expr: rate(dsn_consensus_block_time_seconds[5m])
+        expr: rate(dsn_block_processing_seconds_sum[5m]) / rate(dsn_block_processing_seconds_count[5m])
       - record: dsn:sync_lag:max
-        expr: max(dsn_node_sync_lag_blocks)
-      - record: dsn:validator_active:count
-        expr: count(dsn_validator_info{status="active"})
-      - record: dsn:consensus_round:max
-        expr: max(dsn_consensus_round)
+        expr: max(dsn_indexer_lag_blocks)
+      - record: dsn:consensus_rounds:rate5m
+        expr: rate(dsn_consensus_rounds_total[5m])
+
+      # Core alerts
       - alert: DSNBlockHeightNotIncreasing
-        expr: rate(dsn_block_height[5m]) == 0
+        expr: rate(dsn_indexer_height[5m]) == 0
         for: 5m
         labels:
           severity: critical
         annotations:
           summary: "DSN block height not increasing"
-          description: "DSN node has not produced a new block in the last 5 minutes"
+          description: "DSN node has not produced a new block in the last 5 minutes (requires indexer)"
+
       - alert: DSNSyncLagHigh
-        expr: dsn_node_sync_lag_blocks > 10
+        expr: dsn_indexer_lag_blocks > 10
         for: 2m
         labels:
           severity: warning
         annotations:
           summary: "DSN sync lag is high"
           description: "DSN node is behind by {{ $value }} blocks"
+
       - alert: DSNPeerCountLow
-        expr: dsn_p2p_peer_count < 3
+        expr: dsn_peer_count_gauge < 3
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "DSN peer count is low"
           description: "DSN node has only {{ $value }} peers"
+
       - alert: DSNValidatorDown
         expr: up{job="dsn"} == 0
         for: 1m
@@ -41,6 +45,7 @@ groups:
         annotations:
           summary: "DSN validator is down"
           description: "DSN validator has been down for more than 1 minute"
+
       - alert: DSNCPUUsageHigh
         expr: rate(process_cpu_seconds_total{job="dsn"}[5m]) > 0.8
         for: 5m
@@ -49,6 +54,7 @@ groups:
         annotations:
           summary: "DSN CPU usage is high"
           description: "DSN node CPU usage is above 80%"
+
       - alert: DSNMemoryUsageHigh
         expr: process_resident_memory_bytes{job="dsn"} / 4294967296 > 0.9
         for: 5m
@@ -58,7 +64,7 @@ groups:
           summary: "DSN memory usage is high"
           description: "DSN node memory usage is above 90%"
 
-      # T7-3: Defensive security alerts
+      # Defensive security alerts (T7-3)
       - alert: PanicRecoveryRate
         expr: rate(dsn_panic_recovery_total[5m]) > 0
         for: 5m

@@ -17,7 +17,6 @@ type NodeFlags struct {
 	genesisFile  string
 	validatorKey string
 	dataDir      string
-	configPath   string
 }
 
 var nodeFlags NodeFlags
@@ -62,7 +61,6 @@ func init() {
 	nodeCmd.AddCommand(nodeStartCmd)
 
 	// Add flags for node start
-	nodeStartCmd.Flags().StringVar(&nodeFlags.configPath, "config", "", "path to TOML config file")
 	nodeStartCmd.Flags().StringVar(&nodeFlags.genesisFile, "genesis", "", "path to genesis file (overrides config)")
 	nodeStartCmd.Flags().StringVar(&nodeFlags.validatorKey, "validator-key", "", "path to validator key file")
 	nodeStartCmd.Flags().StringVar(&nodeFlags.dataDir, "data-dir", "", "data directory for node storage (overrides config)")

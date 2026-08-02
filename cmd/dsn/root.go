@@ -133,7 +133,12 @@ func BuildConfig() *config.Config {
 	defaults := config.DefaultConfig()
 	cfg := &defaults
 
-	// Load from config file if specified
+	// Load from config file if specified.
+	// Precedence: defaults < file < env < CLI flags, so the DSN_CONFIG
+	// environment variable only kicks in when no --config flag was given.
+	if cfgFlags.configPath == "" {
+		cfgFlags.configPath = os.Getenv("DSN_CONFIG")
+	}
 	if cfgFlags.configPath != "" {
 		if fileCfg, err := config.LoadConfig(cfgFlags.configPath); err == nil {
 			cfg = fileCfg

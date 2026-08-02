@@ -14,7 +14,7 @@ services:
       - ./tmp/genesis.json:/root/genesis.json:ro
     environment:
       - DSN_CONFIG=/root/.dsn/config.toml
-      - DSN_VALIDATOR_KEY=/root/.dsn/validator.key
+      - DSN_VALIDATOR_KEY_FILE=/root/.dsn/validator.key
       - DSN_GENESIS=/root/genesis.json
     command: ["node", "start"]
     networks:
@@ -34,7 +34,7 @@ services:
       - ./tmp/genesis.json:/root/genesis.json:ro
     environment:
       - DSN_CONFIG=/root/.dsn/config.toml
-      - DSN_VALIDATOR_KEY=/root/.dsn/validator.key
+      - DSN_VALIDATOR_KEY_FILE=/root/.dsn/validator.key
       - DSN_GENESIS=/root/genesis.json
     command: ["node", "start"]
     networks:
@@ -54,7 +54,7 @@ services:
       - ./tmp/genesis.json:/root/genesis.json:ro
     environment:
       - DSN_CONFIG=/root/.dsn/config.toml
-      - DSN_VALIDATOR_KEY=/root/.dsn/validator.key
+      - DSN_VALIDATOR_KEY_FILE=/root/.dsn/validator.key
       - DSN_GENESIS=/root/genesis.json
     command: ["node", "start"]
     networks:

@@ -110,6 +110,11 @@ func LoadConfigFromEnv(cfg *Config) *Config {
 		}
 	}
 
+	// Genesis config from environment
+	if v := os.Getenv("DSN_GENESIS"); v != "" {
+		cfg.Genesis.File = v
+	}
+
 	// Logging config from environment
 	if v := os.Getenv("DSN_LOG_LEVEL"); v != "" {
 		cfg.Logging.Level = v

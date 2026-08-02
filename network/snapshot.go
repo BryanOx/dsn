@@ -35,7 +35,8 @@ type SnapshotInfoHandler func(info *SnapshotInfo)
 type SnapshotRequestHandler func(snapshotHash [32]byte, chunkIndex uint32) (*SnapshotChunk, bool)
 
 // SnapshotChunkHandler is the callback type for handling incoming snapshot chunks.
-type SnapshotChunkHandler func(chunk *SnapshotChunk)
+// The peer parameter is the peer's address string for failure reporting.
+type SnapshotChunkHandler func(chunk *SnapshotChunk, peer string)
 
 // SetSnapshotQueryHandler registers a handler for snapshot query messages.
 func (n *P2PNode) SetSnapshotQueryHandler(handler SnapshotQueryHandler) {
@@ -111,7 +112,7 @@ func (n *P2PNode) handleSnapshotMessage(msgType byte, data []byte, peer string) 
 				n.pm.ReportFailure(peerID, 2)
 			}
 		} else if n.snapshotChunkHandler != nil {
-			n.snapshotChunkHandler(chunk)
+			n.snapshotChunkHandler(chunk, peer)
 		}
 	}
 }

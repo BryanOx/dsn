@@ -17,11 +17,11 @@ import (
 // connectionLimiter implements connection rate limiting per IP and global peer limits.
 type connectionLimiter struct {
 	mu        sync.Mutex
-	peers     map[string]struct{}           // active connections by peerID
-	ipBuckets map[string]*rate.Limiter      // per-IP token bucket
-	tempBans  map[string]time.Time          // IP → ban expiration
+	peers     map[string]struct{}      // active connections by peerID
+	ipBuckets map[string]*rate.Limiter // per-IP token bucket
+	tempBans  map[string]time.Time     // IP → ban expiration
 	maxPeers  int
-	perIPRate rate.Limit                    // 5 events/sec
+	perIPRate rate.Limit // 5 events/sec
 	burst     int
 }
 
@@ -89,29 +89,29 @@ type blockJob struct {
 
 // P2PNode represents a simple P2P node using TCP connections.
 type P2PNode struct {
-	addr        string
-	listener    net.Listener
-	pm          *PeerManager
-	connections map[string]net.Conn // addr -> conn (lightweight TCP tracker)
-	connMu      sync.RWMutex
-	txHandler   func(tx *types.Transaction)
+	addr         string
+	listener     net.Listener
+	pm           *PeerManager
+	connections  map[string]net.Conn // addr -> conn (lightweight TCP tracker)
+	connMu       sync.RWMutex
+	txHandler    func(tx *types.Transaction)
 	blockHandler func(data []byte)
-	stopCh      chan struct{}
+	stopCh       chan struct{}
 	// Connection rate limiter
 	connLimiter *connectionLimiter
 	// Rate limiting (per-message)
 	rateLimiters map[string]*TokenBucket // addr -> rate limiter
 	rateLimitMu  sync.RWMutex
 	// Snapshot handlers
-	snapshotQueryHandler    func() *SnapshotInfo
+	snapshotQueryHandler   func() *SnapshotInfo
 	snapshotInfoHandler    func(info *SnapshotInfo)
 	snapshotRequestHandler func(snapshotHash [32]byte, chunkIndex uint32) (*SnapshotChunk, bool)
-	snapshotChunkHandler    func(chunk *SnapshotChunk)
+	snapshotChunkHandler   func(chunk *SnapshotChunk, peer string)
 	// Engine references (Task 5.6)
-	fastSync   *FastSyncEngine
-	blockSync  *BlockSyncEngine
-	gossip     *GossipEngine
-	discovery  *PeerDiscovery
+	fastSync  *FastSyncEngine
+	blockSync *BlockSyncEngine
+	gossip    *GossipEngine
+	discovery *PeerDiscovery
 	// Block processing: single-consumer channel pattern for goroutine safety
 	blockCh   chan blockJob
 	blockOnce sync.Once // ensures block processor starts only once
@@ -520,9 +520,41 @@ func (n *P2PNode) Close() error {
 	return nil
 }
 
-// SetFastSyncEngine registers a FastSyncEngine with the node.
+// SetFastSyncEngine registers a FastSyncEngine with the node and wires up
+// all snapshot message handlers for both client and server functionality.
 func (n *P2PNode) SetFastSyncEngine(e *FastSyncEngine) {
 	n.fastSync = e
+
+	// Client-side: handle incoming snapshot info messages
+	n.snapshotInfoHandler = func(info *SnapshotInfo) {
+		e.HandleSnapshotInfo(info)
+	}
+
+	// Client-side: handle incoming snapshot chunks with peer for failure reporting
+	n.snapshotChunkHandler = func(chunk *SnapshotChunk, peer string) {
+		// Convert peer string to PeerID for failure reporting
+		var peerID PeerID
+		if p := n.pm.GetPeerByAddr(peer); p != nil {
+			peerID = p.ID
+		}
+		e.HandleSnapshotChunk(chunk, peerID)
+	}
+
+	// Server-side: respond to snapshot queries - returns latest snapshot info
+	// Note: state.LoadLatestSnapshotInfo doesn't exist, so return nil to skip serving
+	n.snapshotQueryHandler = func() *SnapshotInfo {
+		// TODO: Implement when state.LoadLatestSnapshotInfo is added
+		// This would load the latest checkpoint and return snapshot metadata
+		return nil
+	}
+
+	// Server-side: respond to chunk requests - returns requested chunk data
+	// Note: state.LoadSnapshotChunk doesn't exist, so return nil to skip serving
+	n.snapshotRequestHandler = func(snapshotHash [32]byte, chunkIndex uint32) (*SnapshotChunk, bool) {
+		// TODO: Implement when state.LoadSnapshotChunk is added
+		// This would load chunk data from persistent storage and convert to network.SnapshotChunk
+		return nil, false
+	}
 }
 
 // SetBlockSyncEngine registers a BlockSyncEngine with the node.

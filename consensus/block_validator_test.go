@@ -189,6 +189,7 @@ func TestValidateBlock_Valid(t *testing.T) {
 	sender := types.Address{1}
 	tx := &types.Transaction{
 		Version: 1, Nonce: 1, Sender: sender, MaxFee: 10,
+		Payload:  types.EncodeTransferPayload(sender, 0),
 		IntentID: types.Hash{1}, Timestamp: uint64(time.Now().Unix()),
 	}
 	tx.Signature = ed25519.Sign(privKey, tx.IntentID[:])

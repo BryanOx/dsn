@@ -60,7 +60,7 @@ func generateSoakTransactions(t *testing.T, nodes []*node.Node, kps []*wallet.Ke
 			0,     // chainID
 			addr,  // sender
 			nonce, // nonce
-			[]byte("soak-test"),
+			types.EncodeTransferPayload(addr, 0),
 			nil,  // constraints
 			100,  // maxFee
 			1000, // gasLimit
@@ -82,7 +82,7 @@ func CreateTransferTransaction(t *testing.T, sender *wallet.KeyPair, nonce uint6
 		0,
 		sender.Address(),
 		nonce,
-		[]byte("soak-transfer"),
+		types.EncodeTransferPayload(sender.Address(), 0),
 		nil,
 		100,
 		1000,
@@ -101,7 +101,7 @@ func CreateContractTransaction(t *testing.T, sender *wallet.KeyPair, nonce uint6
 		0,
 		sender.Address(),
 		nonce,
-		[]byte("soak-contract-call"),
+		types.EncodeTransferPayload(sender.Address(), 0),
 		nil,
 		200,
 		2000,

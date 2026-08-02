@@ -137,12 +137,14 @@ func SerializeTransferTx(tx *Transaction) ([]byte, error) {
 // ConvertToTypesTransaction converts our Transaction to types.Transaction
 func ConvertToTypesTransaction(tx Transaction, chainID uint32) *types.Transaction {
 	senderAddr, _ := types.AddressFromBytes(tx.Sender)
+	recipientAddr, _ := types.AddressFromBytes(tx.Recipient)
+	payload := types.EncodeTransferPayload(recipientAddr, tx.Amount)
 	return types.NewTransaction(
 		1,
 		chainID,
 		senderAddr,
 		tx.Nonce,
-		tx.Payload,
+		payload,
 		nil,
 		tx.MaxFee,
 		tx.GasLimit,

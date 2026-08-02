@@ -49,7 +49,7 @@ func TestConsensus_BlockProduction(t *testing.T) {
 	n1.State().SetAccount(kp1.Address(), acc1)
 
 	// Create a transaction
-	tx := types.NewTransaction(1, 0, kp1.Address(), 1, []byte("test data"), nil, 100, 1000, uint64(time.Now().Unix()))
+	tx := types.NewTransaction(1, 0, kp1.Address(), 1, types.EncodeTransferPayload(kp1.Address(), 0), nil, 100, 1000, uint64(time.Now().Unix()))
 	hasher := types.SHA256Hasher{}
 	err = kp1.Sign(tx, hasher)
 	if err != nil {

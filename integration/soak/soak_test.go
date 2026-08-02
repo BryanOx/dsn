@@ -277,7 +277,7 @@ func TestSoak_Mixed(t *testing.T) {
 			txCountThisRound[addr]++
 			tx := types.NewTransaction(
 				1, 0, addr, nonce,
-				[]byte("soak-transfer"), nil, 100, 1000,
+				types.EncodeTransferPayload(addr, 0), nil, 100, 1000,
 				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, &hasher))
@@ -295,7 +295,7 @@ func TestSoak_Mixed(t *testing.T) {
 			txCountThisRound[addr]++
 			tx := types.NewTransaction(
 				1, 0, addr, nonce,
-				[]byte("soak-contract-call"), nil, 200, 2000,
+				types.EncodeTransferPayload(addr, 0), nil, 200, 2000,
 				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, &hasher))

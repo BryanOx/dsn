@@ -49,7 +49,7 @@ func TestSignAndVerify(t *testing.T) {
 
 	// Create a transaction
 	addr := kp.Address()
-	tx := types.NewTransaction(1, 0, addr, 1, []byte("data"), nil, 100, 50000, 1234567890)
+	tx := types.NewTransaction(1, 0, addr, 1, types.EncodeTransferPayload(addr, 0), nil, 100, 50000, 1234567890)
 	intentID, _ := tx.ComputeIntentID(hasher)
 	tx.IntentID = intentID
 

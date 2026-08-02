@@ -56,6 +56,19 @@ func NewTransaction(
 	}
 }
 
+// TransferPayloadLength is the byte length of a standard transfer payload:
+// recipient address (20 bytes) followed by the transfer amount (8 bytes, big-endian).
+const TransferPayloadLength = 28
+
+// EncodeTransferPayload encodes a standard transfer payload from a recipient
+// address and a transfer amount.
+func EncodeTransferPayload(recipient Address, amount uint64) []byte {
+	payload := make([]byte, TransferPayloadLength)
+	copy(payload[:20], recipient[:])
+	binary.BigEndian.PutUint64(payload[20:], amount)
+	return payload
+}
+
 // IntentID = Hash(sender || nonce || payload || constraints)
 func (tx *Transaction) ComputeIntentID(h Hasher) (Hash, error) {
 	buf := new(bytes.Buffer)
@@ -72,6 +85,11 @@ func (tx *Transaction) Validate() error {
 	// Validate sender address
 	if len(tx.Sender.Bytes()) != 20 {
 		return &ValidationError{Err: ErrInvalidAddress, Field: "Sender", Value: tx.Sender.String()}
+	}
+
+	// Validate standard transfer payload: recipient (20 bytes) + amount (8 bytes)
+	if tx.TxType == TxTypeStandard && len(tx.Payload) < TransferPayloadLength {
+		return &ValidationError{Err: ErrMalformedTransferPayload, Field: "Payload", Value: len(tx.Payload)}
 	}
 
 	// Validate nonce > 0

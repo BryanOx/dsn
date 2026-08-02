@@ -64,7 +64,7 @@ func generateHeavyLoad(t *testing.T, kps []*wallet.KeyPair, hasher types.Hasher,
 			0,            // chainID
 			kp.Address(), // sender = funded validator
 			nonce,        // nonce - sequential per sender
-			[]byte("heavy-load-test"),
+			types.EncodeTransferPayload(kp.Address(), 0),
 			nil,  // constraints
 			100,  // maxFee
 			1000, // gasLimit
@@ -126,7 +126,7 @@ func TestConvergence_3Node(t *testing.T) {
 			// Nonce must be round+1 since each round consumes nonce from previous
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("convergence-3node"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()+int64(round)),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -155,7 +155,7 @@ func TestConvergence_5Node(t *testing.T) {
 			// Nonce must be round+1 since each round consumes nonce from previous
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("convergence-5node"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()+int64(round)),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -185,7 +185,7 @@ func TestConvergence_ValidatorChurn(t *testing.T) {
 			// Nonce must be round+1 since each round consumes nonce from previous
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("pre-churn"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()+int64(round)),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -229,7 +229,7 @@ func TestConvergence_ValidatorChurn(t *testing.T) {
 			}
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), nonce,
-				[]byte("post-churn"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -259,7 +259,7 @@ func TestConvergence_RestartMidEpoch(t *testing.T) {
 			// Nonce must be round+1 since each round consumes nonce from previous
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("pre-restart"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()+int64(round)),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -301,7 +301,7 @@ func TestConvergence_RestartMidEpoch(t *testing.T) {
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("post-restart"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -366,7 +366,7 @@ func TestConvergence_CatchUp(t *testing.T) {
 			// Nonce must be round+1 since each round consumes nonce from previous
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("catchup"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()+int64(round)),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -383,7 +383,7 @@ func TestConvergence_CatchUp(t *testing.T) {
 			// Nonce must be round+1 since each round consumes nonce from previous
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("catchup"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()+int64(round)),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -411,7 +411,7 @@ func TestConvergence_FastSync(t *testing.T) {
 			// Nonce must be round+1 since each round consumes nonce from previous
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("fastsync"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -512,7 +512,7 @@ func TestConvergence_ReplayAfterReconnect(t *testing.T) {
 			// Nonce must be round+1 since each round consumes nonce from previous
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("pre-disconnect"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -556,7 +556,7 @@ func TestConvergence_ReplayAfterReconnect(t *testing.T) {
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("post-disconnect"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))

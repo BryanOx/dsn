@@ -151,7 +151,7 @@ func TestReplayCert_GenesisReplay(t *testing.T) {
 		var roundTxs []*types.Transaction
 		for _, kp := range kps {
 			tx := types.NewTransaction(1, 0, kp.Address(), uint64(round+1),
-				[]byte("genesis replay test"), nil, 100, 1000, uint64(time.Now().Unix()))
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000, uint64(time.Now().Unix()))
 			err := kp.Sign(tx, hasher)
 			require.NoError(t, err)
 			roundTxs = append(roundTxs, tx)
@@ -205,7 +205,7 @@ func TestReplayCert_EventsReplay(t *testing.T) {
 		var roundTxs []*types.Transaction
 		for _, kp := range kps {
 			tx := types.NewTransaction(1, 0, kp.Address(), uint64(round+1),
-				[]byte("events replay test"), nil, 100, 1000, uint64(time.Now().Unix()))
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000, uint64(time.Now().Unix()))
 			err := kp.Sign(tx, hasher)
 			require.NoError(t, err)
 			roundTxs = append(roundTxs, tx)
@@ -248,7 +248,7 @@ func TestReplayCert_GasAccounting(t *testing.T) {
 		var roundTxs []*types.Transaction
 		for _, kp := range kps {
 			tx := types.NewTransaction(1, 0, kp.Address(), uint64(round+1),
-				[]byte("gas accounting test"), nil, 100, 1000, uint64(time.Now().Unix()))
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000, uint64(time.Now().Unix()))
 			err := kp.Sign(tx, hasher)
 			require.NoError(t, err)
 			roundTxs = append(roundTxs, tx)

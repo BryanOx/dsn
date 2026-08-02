@@ -105,7 +105,7 @@ func TestRollingRestart_Convergence(t *testing.T) {
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("rolling-restart-initial"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -132,7 +132,7 @@ func TestRollingRestart_Convergence(t *testing.T) {
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("rolling-restart-node0"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -161,7 +161,7 @@ func TestRollingRestart_Convergence(t *testing.T) {
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("rolling-restart-node1"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -190,7 +190,7 @@ func TestRollingRestart_Convergence(t *testing.T) {
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("rolling-restart-node2"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -290,7 +290,7 @@ func TestRollingRestart_QuorumMaintenance(t *testing.T) {
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("quorum-maintenance"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -312,7 +312,7 @@ func TestRollingRestart_QuorumMaintenance(t *testing.T) {
 		for _, kp := range kps[:4] { // Only use 4 active nodes
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("quorum-4nodes"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -365,7 +365,7 @@ func TestRollingRestart_StatePersistence(t *testing.T) {
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("state-persistence"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -407,7 +407,7 @@ func TestRollingRestart_StatePersistence(t *testing.T) {
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("post-full-restart"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))

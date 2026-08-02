@@ -51,7 +51,7 @@ func makeTestTransaction(sender types.Address, nonce uint64, maxFee uint64, time
 		ChainID:     1,
 		Sender:      sender,
 		Nonce:       nonce,
-		Payload:     []byte{},
+		Payload:     types.EncodeTransferPayload(sender, 0),
 		Constraints: []byte{},
 		MaxFee:      maxFee,
 		GasLimit:    21000,

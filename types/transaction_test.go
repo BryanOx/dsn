@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 	"time"
 )
@@ -135,6 +136,7 @@ func TestTransaction_Validate_OK(t *testing.T) {
 		ChainID:   1,
 		Sender:    sender,
 		Nonce:     1,
+		Payload:   EncodeTransferPayload(sender, 0),
 		MaxFee:    1,
 		Timestamp: uint64(time.Now().Unix()), // Current timestamp is valid
 		Signature: []byte{0x01, 0x02, 0x03},
@@ -172,6 +174,7 @@ func TestTransaction_Validate_InvalidSignature(t *testing.T) {
 		ChainID:   1,
 		Sender:    sender,
 		Nonce:     1,
+		Payload:   EncodeTransferPayload(sender, 0),
 		MaxFee:    1,
 		Timestamp: 1700000000,
 		Signature: []byte{}, // Empty signature
@@ -190,6 +193,7 @@ func TestTransaction_Validate_TimestampOutOfRange(t *testing.T) {
 		ChainID:   1,
 		Sender:    sender,
 		Nonce:     1,
+		Payload:   EncodeTransferPayload(sender, 0),
 		MaxFee:    1,
 		Timestamp: 1000000000, // Way in the past (2001) - definitely outside ±5s window
 		Signature: []byte{0x01},
@@ -199,4 +203,45 @@ func TestTransaction_Validate_TimestampOutOfRange(t *testing.T) {
 	if err == nil {
 		t.Error("Validate() should return error for invalid timestamp")
 	}
+}
+
+func TestTransaction_Validate_MalformedTransferPayload(t *testing.T) {
+	sender := Address([20]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20})
+
+	base := func(payload []byte) *Transaction {
+		return &Transaction{
+			Version:   1,
+			ChainID:   1,
+			Sender:    sender,
+			Nonce:     1,
+			Payload:   payload,
+			MaxFee:    1,
+			Timestamp: uint64(time.Now().Unix()),
+			Signature: []byte{0x01},
+		}
+	}
+
+	t.Run("short payload rejected for standard transfer", func(t *testing.T) {
+		for _, short := range [][]byte{nil, {}, []byte{0x01}, make([]byte, TransferPayloadLength-1)} {
+			err := base(short).Validate()
+			if !errors.Is(err, ErrMalformedTransferPayload) {
+				t.Errorf("Validate() error = %v, want ErrMalformedTransferPayload", err)
+			}
+		}
+	})
+
+	t.Run("full payload accepted for standard transfer", func(t *testing.T) {
+		err := base(EncodeTransferPayload(sender, 1000)).Validate()
+		if err != nil {
+			t.Errorf("Validate() error = %v, want nil", err)
+		}
+	})
+
+	t.Run("short payload allowed for non-standard transactions", func(t *testing.T) {
+		tx := base([]byte{0x01})
+		tx.TxType = TxTypeCallContract
+		if err := tx.Validate(); err != nil {
+			t.Errorf("Validate() error = %v, want nil", err)
+		}
+	})
 }

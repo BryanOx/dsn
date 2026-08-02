@@ -26,7 +26,7 @@ func TestBlockMessage_EncodeDecode(t *testing.T) {
 				IntentID:  types.Hash{99},
 				Sender:    types.Address{1},
 				Nonce:     1,
-				Payload:   []byte("test payload"),
+				Payload:   types.EncodeTransferPayload(types.Address{1}, 100),
 				MaxFee:    100,
 				Timestamp: 1234567890,
 			},

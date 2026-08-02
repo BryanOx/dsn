@@ -39,7 +39,7 @@ func makeTestTx(nonce uint64, maxFee uint64, ts uint64, addr types.Address, priv
 		ChainID:   0,
 		Sender:    addr,
 		Nonce:     nonce,
-		Payload:   []byte("data"),
+		Payload:   types.EncodeTransferPayload(addr, 0),
 		MaxFee:    maxFee,
 		GasLimit:  50000,
 		Timestamp: ts,

@@ -75,6 +75,7 @@ func TestBuildBlock_Basic(t *testing.T) {
 
 	tx := &types.Transaction{
 		Version: 1, Nonce: 1, Sender: sender, MaxFee: 10,
+		Payload:  types.EncodeTransferPayload(sender, 0),
 		IntentID: types.Hash{1}, Timestamp: uint64(time.Now().Unix()),
 	}
 	tx.Signature = ed25519.Sign(privKey, tx.IntentID[:])
@@ -124,6 +125,7 @@ func TestBuildBlock_TxLimit(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		tx := &types.Transaction{
 			Version: 1, Nonce: uint64(i + 1), Sender: sender, MaxFee: 10,
+			Payload:  types.EncodeTransferPayload(sender, 0),
 			IntentID: types.Hash{byte(i + 1)}, Timestamp: uint64(time.Now().Unix()),
 		}
 		tx.Signature = ed25519.Sign(privKey, tx.IntentID[:])

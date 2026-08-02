@@ -36,7 +36,7 @@ func TestResilience_RollingRestart(t *testing.T) {
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("rolling-restart"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()+int64(round)),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -94,7 +94,7 @@ func TestResilience_RollingRestart(t *testing.T) {
 			for _, kp := range kps {
 				tx := types.NewTransaction(
 					1, 0, kp.Address(), uint64(round+1),
-					[]byte("rolling-restart"), nil, 100, 1000,
+					types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 					uint64(time.Now().Unix()+int64(round)),
 				)
 				require.NoError(t, kp.Sign(tx, hasher))
@@ -137,7 +137,7 @@ func TestResilience_CrashLoopRecovery(t *testing.T) {
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("crash-loop"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()+int64(round)),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -165,7 +165,7 @@ func TestResilience_CrashLoopRecovery(t *testing.T) {
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("crash-loop"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()+int64(round)),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -212,7 +212,7 @@ func TestResilience_CrashLoopRecovery(t *testing.T) {
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("crash-loop"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()+int64(round)),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -248,7 +248,7 @@ func TestResilience_CrashLoopRecovery(t *testing.T) {
 	for _, kp := range kps {
 		tx := types.NewTransaction(
 			1, 0, kp.Address(), 7,
-			[]byte("crash-loop"), nil, 100, 1000,
+			types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 			uint64(time.Now().Unix()),
 		)
 		require.NoError(t, kp.Sign(tx, hasher))
@@ -287,7 +287,7 @@ func TestResilience_CorruptedSnapshot(t *testing.T) {
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("corrupted-snap"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()+int64(round)),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -348,7 +348,7 @@ func TestResilience_CorruptedSnapshot(t *testing.T) {
 	for _, kp := range kps {
 		tx := types.NewTransaction(
 			1, 0, kp.Address(), 21,
-			[]byte("post-corrupt"), nil, 100, 1000,
+			types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 			uint64(time.Now().Unix()),
 		)
 		require.NoError(t, kp.Sign(tx, hasher))
@@ -385,7 +385,7 @@ func TestResilience_NetworkPartition(t *testing.T) {
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("network-partition"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()+int64(round)),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -411,7 +411,7 @@ func TestResilience_NetworkPartition(t *testing.T) {
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("partition-continued"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()+int64(round)),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -460,7 +460,7 @@ func TestResilience_NetworkPartition(t *testing.T) {
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("catch-up"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()+int64(round)),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -508,7 +508,7 @@ func TestResilience_KillRestartLoop(t *testing.T) {
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
-				[]byte("init"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()+int64(round)),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
@@ -547,7 +547,7 @@ func TestResilience_KillRestartLoop(t *testing.T) {
 			for _, kp := range kps {
 				tx := types.NewTransaction(
 					1, 0, kp.Address(), uint64(3+iteration*3+round+1),
-					[]byte("while-down"), nil, 100, 1000,
+					types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 					uint64(time.Now().Unix()+int64(iteration*10+round)),
 				)
 				require.NoError(t, kp.Sign(tx, hasher))
@@ -595,7 +595,7 @@ func TestResilience_KillRestartLoop(t *testing.T) {
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(3+iteration*3+blocksWhileDown+1),
-				[]byte("post-reconnect"), nil, 100, 1000,
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
 				uint64(time.Now().Unix()+int64(iteration)),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))

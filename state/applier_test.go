@@ -33,7 +33,7 @@ func TestApplyTransaction_Valid(t *testing.T) {
 	s.SetAccount(addr, acc)
 
 	// Build a transfer-like transaction
-	tx := types.NewTransaction(1, 0, addr, 1, []byte("data"), nil, 1000, 50000, uint64(time.Now().Unix()))
+	tx := types.NewTransaction(1, 0, addr, 1, types.EncodeTransferPayload(addr, 0), nil, 1000, 50000, uint64(time.Now().Unix()))
 
 	// Compute IntentID
 	intentID, _ := tx.ComputeIntentID(hasher)
@@ -67,7 +67,7 @@ func TestApplyTransaction_InvalidSignature(t *testing.T) {
 	copy(pubKey[:], pub)
 	s.SetAccount(addr, NewAccount(addr, pubKey))
 
-	tx := types.NewTransaction(1, 0, addr, 1, []byte("data"), nil, 1000, 50000, uint64(time.Now().Unix()))
+	tx := types.NewTransaction(1, 0, addr, 1, types.EncodeTransferPayload(addr, 0), nil, 1000, 50000, uint64(time.Now().Unix()))
 	intentID, _ := tx.ComputeIntentID(hasher)
 	tx.IntentID = intentID
 	tx.Signature = []byte("fake signature") // invalid
@@ -90,7 +90,7 @@ func TestApplyTransaction_WrongNonce(t *testing.T) {
 	s.SetAccount(addr, NewAccount(addr, pubKey))
 
 	// Nonce should start at 0, so nonce=5 is wrong
-	tx := types.NewTransaction(1, 0, addr, 5, []byte("data"), nil, 1000, 50000, uint64(time.Now().Unix()))
+	tx := types.NewTransaction(1, 0, addr, 5, types.EncodeTransferPayload(addr, 0), nil, 1000, 50000, uint64(time.Now().Unix()))
 	intentID, _ := tx.ComputeIntentID(hasher)
 	tx.IntentID = intentID
 	tx.Signature = ed25519.Sign(priv, intentID[:])
@@ -114,7 +114,7 @@ func TestApplyTransaction_InsufficientFunds(t *testing.T) {
 	acc.AddBalance(types.NewAmount(10)) // very low balance
 	s.SetAccount(addr, acc)
 
-	tx := types.NewTransaction(1, 0, addr, 1, []byte("data"), nil, 1000, 50000, uint64(time.Now().Unix()))
+	tx := types.NewTransaction(1, 0, addr, 1, types.EncodeTransferPayload(addr, 0), nil, 1000, 50000, uint64(time.Now().Unix()))
 	intentID, _ := tx.ComputeIntentID(hasher)
 	tx.IntentID = intentID
 	tx.Signature = ed25519.Sign(priv, intentID[:])
@@ -131,7 +131,7 @@ func TestApplyTransaction_SenderNotFound(t *testing.T) {
 
 	addr := types.Address([20]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20})
 
-	tx := types.NewTransaction(1, 0, addr, 1, nil, nil, 1000, 50000, uint64(time.Now().Unix()))
+	tx := types.NewTransaction(1, 0, addr, 1, types.EncodeTransferPayload(addr, 0), nil, 1000, 50000, uint64(time.Now().Unix()))
 
 	_, err := ApplyTransaction(s, tx, hasher, 1)
 	if err == nil {

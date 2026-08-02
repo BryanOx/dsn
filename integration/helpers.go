@@ -284,17 +284,17 @@ func CompareStateRoots(t *testing.T, nodes []*node.Node) {
 
 // CreateTestTransaction creates and signs a standard transfer transaction.
 // Pattern from node_test.go TestConsensus_BlockProduction:
-//   - types.NewTransaction(1, 0, sender, nonce, []byte("test data"), nil, 100, 1000, uint64(time.Now().Unix()))
+//   - types.NewTransaction(1, 0, sender, nonce, types.EncodeTransferPayload(sender, 0), nil, 100, 1000, uint64(time.Now().Unix()))
 //   - kp.Sign(tx, hasher)
 func CreateTestTransaction(t *testing.T, senderKP *wallet.KeyPair, hasher types.Hasher) *types.Transaction {
 	t.Helper()
 
 	tx := types.NewTransaction(
-		1,                         // version
-		0,                         // chainID
-		senderKP.Address(),        // sender
-		1,                         // nonce
-		[]byte("test data"),       // payload
+		1,                  // version
+		0,                  // chainID
+		senderKP.Address(), // sender
+		1,                  // nonce
+		types.EncodeTransferPayload(senderKP.Address(), 0), // payload
 		nil,                       // constraints
 		100,                       // maxFee
 		1000,                      // gasLimit

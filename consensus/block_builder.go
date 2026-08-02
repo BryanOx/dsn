@@ -183,6 +183,7 @@ func BuildBlock(s *state.InMemoryState, vm *vm.VM, mp MempoolI, height uint64, p
 			Epoch:            epoch,
 			Timestamp:        uint64(time.Now().Unix()),
 			Proposer:         proposer,
+			EventsRoot:       types.ComputeEventsRoot(blockEvents),
 		},
 		Transactions: txList,
 		FeeSummary:   types.NewFeeSummary(totalFees),

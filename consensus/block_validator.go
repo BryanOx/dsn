@@ -31,10 +31,32 @@ var (
 
 // ValidateBlock validates a block using the given state and hasher.
 // If vm is provided, contract transactions will be re-executed using the VM
-// to verify state root correctness.
+// to verify state root correctness. The block must carry a valid commit proof
+// (all non-genesis blocks do).
 func ValidateBlock(block *types.Block, parentHeader *types.BlockHeader,
 	expectedPrevHash types.Hash, s *state.InMemoryState, hasher types.Hasher,
 	vm *vm.VM, blockTimeSec uint64) error {
+
+	return validateBlock(block, parentHeader, expectedPrevHash, s, hasher, vm, blockTimeSec, false)
+}
+
+// ValidateBlockProposal validates a block proposal that does not yet carry a
+// commit proof. Used by non-proposer validators before voting: a proposal is
+// still signed and checked for correctness, but the 2/3 precommit proof is
+// only produced after the voting round completes.
+func ValidateBlockProposal(block *types.Block, parentHeader *types.BlockHeader,
+	expectedPrevHash types.Hash, s *state.InMemoryState, hasher types.Hasher,
+	vm *vm.VM, blockTimeSec uint64) error {
+
+	return validateBlock(block, parentHeader, expectedPrevHash, s, hasher, vm, blockTimeSec, true)
+}
+
+// validateBlock contains the full validation pipeline shared by ValidateBlock
+// and ValidateBlockProposal. When skipCommitProof is true the commit proof
+// requirement is omitted (used for proposals that have not been voted on yet).
+func validateBlock(block *types.Block, parentHeader *types.BlockHeader,
+	expectedPrevHash types.Hash, s *state.InMemoryState, hasher types.Hasher,
+	vm *vm.VM, blockTimeSec uint64, skipCommitProof bool) error {
 
 	if block.Header.Height != parentHeader.Height+1 {
 		return fmt.Errorf("%w: expected %d, got %d", ErrWrongHeight,
@@ -177,8 +199,10 @@ func ValidateBlock(block *types.Block, parentHeader *types.BlockHeader,
 	}
 
 	// 8. Verify commit proof (if present - genesis block has nil proof)
-	if err := validateCommitProof(block, s, expectedEpoch); err != nil {
-		return fmt.Errorf("commit proof: %w", err)
+	if !skipCommitProof {
+		if err := validateCommitProof(block, s, expectedEpoch); err != nil {
+			return fmt.Errorf("commit proof: %w", err)
+		}
 	}
 
 	return nil

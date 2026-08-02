@@ -704,3 +704,43 @@ func TestValidateBlock_NonMonotonicTimestamp(t *testing.T) {
 	require.Error(t, err, "non-monotonic timestamp should fail")
 	require.Contains(t, err.Error(), "invalid timestamp")
 }
+
+// TestValidateBlockProposal_NoCommitProof verifies that ValidateBlockProposal
+// accepts a block without a commit proof (a pending proposal) while
+// ValidateBlock still rejects it, and that a proofed block passes both.
+func TestValidateBlockProposal_NoCommitProof(t *testing.T) {
+	hasher, s, mp, senderPubKey, _, _, validatorPrivKey, validatorConsensusID := setupTest(t)
+
+	// Empty mempool -> empty block with no commit proof
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil, 1)
+	require.NoError(t, err)
+	require.Nil(t, block.CommitProof, "precondition: built block has no proof")
+
+	// Fresh state at the parent height (mirrors a non-proposer validator that
+	// has NOT executed this block yet). Must be recreated per validation call
+	// because ValidateBlock mutates the state it runs against.
+	newFreshState := func() *state.InMemoryState {
+		fs := state.NewInMemoryState(hasher)
+		var pubKey32 [32]byte
+		copy(pubKey32[:], senderPubKey)
+		acc := state.NewAccount(types.Address{1}, pubKey32)
+		acc.AddBalance(types.NewAmount(1000))
+		fs.SetAccount(types.Address{1}, acc)
+		_, _, _ = setupValidatorForTest(fs, 1, 100_000)
+		return fs
+	}
+
+	parent := &types.BlockHeader{Height: 0}
+
+	// A proposal without a proof must pass the proposal-only validation
+	require.NoError(t, ValidateBlockProposal(block, parent, types.ZeroHash, newFreshState(), hasher, nil, 1))
+
+	// The same block must still FAIL full validation without a proof
+	err = ValidateBlock(block, parent, types.ZeroHash, newFreshState(), hasher, nil, 1)
+	require.Error(t, err, "proof-less block must fail full validation")
+	require.Contains(t, err.Error(), "nil proof")
+
+	// Once a proof is attached, full validation passes too
+	attachCommitProof(t, block, s, validatorConsensusID, validatorPrivKey)
+	require.NoError(t, ValidateBlock(block, parent, types.ZeroHash, newFreshState(), hasher, nil, 1))
+}

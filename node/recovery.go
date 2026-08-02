@@ -25,9 +25,8 @@ func (n *Node) Recover() error {
 	// Try to load tip to set current height
 	tip, tipErr := consensus.LoadTip(n.persistent)
 	if tipErr == nil {
-		n.currentHeight = tip.Height
 		hash, _ := tip.HeaderHash(n.hasher)
-		n.currentTipHash = hash
+		n.setTip(tip.Height, hash)
 	}
 
 	if stateRoot == (types.Hash{}) {

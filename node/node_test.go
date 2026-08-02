@@ -375,7 +375,7 @@ func TestNodeNew_RecoveryPersistent(t *testing.T) {
 	defer n2.Close()
 
 	// Height should be recovered from tip
-	require.Equal(t, uint64(42), n2.currentHeight)
+	require.Equal(t, uint64(42), n2.CurrentHeight())
 }
 
 func TestNodeNew_FreshPersistent(t *testing.T) {
@@ -392,8 +392,8 @@ func TestNodeNew_FreshPersistent(t *testing.T) {
 
 	// Fresh DB should have zero state root
 	require.Equal(t, types.Hash{}, n.state.GetStateRoot())
-	require.Equal(t, uint64(0), n.currentHeight)
-	require.Equal(t, types.Hash{}, n.currentTipHash)
+	require.Equal(t, uint64(0), n.CurrentHeight())
+	require.Equal(t, types.Hash{}, n.GetTipHash())
 }
 
 func TestFastSync_HashMismatch(t *testing.T) {

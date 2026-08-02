@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dsn/dsn/consensus"
@@ -46,10 +47,10 @@ type Node struct {
 	consensusRunning bool
 	consensusStopCh  chan struct{}
 	wallet           *wallet.KeyPair
-	currentHeight    uint64
-	currentTipHash   types.Hash
-	currentEpoch     uint64 // NEW: tracks current epoch for boundary detection
-	bestChainHeight  uint64 // tracks best chain height for fork choice
+	currentHeight    atomic.Uint64
+	currentTipHash   atomic.Pointer[types.Hash] // atomic.Pointer because types.Hash is an array (sync/atomic can't store arrays)
+	currentEpoch     atomic.Uint64              // tracks current epoch for boundary detection
+	bestChainHeight  uint64                     // tracks best chain height for fork choice
 
 	// Production Node Runtime fields (Phase 5B)
 	genesisDoc      *genesis.GenesisDoc
@@ -169,7 +170,7 @@ func New(cfg Config) (*Node, error) {
 			return state.RestoreFromSnapshot(persistent, data, expectedHash)
 		})
 		n.fastSync.SetReplayHandler(func(fromHeight uint64) error {
-			return n.ReplayBlocks(fromHeight, n.currentHeight) // tip will be determined by FastSyncEngine
+			return n.ReplayBlocks(fromHeight, n.currentHeight.Load()) // tip will be determined by FastSyncEngine
 		})
 
 		// Register with P2PNode
@@ -383,12 +384,24 @@ func (n *Node) consensusProposerAtHeight(height uint64) types.Address {
 
 // CurrentHeight returns the current chain height.
 func (n *Node) CurrentHeight() uint64 {
-	return n.currentHeight
+	return n.currentHeight.Load()
 }
 
 // GetTipHash returns the hash of the current tip block.
 func (n *Node) GetTipHash() types.Hash {
-	return n.currentTipHash
+	h := n.currentTipHash.Load()
+	if h == nil {
+		return types.Hash{}
+	}
+	return *h
+}
+
+// setTip atomically records the current chain tip. The header hash is stored
+// as an immutable copy because types.Hash is an array and sync/atomic cannot
+// operate on arrays directly.
+func (n *Node) setTip(height uint64, hash types.Hash) {
+	n.currentHeight.Store(height)
+	n.currentTipHash.Store(&hash)
 }
 
 // Hasher returns the node's SHA256 hasher.
@@ -418,9 +431,9 @@ func (n *Node) StartConsensus() {
 	if n.persistent != nil {
 		tip, err := consensus.LoadTip(n.persistent)
 		if err == nil {
-			n.currentHeight = tip.Height
-			n.currentTipHash, _ = tip.HeaderHash(n.hasher)
-			n.currentEpoch = tip.Epoch
+			hash, _ := tip.HeaderHash(n.hasher)
+			n.setTip(tip.Height, hash)
+			n.currentEpoch.Store(tip.Epoch)
 		}
 
 		// Fast sync: replace stub with FastSyncEngine
@@ -431,9 +444,9 @@ func (n *Node) StartConsensus() {
 					// Fast sync complete — start block sync if needed
 					tip, _ := consensus.LoadTip(n.persistent)
 					if tip != nil {
-						n.currentHeight = tip.Height
-						n.currentTipHash, _ = tip.HeaderHash(n.hasher)
-						n.currentEpoch = tip.Epoch
+						hash, _ := tip.HeaderHash(n.hasher)
+						n.setTip(tip.Height, hash)
+						n.currentEpoch.Store(tip.Epoch)
 					}
 
 					// Start block sync catch-up
@@ -477,14 +490,20 @@ func (n *Node) StopConsensus() {
 
 // runConsensusLoop is the main consensus loop running in a goroutine.
 func (n *Node) runConsensusLoop() {
-	height := n.currentHeight + 1
-
 	for {
 		select {
 		case <-n.consensusStopCh:
 			return
 		default:
 		}
+
+		// The target height is derived from the current tip at the start of
+		// every iteration instead of being incremented in place. This keeps
+		// the loop in sync with blocks applied by other goroutines
+		// (applyAcceptedBlock) and guarantees every height is produced
+		// exactly once — previously a second height++ in the idle wait
+		// skipped even heights, so epoch boundaries were never produced.
+		height := n.currentHeight.Load() + 1
 
 		// F1: select the proposer exactly like block validation does — from the
 		// ACTIVE staking registry via WeightedProposerAtHeight over ConsensusIDs.
@@ -498,7 +517,7 @@ func (n *Node) runConsensusLoop() {
 			signer := &walletSigner{kp: n.wallet}
 			// TODO: Get evidence from evidence pool
 			var evidence []types.Evidence
-			block, err := consensus.BuildBlock(n.state, n.vm, n.mempool, height, n.currentTipHash,
+			block, err := consensus.BuildBlock(n.state, n.vm, n.mempool, height, n.GetTipHash(),
 				proposer, signer, n.hasher, n.cfg.MaxTxPerBlock, evidence, n.cfg.BlockTimeSec)
 			if err == nil {
 				// Gossip block
@@ -516,21 +535,21 @@ func (n *Node) runConsensusLoop() {
 					}
 				}
 				// Update tip
-				n.currentHeight = block.Header.Height
-				n.currentTipHash, _ = block.HeaderHash(n.hasher)
+				hash, _ := block.HeaderHash(n.hasher)
+				n.setTip(block.Header.Height, hash)
 				// Clean mempool
 				for _, tx := range block.Transactions {
 					n.mempool.Remove(tx.IntentID)
 				}
 
 				// Create checkpoint and snapshot at epoch boundaries
-				if n.persistent != nil && block.Header.Epoch > 0 && block.Header.Epoch != n.currentEpoch {
-					n.currentEpoch = block.Header.Epoch
+				if n.persistent != nil && block.Header.Epoch > 0 && block.Header.Epoch != n.currentEpoch.Load() {
+					n.currentEpoch.Store(block.Header.Epoch)
 
 					// Create chain checkpoint (always at epoch boundaries)
 					_, _ = consensus.CreateCheckpoint(n.persistent,
 						block.Header.Height, block.Header.Epoch,
-						block.Header.StateRoot, n.currentTipHash,
+						block.Header.StateRoot, n.GetTipHash(),
 						block.Header.ValidatorSetHash)
 
 					// Create state snapshot if snapshot interval matches
@@ -547,8 +566,6 @@ func (n *Node) runConsensusLoop() {
 						}
 					}
 				}
-
-				height++
 			}
 		}
 
@@ -557,7 +574,6 @@ func (n *Node) runConsensusLoop() {
 		case <-n.consensusStopCh:
 			return
 		case <-time.After(n.cfg.ProposerTimeout):
-			height++
 		}
 	}
 }
@@ -580,7 +596,7 @@ func (n *Node) handleBlockMessage(data []byte) {
 	}
 
 	// Fork detection: check if this block extends our current chain
-	expectedPrevHash := n.currentTipHash
+	expectedPrevHash := n.GetTipHash()
 	isFork := block.Header.PreviousHash != expectedPrevHash
 
 	if isFork {
@@ -613,7 +629,7 @@ func (n *Node) handleBlockMessage(data []byte) {
 	// Add to reorg buffer (keep last 10 blocks)
 	n.reorgBuffer = append(n.reorgBuffer, ReorgEntry{
 		Height: block.Header.Height,
-		Hash:   n.currentTipHash,
+		Hash:   n.GetTipHash(),
 	})
 	if len(n.reorgBuffer) > 10 {
 		n.reorgBuffer = n.reorgBuffer[1:]
@@ -627,8 +643,8 @@ func (n *Node) handleBlockMessage(data []byte) {
 func (n *Node) handleFork(block *types.Block) {
 	// Compute fork weights for comparison
 	// Use currentHeight as bestChainHeight
-	weightNew := forkWeight(block.Header.Height, n.currentHeight)
-	weightCurr := forkWeight(n.currentHeight, n.currentHeight)
+	weightNew := forkWeight(block.Header.Height, n.currentHeight.Load())
+	weightCurr := forkWeight(n.currentHeight.Load(), n.currentHeight.Load())
 
 	// Check if new fork is better using fork weight
 	if weightNew < weightCurr {
@@ -639,7 +655,7 @@ func (n *Node) handleFork(block *types.Block) {
 	}
 
 	// If weights equal, use height as tiebreaker
-	if weightNew == weightCurr && block.Header.Height <= n.currentHeight {
+	if weightNew == weightCurr && block.Header.Height <= n.currentHeight.Load() {
 		return // not a better fork
 	}
 
@@ -670,8 +686,8 @@ func (n *Node) handleFork(block *types.Block) {
 
 // applyAcceptedBlock applies a validated block and persists state.
 func (n *Node) applyAcceptedBlock(block *types.Block) {
-	n.currentHeight = block.Header.Height
-	n.currentTipHash, _ = block.HeaderHash(n.hasher)
+	hash, _ := block.HeaderHash(n.hasher)
+	n.setTip(block.Header.Height, hash)
 
 	// Store atomically
 	if n.persistent != nil {
@@ -718,11 +734,11 @@ func (n *Node) applyAcceptedBlock(block *types.Block) {
 	}
 
 	// Create checkpoint at epoch boundaries
-	if n.persistent != nil && block.Header.Epoch > 0 && block.Header.Epoch != n.currentEpoch {
-		n.currentEpoch = block.Header.Epoch
+	if n.persistent != nil && block.Header.Epoch > 0 && block.Header.Epoch != n.currentEpoch.Load() {
+		n.currentEpoch.Store(block.Header.Epoch)
 		_, _ = consensus.CreateCheckpoint(n.persistent,
 			block.Header.Height, block.Header.Epoch,
-			block.Header.StateRoot, n.currentTipHash,
+			block.Header.StateRoot, n.GetTipHash(),
 			block.Header.ValidatorSetHash)
 
 		if n.cfg.SnapshotInterval > 0 &&

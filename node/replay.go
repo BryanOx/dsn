@@ -78,12 +78,11 @@ func (n *Node) ReplayBlocks(fromHeight, toHeight uint64) error {
 		}
 
 		// Update node's current height and tip hash
-		n.currentHeight = height
 		hash, err := block.HeaderHash(n.hasher)
 		if err != nil {
 			return fmt.Errorf("header hash at height %d: %w", height, err)
 		}
-		n.currentTipHash = hash
+		n.setTip(height, hash)
 
 		// Persist the updated tip
 		if err := consensus.StoreTip(n.persistent, &block.Header); err != nil {

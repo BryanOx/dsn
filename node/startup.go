@@ -349,8 +349,8 @@ func (n *Node) startupPhase7_InitGenesisState(ctx context.Context) error {
 		}
 
 		_ = root // genesis state root initialized
-		n.currentHeight = 0
-		n.currentTipHash = types.Hash{}
+		n.currentHeight.Store(0)
+		n.currentTipHash.Store(&types.Hash{})
 	} else {
 		// DB has existing state - load accounts into memory
 		if err := n.persistent.ForEachAccount(func(addr types.Address, acc *state.Account) error {
@@ -375,9 +375,9 @@ func (n *Node) startupPhase7_InitGenesisState(ctx context.Context) error {
 
 		// Load tip from DB
 		if tip, err := consensus.LoadTip(n.persistent); err == nil {
-			n.currentHeight = tip.Height
-			n.currentTipHash, _ = tip.HeaderHash(n.hasher)
-			n.currentEpoch = tip.Epoch
+			hash, _ := tip.HeaderHash(n.hasher)
+			n.setTip(tip.Height, hash)
+			n.currentEpoch.Store(tip.Epoch)
 		}
 	}
 
@@ -589,7 +589,7 @@ func (n *Node) startupPhase13_EnterSyncMode(ctx context.Context) error {
 		// Check if we're behind network (would need catch-up sync)
 		// For now, assume we're current if we have state
 		n.syncMode = SyncModeNormal
-		fmt.Printf("Node at height %d, sync mode: normal\n", n.currentHeight)
+		fmt.Printf("Node at height %d, sync mode: normal\n", n.currentHeight.Load())
 	}
 
 	return nil
@@ -680,9 +680,9 @@ func (n *Node) Shutdown(ctx context.Context) error {
 		// 8. Flush state to BoltDB and close
 		if n.persistent != nil {
 			// Persist finalized height
-			if n.currentHeight > 0 {
+			if n.currentHeight.Load() > 0 {
 				_ = consensus.StoreTip(n.persistent, &types.BlockHeader{
-					Height:    n.currentHeight,
+					Height:    n.currentHeight.Load(),
 					StateRoot: n.persistent.GetStateRoot(),
 					Timestamp: uint64(time.Now().Unix()),
 				})
@@ -755,7 +755,7 @@ func (ms *MetricsServer) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	// For now, return basic metrics
 	fmt.Fprintf(w, "# HELP dsn_block_height Current block height\n")
 	fmt.Fprintf(w, "# TYPE dsn_block_height gauge\n")
-	fmt.Fprintf(w, "dsn_block_height %d\n", ms.node.currentHeight)
+	fmt.Fprintf(w, "dsn_block_height %d\n", ms.node.currentHeight.Load())
 }
 
 func (ms *MetricsServer) handleHealth(w http.ResponseWriter, r *http.Request) {

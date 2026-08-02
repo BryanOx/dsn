@@ -142,17 +142,17 @@ func TestReplayBlocks_FaithfulReplay(t *testing.T) {
 	roots := make([]types.Hash, 5)
 	for height := uint64(1); height <= 2; height++ {
 		require.NoError(t, n.Mempool().Submit(mkTransfer()))
-		block := buildBlock(height, n.currentTipHash)
+		block := buildBlock(height, n.GetTipHash())
 		roots[height] = n.State().GetStateRoot()
 		require.NotEqual(t, types.Hash{}, roots[height])
 		n.applyAcceptedBlock(block)
 	}
-	require.Equal(t, uint64(2), n.currentHeight)
+	require.Equal(t, uint64(2), n.CurrentHeight())
 
 	// Build blocks 3..4 without advancing the committed state: snapshot,
 	// apply, record, store the full blocks, then rewind.
 	snapID := n.State().Snapshot()
-	prevHash := n.currentTipHash
+	prevHash := n.GetTipHash()
 	for height := uint64(3); height <= 4; height++ {
 		var tx *types.Transaction
 		if height == 3 {
@@ -193,7 +193,7 @@ func TestReplayBlocks_FaithfulReplay(t *testing.T) {
 	// Replay blocks 3..4 and verify the final state root matches the
 	// originally built state.
 	require.NoError(t, n.ReplayBlocks(3, 4))
-	require.Equal(t, uint64(4), n.currentHeight)
+	require.Equal(t, uint64(4), n.CurrentHeight())
 	require.Equal(t, roots[4], n.State().GetStateRoot(),
 		"replayed state must match the originally built state")
 

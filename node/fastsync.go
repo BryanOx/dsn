@@ -48,8 +48,7 @@ func (n *Node) FastSync() error {
 		if err == nil {
 			// Try to replay from last checkpoint to latest known header
 			// This is the recovery path
-			n.currentHeight = latestCP.Height
-			n.currentTipHash = latestCP.BlockHash
+			n.setTip(latestCP.Height, latestCP.BlockHash)
 
 			// Check if we need to replay
 			latestHeader, err := consensus.LoadTip(n.persistent)
@@ -130,8 +129,7 @@ func (n *Node) FastSyncFromCheckpoint(cp *state.Checkpoint, snapData []byte, tar
 	}
 
 	// Step 6: Update node state
-	n.currentHeight = cp.Height
-	n.currentTipHash = cp.BlockHash
+	n.setTip(cp.Height, cp.BlockHash)
 
 	// Step 7: Persist tip to ensure recovery works
 	if err := consensus.StoreTip(n.persistent, &types.BlockHeader{

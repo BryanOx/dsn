@@ -181,7 +181,7 @@ func BuildBlock(s *state.InMemoryState, vm *vm.VM, mp MempoolI, height uint64, p
 			ValidatorRoot:    validatorRoot,
 			ValidatorSetHash: valSetHash,
 			Epoch:            epoch,
-			Timestamp:        uint64(time.Now().Unix()),
+			Timestamp:        blockTimestamp,
 			Proposer:         proposer,
 			EventsRoot:       types.ComputeEventsRoot(blockEvents),
 		},

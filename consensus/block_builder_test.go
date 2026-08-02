@@ -109,6 +109,26 @@ func TestBuildBlock_EmptyMempool(t *testing.T) {
 	require.Equal(t, 0, len(block.Transactions))
 }
 
+func TestBuildBlock_HeaderTimestampSingleRead(t *testing.T) {
+	hasher := types.SHA256Hasher{}
+	s := state.NewInMemoryState(hasher)
+	mp := mempool.New(10000, 300*time.Second, s)
+
+	validatorAddr := setupTestValidator(s, 100, 100_000)
+
+	// The header timestamp must be a single wall-clock read performed while
+	// building the block (the same value contracts observe during execution).
+	before := uint64(time.Now().Unix())
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorAddr, &mockSigner{}, hasher, 100, nil, 1)
+	require.NoError(t, err)
+	after := uint64(time.Now().Unix())
+
+	require.GreaterOrEqual(t, block.Header.Timestamp, before,
+		"header timestamp must not predate block building")
+	require.LessOrEqual(t, block.Header.Timestamp, after,
+		"header timestamp must not postdate block building")
+}
+
 func TestBuildBlock_TxLimit(t *testing.T) {
 	hasher := types.SHA256Hasher{}
 	s := state.NewInMemoryState(hasher)

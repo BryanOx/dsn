@@ -49,6 +49,18 @@ func ValidateBlock(block *types.Block, parentHeader *types.BlockHeader,
 		}
 	}
 
+	// Header freshness: reject timestamps that drift beyond the allowed skew.
+	// Contracts execute with this timestamp, so it must be sane before execution.
+	if err := types.ValidateTimestamp(block.Header.Timestamp); err != nil {
+		return fmt.Errorf("%w: %v", types.ErrInvalidTimestamp, err)
+	}
+
+	// Monotonicity: a child block must not carry an older timestamp than its parent.
+	if parentHeader != nil && parentHeader.Timestamp > block.Header.Timestamp {
+		return fmt.Errorf("%w: parent timestamp %d is after block timestamp %d",
+			types.ErrInvalidTimestamp, parentHeader.Timestamp, block.Header.Timestamp)
+	}
+
 	// 0. Process evidence BEFORE BeginBlock (same as BuildBlock — ensures deterministic replay)
 	for _, ev := range block.Evidence {
 		if _, err := ProcessEvidence(s, ev, block.Header.Height); err != nil {

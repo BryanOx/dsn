@@ -658,3 +658,49 @@ func TestValidateBlock_CommitProof_EmptyPrecommits(t *testing.T) {
 	require.Error(t, err, "empty precommits should fail")
 	require.Contains(t, err.Error(), "power")
 }
+
+func TestValidateBlock_StaleTimestamp(t *testing.T) {
+	hasher, s, mp, _, _, _, validatorPrivKey, validatorConsensusID := setupTest(t)
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil, 1)
+	require.NoError(t, err)
+
+	attachCommitProof(t, block, s, validatorConsensusID, validatorPrivKey)
+
+	// Header timestamp older than the allowed drift (5s) must be rejected.
+	block.Header.Timestamp = uint64(time.Now().Unix()) - 10
+
+	parent := &types.BlockHeader{Height: 0}
+	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil, 1)
+	require.Error(t, err, "stale timestamp should fail")
+	require.Contains(t, err.Error(), "invalid timestamp")
+}
+
+func TestValidateBlock_FutureTimestamp(t *testing.T) {
+	hasher, s, mp, _, _, _, validatorPrivKey, validatorConsensusID := setupTest(t)
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil, 1)
+	require.NoError(t, err)
+
+	attachCommitProof(t, block, s, validatorConsensusID, validatorPrivKey)
+
+	// Header timestamp beyond the allowed drift (5s) must be rejected.
+	block.Header.Timestamp = uint64(time.Now().Unix()) + 10
+
+	parent := &types.BlockHeader{Height: 0}
+	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil, 1)
+	require.Error(t, err, "future timestamp should fail")
+	require.Contains(t, err.Error(), "invalid timestamp")
+}
+
+func TestValidateBlock_NonMonotonicTimestamp(t *testing.T) {
+	hasher, s, mp, _, _, _, validatorPrivKey, validatorConsensusID := setupTest(t)
+	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorConsensusID, &mockSigner{}, hasher, 100, nil, 1)
+	require.NoError(t, err)
+
+	attachCommitProof(t, block, s, validatorConsensusID, validatorPrivKey)
+
+	// Parent with a NEWER timestamp than the child must be rejected.
+	parent := &types.BlockHeader{Height: 0, Timestamp: block.Header.Timestamp + 1}
+	err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil, 1)
+	require.Error(t, err, "non-monotonic timestamp should fail")
+	require.Contains(t, err.Error(), "invalid timestamp")
+}

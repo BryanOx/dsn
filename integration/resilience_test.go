@@ -4,8 +4,6 @@ package integration
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -37,7 +35,7 @@ func TestResilience_RollingRestart(t *testing.T) {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
 				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
-				uint64(time.Now().Unix()+int64(round)),
+				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
 			txs = append(txs, tx)
@@ -48,37 +46,30 @@ func TestResilience_RollingRestart(t *testing.T) {
 		CompareStateRoots(t, nodes)
 	}
 
-	// Get baseline state root
-	baselineRoot := nodes[0].State().GetStateRoot()
-
 	// Gracefully restart each node one at a time
 	for i := 0; i < 3; i++ {
 		t.Logf("Restarting node %d gracefully", i)
 
+		// Persist state before the restart so the recreated node can
+		// restore the same state root from disk.
+		_, err := nodes[i].CommitState()
+		require.NoError(t, err, "node %d commit state before restart", i)
+
 		// Close the node gracefully
-		dataDir := nodes[i].Config().DataDir
+		restartCfg := *nodes[i].Config()
 		heightBefore := nodes[i].CurrentHeight()
 		stateRootBefore := nodes[i].State().GetStateRoot()
 
 		nodes[i].Close()
 		nodes[i] = nil
 
-		// Recreate the node from the same data directory
-		n2, err := node.New(node.Config{
-			DataDir:          dataDir,
-			P2PPort:          0,
-			MempoolMaxSize:   10000,
-			MempoolTTL:       300 * time.Second,
-			SnapshotInterval: 10,
-			Validators:       []types.Address{kps[0].Address(), kps[1].Address(), kps[2].Address()},
-		})
+		// Recreate the node from the same data directory, preserving the
+		// full config (including MaxTxPerBlock) so the restarted node
+		// builds identical blocks to the live nodes.
+		n2, err := node.New(restartCfg)
 		require.NoError(t, err, "failed to recreate node %d", i)
 		n2.SetWallet(kps[i])
 		nodes[i] = n2
-
-		// Register validators on the recreated node
-		validators := []types.Address{kps[0].Address(), kps[1].Address(), kps[2].Address()}
-		registerValidatorsInState(t, n2.State(), validators, kps)
 
 		// Load from persistent storage
 		err = n2.LoadFromPersistent()
@@ -88,14 +79,16 @@ func TestResilience_RollingRestart(t *testing.T) {
 		require.Equal(t, heightBefore, n2.CurrentHeight(), "node %d height mismatch after restart", i)
 		require.Equal(t, stateRootBefore, n2.State().GetStateRoot(), "node %d state root mismatch after restart", i)
 
-		// Produce more blocks to verify catch-up
-		for round := 5; round < 8; round++ {
+		// Produce more blocks to verify catch-up. Nonces must keep advancing
+		// across restarts: rounds 5-7 after the first restart, 8-10 after the
+		// second, 11-13 after the third.
+		for round := 5 + i*3; round < 8+i*3; round++ {
 			var txs []*types.Transaction
 			for _, kp := range kps {
 				tx := types.NewTransaction(
 					1, 0, kp.Address(), uint64(round+1),
 					types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
-					uint64(time.Now().Unix()+int64(round)),
+					uint64(time.Now().Unix()),
 				)
 				require.NoError(t, kp.Sign(tx, hasher))
 				txs = append(txs, tx)
@@ -111,8 +104,10 @@ func TestResilience_RollingRestart(t *testing.T) {
 		CompareStateRoots(t, nodes)
 	}
 
-	// Final verification: all nodes should match baseline
-	require.Equal(t, baselineRoot, nodes[0].State().GetStateRoot(), "node 0 final state root mismatch")
+	// Final verification: after all restarts and catch-up, every node must
+	// hold the same (post-catch-up) state root. The state advances beyond the
+	// pre-restart baseline, so convergence is the property to check here.
+	CompareStateRoots(t, nodes)
 }
 
 // T4-2: Crash-Loop Recovery Test
@@ -138,7 +133,7 @@ func TestResilience_CrashLoopRecovery(t *testing.T) {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
 				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
-				uint64(time.Now().Unix()+int64(round)),
+				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
 			txs = append(txs, tx)
@@ -151,7 +146,12 @@ func TestResilience_CrashLoopRecovery(t *testing.T) {
 
 	// Record state before crash
 	preCrashRoot := nodes[2].State().GetStateRoot()
-	dataDir2 := nodes[2].Config().DataDir
+	restartCfg := *nodes[2].Config()
+
+	// Persist state before the crash so recovery can restore the
+	// pre-crash state root from disk.
+	_, err := nodes[2].CommitState()
+	require.NoError(t, err, "commit state before crash")
 
 	// Simulate crash: close without graceful shutdown
 	// (In this test we just call Close, which simulates a crash since we don't do cleanup)
@@ -166,7 +166,7 @@ func TestResilience_CrashLoopRecovery(t *testing.T) {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
 				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
-				uint64(time.Now().Unix()+int64(round)),
+				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
 			txs = append(txs, tx)
@@ -180,20 +180,10 @@ func TestResilience_CrashLoopRecovery(t *testing.T) {
 	t.Logf("Target state root after crash: %x", targetRoot)
 
 	// Restart node 2 (first recovery)
-	n2, err := node.New(node.Config{
-		DataDir:          dataDir2,
-		P2PPort:          0,
-		MempoolMaxSize:   10000,
-		MempoolTTL:       300 * time.Second,
-		SnapshotInterval: 10,
-		Validators:       []types.Address{kps[0].Address(), kps[1].Address(), kps[2].Address()},
-	})
+	n2, err := node.New(restartCfg)
 	require.NoError(t, err)
 	n2.SetWallet(kps[2])
 	nodes[2] = n2
-
-	validators := []types.Address{kps[0].Address(), kps[1].Address(), kps[2].Address()}
-	registerValidatorsInState(t, n2.State(), validators, kps)
 
 	err = n2.LoadFromPersistent()
 	require.NoError(t, err)
@@ -203,6 +193,11 @@ func TestResilience_CrashLoopRecovery(t *testing.T) {
 
 	// Now simulate second crash immediately after restart
 	t.Log("Crashed node 2 again (second crash)")
+	// Persist the restored state before the second crash so it can be
+	// recovered again.
+	_, err = n2.CommitState()
+	require.NoError(t, err, "commit state before second crash")
+	cfg2 := *n2.Config()
 	n2.Close()
 	nodes[2] = nil
 
@@ -213,7 +208,7 @@ func TestResilience_CrashLoopRecovery(t *testing.T) {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
 				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
-				uint64(time.Now().Unix()+int64(round)),
+				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
 			txs = append(txs, tx)
@@ -226,37 +221,29 @@ func TestResilience_CrashLoopRecovery(t *testing.T) {
 	targetRoot2 := nodes[0].State().GetStateRoot()
 
 	// Second recovery: restart node 2 again
-	n3, err := node.New(node.Config{
-		DataDir:          dataDir2,
-		P2PPort:          0,
-		MempoolMaxSize:   10000,
-		MempoolTTL:       300 * time.Second,
-		SnapshotInterval: 10,
-		Validators:       []types.Address{kps[0].Address(), kps[1].Address(), kps[2].Address()},
-	})
+	n3, err := node.New(cfg2)
 	require.NoError(t, err)
 	n3.SetWallet(kps[2])
 	nodes[2] = n3
 
-	registerValidatorsInState(t, n3.State(), validators, kps)
-
 	err = n3.LoadFromPersistent()
 	require.NoError(t, err)
 
-	// Verify node 2 recovered and can catch up by applying blocks
-	var txs []*types.Transaction
-	for _, kp := range kps {
-		tx := types.NewTransaction(
-			1, 0, kp.Address(), 7,
-			types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
-			uint64(time.Now().Unix()),
-		)
-		require.NoError(t, kp.Sign(tx, hasher))
-		txs = append(txs, tx)
+	// Verify node 2 recovered and can catch up by replaying the blocks it
+	// missed while down (nonces 4-7), then verify it matches the target.
+	for round := 3; round < 7; round++ {
+		var txs []*types.Transaction
+		for _, kp := range kps {
+			tx := types.NewTransaction(
+				1, 0, kp.Address(), uint64(round+1),
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
+				uint64(time.Now().Unix()),
+			)
+			require.NoError(t, kp.Sign(tx, hasher))
+			txs = append(txs, tx)
+		}
+		MineBlockWithTxs(t, nodes[2], kps, txs)
 	}
-	MineBlockWithTxs(t, nodes[2], kps, txs)
-	MineBlockWithTxs(t, nodes[0], kps, txs)
-	MineBlockWithTxs(t, nodes[1], kps, txs)
 
 	// After recovery and catch-up, verify convergence
 	CompareStateRoots(t, nodes)
@@ -288,7 +275,7 @@ func TestResilience_CorruptedSnapshot(t *testing.T) {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
 				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
-				uint64(time.Now().Unix()+int64(round)),
+				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
 			txs = append(txs, tx)
@@ -303,45 +290,25 @@ func TestResilience_CorruptedSnapshot(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get the data directory and find the snapshot file
-	dataDir := nodes[0].Config().DataDir
+	restartCfg := *nodes[0].Config()
 
-	// Find and corrupt the snapshot file
-	snapshots, err := filepath.Glob(filepath.Join(dataDir, "*.snap"))
-	if err == nil && len(snapshots) > 0 {
-		t.Logf("Found snapshot file: %s", snapshots[0])
-
-		// Corrupt the snapshot by writing invalid data
-		err := os.WriteFile(snapshots[0], []byte("CORRUPTED_SNAPSHOT_DATA_12345"), 0644)
-		require.NoError(t, err, "failed to corrupt snapshot")
-		t.Log("Corrupted snapshot file")
-	} else {
-		t.Log("No snapshot file found, proceeding with restart")
-	}
+	// Note: snapshot corruption is not exercised here. Snapshots are stored
+	// inside a BoltDB bucket (snapshotsBucket in state/checkpoint.go), not as
+	// standalone *.snap files on disk, so there is no file to corrupt. The
+	// crash/recovery/root-match scenario below still exercises the persisted
+	// state round-trip.
 
 	// Close and restart node 0
 	nodes[0].Close()
 
-	n2, err := node.New(node.Config{
-		DataDir:          dataDir,
-		P2PPort:          0,
-		MempoolMaxSize:   10000,
-		MempoolTTL:       300 * time.Second,
-		SnapshotInterval: 10,
-		Validators:       []types.Address{kps[0].Address(), kps[1].Address()},
-	})
+	n2, err := node.New(restartCfg)
 	require.NoError(t, err)
 	n2.SetWallet(kps[0])
 	nodes[0] = n2
 
-	// Try to load from persistent - should detect corruption and fall back
+	// Load the persisted state back and verify the node can continue producing blocks
 	err = n2.LoadFromPersistent()
-	// The error is expected - corruption should be detected
-	t.Logf("LoadFromPersistent error (expected): %v", err)
-
-	// The node should still have its in-memory state or recover to a valid state
-	// Verify the node can still process blocks
-	validators := []types.Address{kps[0].Address(), kps[1].Address()}
-	registerValidatorsInState(t, n2.State(), validators, kps)
+	require.NoError(t, err, "load from persistent after restart")
 
 	// Continue producing blocks after restart
 	var txs []*types.Transaction
@@ -386,7 +353,7 @@ func TestResilience_NetworkPartition(t *testing.T) {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
 				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
-				uint64(time.Now().Unix()+int64(round)),
+				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
 			txs = append(txs, tx)
@@ -398,7 +365,12 @@ func TestResilience_NetworkPartition(t *testing.T) {
 
 	// Record state root before partition
 	prePartitionRoot := nodes[2].State().GetStateRoot()
-	dataDir2 := nodes[2].Config().DataDir
+	restartCfg := *nodes[2].Config()
+
+	// Persist state before the partition so the reconnected node can
+	// restore the pre-partition state root from disk.
+	_, err := nodes[2].CommitState()
+	require.NoError(t, err, "commit state before partition")
 
 	// Simulate network partition: disconnect node 2
 	t.Log("Simulating network partition: disconnecting node 2")
@@ -412,7 +384,7 @@ func TestResilience_NetworkPartition(t *testing.T) {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
 				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
-				uint64(time.Now().Unix()+int64(round)),
+				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
 			txs = append(txs, tx)
@@ -432,20 +404,10 @@ func TestResilience_NetworkPartition(t *testing.T) {
 
 	// Reconnect the partitioned node
 	t.Log("Reconnecting node 2")
-	n2, err := node.New(node.Config{
-		DataDir:          dataDir2,
-		P2PPort:          0,
-		MempoolMaxSize:   10000,
-		MempoolTTL:       300 * time.Second,
-		SnapshotInterval: 10,
-		Validators:       []types.Address{kps[0].Address(), kps[1].Address(), kps[2].Address()},
-	})
+	n2, err := node.New(restartCfg)
 	require.NoError(t, err)
 	n2.SetWallet(kps[2])
 	nodes[2] = n2
-
-	validators := []types.Address{kps[0].Address(), kps[1].Address(), kps[2].Address()}
-	registerValidatorsInState(t, n2.State(), validators, kps)
 
 	err = n2.LoadFromPersistent()
 	require.NoError(t, err)
@@ -453,15 +415,33 @@ func TestResilience_NetworkPartition(t *testing.T) {
 	// Verify node 2 has pre-partition state
 	require.Equal(t, prePartitionRoot, n2.State().GetStateRoot(), "node 2 should have pre-partition state")
 
-	// Node 2 needs to catch up - apply the blocks that were produced during partition
-	// Node 2 is at height 3, nodes 0,1 are at height 8, so need to apply 5 more blocks
+	// Node 2 needs to catch up - replay the blocks produced during the
+	// partition (nonces 4-8) on node 2 only so it reaches the target state.
+	for round := 3; round < 8; round++ {
+		var txs []*types.Transaction
+		for _, kp := range kps {
+			tx := types.NewTransaction(
+				1, 0, kp.Address(), uint64(round+1),
+				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
+				uint64(time.Now().Unix()),
+			)
+			require.NoError(t, kp.Sign(tx, hasher))
+			txs = append(txs, tx)
+		}
+		MineBlockWithTxs(t, nodes[2], kps, txs)
+	}
+
+	// Verify node 2 caught up to the pre-reconnect target state
+	require.Equal(t, targetRoot, nodes[2].State().GetStateRoot(), "node 2 should match target after catch-up")
+
+	// Produce more blocks on all nodes to verify ongoing convergence
 	for round := 8; round < 13; round++ {
 		var txs []*types.Transaction
 		for _, kp := range kps {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
 				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
-				uint64(time.Now().Unix()+int64(round)),
+				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
 			txs = append(txs, tx)
@@ -474,7 +454,6 @@ func TestResilience_NetworkPartition(t *testing.T) {
 
 	// Verify all nodes converge after reconnection
 	CompareStateRoots(t, nodes)
-	require.Equal(t, targetRoot, nodes[2].State().GetStateRoot(), "node 2 should match target after catch-up")
 }
 
 // T4-5: Validator Kill/Restart Loop
@@ -509,7 +488,7 @@ func TestResilience_KillRestartLoop(t *testing.T) {
 			tx := types.NewTransaction(
 				1, 0, kp.Address(), uint64(round+1),
 				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
-				uint64(time.Now().Unix()+int64(round)),
+				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
 			txs = append(txs, tx)
@@ -521,6 +500,10 @@ func TestResilience_KillRestartLoop(t *testing.T) {
 
 	// Kill/restart loop - 10 iterations
 	targetNodeIdx := 2 // We kill node 2 each time
+	// Nonce tracking: the baseline produced 3 blocks (nonces 1-3), so the
+	// next transaction nonce is 4. Nonces must advance continuously across
+	// every block mined during the kill/restart loop.
+	nextNonce := uint64(4)
 	for iteration := 0; iteration < 10; iteration++ {
 		select {
 		case <-ctx.Done():
@@ -531,9 +514,14 @@ func TestResilience_KillRestartLoop(t *testing.T) {
 		t.Logf("Iteration %d/10: Killing and restarting node %d", iteration+1, targetNodeIdx)
 
 		// Store the current state before kill
-		dataDir := nodes[targetNodeIdx].Config().DataDir
+		restartCfg := *nodes[targetNodeIdx].Config()
 		heightBefore := nodes[targetNodeIdx].CurrentHeight()
 		stateRootBefore := nodes[targetNodeIdx].State().GetStateRoot()
+
+		// Persist state before the kill so recovery can restore the same
+		// state root from disk.
+		_, err := nodes[targetNodeIdx].CommitState()
+		require.NoError(t, err, "commit state before kill on iteration %d", iteration)
 
 		// Kill the node (close without cleanup)
 		nodes[targetNodeIdx].Close()
@@ -546,13 +534,14 @@ func TestResilience_KillRestartLoop(t *testing.T) {
 			var txs []*types.Transaction
 			for _, kp := range kps {
 				tx := types.NewTransaction(
-					1, 0, kp.Address(), uint64(3+iteration*3+round+1),
+					1, 0, kp.Address(), nextNonce,
 					types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
-					uint64(time.Now().Unix()+int64(iteration*10+round)),
+					uint64(time.Now().Unix()),
 				)
 				require.NoError(t, kp.Sign(tx, hasher))
 				txs = append(txs, tx)
 			}
+			nextNonce++
 			// Only mine on alive nodes
 			for i := 0; i < len(nodes); i++ {
 				if i != targetNodeIdx && nodes[i] != nil {
@@ -567,20 +556,10 @@ func TestResilience_KillRestartLoop(t *testing.T) {
 		}
 
 		// Restart the killed node
-		n2, err := node.New(node.Config{
-			DataDir:          dataDir,
-			P2PPort:          0,
-			MempoolMaxSize:   10000,
-			MempoolTTL:       300 * time.Second,
-			SnapshotInterval: 10,
-			Validators:       []types.Address{kps[0].Address(), kps[1].Address(), kps[2].Address()},
-		})
+		n2, err := node.New(restartCfg)
 		require.NoError(t, err, "failed to restart node on iteration %d", iteration)
 		n2.SetWallet(kps[targetNodeIdx])
 		nodes[targetNodeIdx] = n2
-
-		validators := []types.Address{kps[0].Address(), kps[1].Address(), kps[2].Address()}
-		registerValidatorsInState(t, n2.State(), validators, kps)
 
 		err = n2.LoadFromPersistent()
 		require.NoError(t, err, "failed to load from persistent on iteration %d", iteration)
@@ -589,18 +568,36 @@ func TestResilience_KillRestartLoop(t *testing.T) {
 		require.Equal(t, heightBefore, n2.CurrentHeight(), "node should have same height after restart")
 		require.Equal(t, stateRootBefore, n2.State().GetStateRoot(), "node should have same state root after restart")
 
+		// Replay the blocks produced while the node was down so it catches
+		// up to the alive nodes' nonce before a new block is mined together.
+		catchupNonce := nextNonce - uint64(blocksWhileDown)
+		for round := 0; round < blocksWhileDown; round++ {
+			var txs []*types.Transaction
+			for _, kp := range kps {
+				tx := types.NewTransaction(
+					1, 0, kp.Address(), catchupNonce+uint64(round),
+					types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
+					uint64(time.Now().Unix()),
+				)
+				require.NoError(t, kp.Sign(tx, hasher))
+				txs = append(txs, tx)
+			}
+			MineBlockWithTxs(t, nodes[targetNodeIdx], kps, txs)
+		}
+
 		// Verify cluster can still produce blocks and converge
 		// First let alive nodes produce a block, then catch up the restarted node
 		var txs []*types.Transaction
 		for _, kp := range kps {
 			tx := types.NewTransaction(
-				1, 0, kp.Address(), uint64(3+iteration*3+blocksWhileDown+1),
+				1, 0, kp.Address(), nextNonce,
 				types.EncodeTransferPayload(kp.Address(), 0), nil, 100, 1000,
-				uint64(time.Now().Unix()+int64(iteration)),
+				uint64(time.Now().Unix()),
 			)
 			require.NoError(t, kp.Sign(tx, hasher))
 			txs = append(txs, tx)
 		}
+		nextNonce++
 
 		// Get the current state from node 0 (the reference)
 		MineBlockWithTxs(t, nodes[0], kps, txs)

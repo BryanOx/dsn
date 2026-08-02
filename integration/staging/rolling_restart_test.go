@@ -21,9 +21,6 @@ import (
 func restartNodeAndRejoin(t *testing.T, n *node.Node) *node.Node {
 	t.Helper()
 
-	dataDir := n.Config().DataDir
-	validators := n.Config().Validators
-
 	// Commit state before restart
 	_, err := n.CommitState()
 	require.NoError(t, err, "commit state before restart")
@@ -32,14 +29,9 @@ func restartNodeAndRejoin(t *testing.T, n *node.Node) *node.Node {
 	n.Close()
 
 	// Recreate node with same config (simulates new pod starting)
-	n2, err := node.New(node.Config{
-		DataDir:          dataDir,
-		P2PPort:          0,
-		MempoolMaxSize:   10000,
-		MempoolTTL:       300 * time.Second,
-		SnapshotInterval: 10,
-		Validators:       validators,
-	})
+	cfg := *n.Config()
+	cfg.P2PPort = 0
+	n2, err := node.New(cfg)
 	require.NoError(t, err, "recreate node after restart")
 
 	// Load from persistent storage (simulates loading state from PVC)
@@ -84,12 +76,7 @@ func TestRollingRestart_Convergence(t *testing.T) {
 	defer nodes[1].Close()
 	defer nodes[2].Close()
 
-	// Fund all accounts
-	integration.FundAccount(t, nodes[0], kps[0].Address(), kps[0].PublicKey, 100000)
-	integration.FundAccount(t, nodes[0], kps[1].Address(), kps[1].PublicKey, 100000)
-	integration.FundAccount(t, nodes[0], kps[2].Address(), kps[2].PublicKey, 100000)
-
-	// Sync state to all nodes
+	// Fund all accounts (each node funds each account exactly once)
 	for _, n := range nodes {
 		integration.FundAccount(t, n, kps[0].Address(), kps[0].PublicKey, 100000)
 		integration.FundAccount(t, n, kps[1].Address(), kps[1].PublicKey, 100000)
@@ -248,7 +235,10 @@ func applyManualBlock(t *testing.T, n *node.Node, kps []*wallet.KeyPair, txs []*
 	require.NoError(t, err, "build block at height %d", height)
 
 	// Verify state root matches expected
-	expectedRoot := txs[0] // Simplified - in real test, would track expected root
+	var expectedRoot *types.Transaction
+	if len(txs) > 0 {
+		expectedRoot = txs[0] // Simplified - in real test, would track expected root
+	}
 	_ = expectedRoot
 	t.Logf("Applied manual block at height %d, state root: %x", height, block.Header.StateRoot[:8])
 }
@@ -267,13 +257,7 @@ func TestRollingRestart_QuorumMaintenance(t *testing.T) {
 		defer n.Close()
 	}
 
-	// Fund accounts
-	integration.FundAccount(t, nodes[0], kps[0].Address(), kps[0].PublicKey, 100000)
-	integration.FundAccount(t, nodes[0], kps[1].Address(), kps[1].PublicKey, 100000)
-	integration.FundAccount(t, nodes[0], kps[2].Address(), kps[2].PublicKey, 100000)
-	integration.FundAccount(t, nodes[0], kps[3].Address(), kps[3].PublicKey, 100000)
-	integration.FundAccount(t, nodes[0], kps[4].Address(), kps[4].PublicKey, 100000)
-
+	// Fund accounts (each node funds each account exactly once)
 	for _, n := range nodes {
 		integration.FundAccount(t, n, kps[0].Address(), kps[0].PublicKey, 100000)
 		integration.FundAccount(t, n, kps[1].Address(), kps[1].PublicKey, 100000)
@@ -346,11 +330,7 @@ func TestRollingRestart_StatePersistence(t *testing.T) {
 	defer nodes[1].Close()
 	defer nodes[2].Close()
 
-	// Fund accounts
-	integration.FundAccount(t, nodes[0], kps[0].Address(), kps[0].PublicKey, 100000)
-	integration.FundAccount(t, nodes[0], kps[1].Address(), kps[1].PublicKey, 100000)
-	integration.FundAccount(t, nodes[0], kps[2].Address(), kps[2].PublicKey, 100000)
-
+	// Fund accounts (each node funds each account exactly once)
 	for _, n := range nodes {
 		integration.FundAccount(t, n, kps[0].Address(), kps[0].PublicKey, 100000)
 		integration.FundAccount(t, n, kps[1].Address(), kps[1].PublicKey, 100000)

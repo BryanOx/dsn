@@ -10,14 +10,14 @@ import (
 func TestBlockMessage_EncodeDecode(t *testing.T) {
 	block := &types.Block{
 		Header: types.BlockHeader{
-			Version:       1,
-			Height:        42,
-			PreviousHash:  types.Hash{1, 2, 3},
-			Proposer:      types.Address{1},
-			StateRoot:     types.Hash{4, 5, 6},
-			TxRoot:        types.Hash{7, 8, 9},
-			ReceiptRoot:   types.Hash{10, 11, 12},
-			ValidatorRoot: types.Hash{13, 14, 15},
+			Version:          1,
+			Height:           42,
+			PreviousHash:     types.Hash{1, 2, 3},
+			Proposer:         types.Address{1},
+			StateRoot:        types.Hash{4, 5, 6},
+			TxRoot:           types.Hash{7, 8, 9},
+			ReceiptRoot:      types.Hash{10, 11, 12},
+			ValidatorRoot:    types.Hash{13, 14, 15},
 			ValidatorSetHash: types.Hash{20, 21},
 			EventsRoot:       types.Hash{16, 17, 18},
 			Epoch:            2,

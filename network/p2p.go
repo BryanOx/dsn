@@ -358,7 +358,7 @@ func (n *P2PNode) handleTransaction(data []byte, peerID PeerID) {
 }
 
 // handleVote processes an incoming vote message and forwards it to the voteHandler.
-// The vote payload is the raw Vote encoding (type byte already stripped by the dispatcher).
+// The payload starts with the message type byte; handleVote strips it before decoding the Vote.
 func (n *P2PNode) handleVote(data []byte, peerID PeerID) {
 	vote := &types.Vote{}
 	if err := vote.Decode(bytes.NewReader(data[1:])); err != nil {

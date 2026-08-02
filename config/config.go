@@ -10,92 +10,92 @@ import (
 // It contains all sub-configs for different components.
 type Config struct {
 	// P2P contains peer-to-peer networking configuration.
-	P2P P2PConfig
+	P2P P2PConfig `toml:"p2p"`
 
 	// RPC contains JSON-RPC server configuration.
-	RPC RPCConfig
+	RPC RPCConfig `toml:"rpc"`
 
 	// Metrics contains Prometheus metrics server configuration.
-	Metrics MetricsConfig
+	Metrics MetricsConfig `toml:"metrics"`
 
 	// Storage contains data persistence configuration.
-	Storage StorageConfig
+	Storage StorageConfig `toml:"storage"`
 
 	// Snapshot contains state snapshot configuration.
-	Snapshot SnapshotConfig
+	Snapshot SnapshotConfig `toml:"snapshot"`
 
 	// Validator contains validator-specific configuration.
-	Validator ValidatorConfig
+	Validator ValidatorConfig `toml:"validator"`
 
 	// Logging contains logging configuration.
-	Logging LoggingConfig
+	Logging LoggingConfig `toml:"logging"`
 
 	// Chain contains chain-level configuration.
-	Chain ChainConfig
+	Chain ChainConfig `toml:"chain"`
 
 	// Genesis contains genesis file configuration.
-	Genesis GenesisConfig
+	Genesis GenesisConfig `toml:"genesis"`
 }
 
 // P2PConfig contains peer-to-peer networking settings.
 type P2PConfig struct {
 	// ListenAddr is the IP address to listen on for P2P connections.
 	// Default: "0.0.0.0"
-	ListenAddr string
+	ListenAddr string `toml:"listen_addr"`
 
 	// Port is the port number for P2P connections.
 	// Must be in range 1024-65535.
 	// Default: 0 (disabled)
-	Port int
+	Port int `toml:"port"`
 
 	// MaxPeers is the maximum number of connected peers.
 	// Must be greater than 0.
 	// Default: 50
-	MaxPeers int
+	MaxPeers int `toml:"max_peers"`
 
 	// BootstrapPeers is a list of peer addresses to connect to on startup.
 	// Format: "/ip4/1.2.3.4/tcp/1234/p2p/PeerID"
-	BootstrapPeers []string
+	BootstrapPeers []string `toml:"bootstrap_peers"`
 
 	// PingInterval is the interval between ping messages to peers.
 	// Default: 30s
-	PingInterval time.Duration
+	PingInterval time.Duration `toml:"ping_interval"`
 }
 
 // RPCConfig contains JSON-RPC server settings.
 type RPCConfig struct {
 	// Enabled indicates whether the RPC server should be started.
 	// Default: true
-	Enabled bool
+	Enabled bool `toml:"enabled"`
 
 	// ListenAddr is the IP address to listen on for RPC connections.
 	// Default: "0.0.0.0"
-	ListenAddr string
+	ListenAddr string `toml:"listen_addr"`
 
 	// Port is the port number for RPC server.
 	// Must be in range 1024-65535.
 	// Default: 8545
-	Port int
+	Port int `toml:"port"`
 
 	// CORSOrigins contains allowed CORS origins.
 	// Empty means no CORS restrictions.
-	CORSOrigins []string
+	CORSOrigins []string `toml:"cors_origins"`
 }
 
 // MetricsConfig contains Prometheus metrics server settings.
 type MetricsConfig struct {
 	// Enabled indicates whether the metrics server should be started.
 	// Default: true
-	Enabled bool
+	Enabled bool `toml:"enabled"`
 
 	// ListenAddr is the IP address to listen on for metrics endpoint.
 	// Default: "0.0.0.0"
-	ListenAddr string
+	ListenAddr string `toml:"listen_addr"`
 
 	// Port is the port number for metrics server.
 	// Must be in range 1024-65535.
 	// Default: 9464
-	Port int
+	Port int `toml:"port"`
 }
 
 // StorageConfig contains data persistence settings.
@@ -103,117 +103,117 @@ type StorageConfig struct {
 	// DataDir is the directory for storing node data.
 	// If empty, uses in-memory storage only.
 	// Default: ""
-	DataDir string
+	DataDir string `toml:"data_dir"`
 
 	// MaxDBSize is the maximum size of the database in bytes.
 	// Default: 10GB (10737418240)
-	MaxDBSize int64
+	MaxDBSize int64 `toml:"max_db_size"`
 
 	// FSync enables synchronous writes to BoltDB.
 	// When true, every commit is fsynced to disk before returning.
 	// This is slower but ensures durability across crashes.
 	// When false (default), uses async writes for better performance.
 	// Default: false
-	FSync bool
+	FSync bool `toml:"fsync"`
 }
 
 // SnapshotConfig contains state snapshot settings.
 type SnapshotConfig struct {
 	// Enable indicates whether automatic snapshots are enabled.
 	// Default: true
-	Enable bool
+	Enable bool `toml:"enable"`
 
 	// Interval is the number of epochs between snapshots.
 	// Default: 10
-	Interval uint64
+	Interval uint64 `toml:"interval"`
 
 	// MaxSnapshots is the maximum number of snapshots to retain.
 	// Default: 5
-	MaxSnapshots uint64
+	MaxSnapshots uint64 `toml:"max_snapshots"`
 
 	// OutputDir is the directory to save snapshots.
 	// Default: "<DataDir>/snapshots"
-	OutputDir string
+	OutputDir string `toml:"output_dir"`
 }
 
 // ValidatorConfig contains validator-specific configuration.
 type ValidatorConfig struct {
 	// KeyFile is the path to the validator key file.
 	// Default: "validator_key.json"
-	KeyFile string
+	KeyFile string `toml:"key_file"`
 
 	// Stake is the amount of DSN tokens staked.
 	// Default: 0
-	Stake uint64
+	Stake uint64 `toml:"stake"`
 
 	// CommissionRate is the validator commission rate (0-10000 = 0-100%).
 	// Default: 1000 (10%)
-	CommissionRate uint64
+	CommissionRate uint64 `toml:"commission_rate"`
 }
 
 // LoggingConfig contains logging configuration.
 type LoggingConfig struct {
 	// Level is the log level (debug, info, warn, error).
 	// Default: "info"
-	Level string
+	Level string `toml:"level"`
 
 	// Format is the log format (text, json).
 	// Default: "text"
-	Format string
+	Format string `toml:"format"`
 
 	// Output is the output target (stdout, stderr, file path).
 	// Default: "stdout"
-	Output string
+	Output string `toml:"output"`
 
 	// EnableFileLogging enables logging to a file.
 	// Default: false
-	EnableFileLogging bool
+	EnableFileLogging bool `toml:"enable_file_logging"`
 }
 
 // ChainConfig contains chain-level configuration.
 type ChainConfig struct {
 	// ChainID is the network chain ID.
 	// Default: 0 (devnet)
-	ChainID uint32
+	ChainID uint32 `toml:"chain_id"`
 
 	// MempoolMaxSize is the maximum number of transactions in mempool.
 	// Default: 10000
-	MempoolMaxSize int
+	MempoolMaxSize int `toml:"mempool_max_size"`
 
 	// MempoolTTL is the time after which transactions expire from mempool.
 	// Default: 5m
-	MempoolTTL time.Duration
+	MempoolTTL time.Duration `toml:"mempool_ttl"`
 
 	// MaxTxPerBlock is the maximum number of transactions per block.
 	// Default: 100
-	MaxTxPerBlock int
+	MaxTxPerBlock int `toml:"max_tx_per_block"`
 
 	// ProposerTimeout is the timeout for block proposal.
 	// Default: 5s
-	ProposerTimeout time.Duration
+	ProposerTimeout time.Duration `toml:"proposer_timeout"`
 
 	// IndexerEnabled enables the block indexer.
 	// Default: false
-	IndexerEnabled bool
+	IndexerEnabled bool `toml:"indexer_enabled"`
 
 	// FastSyncEnabled enables fast sync mode at startup.
 	// Default: false
-	FastSyncEnabled bool
+	FastSyncEnabled bool `toml:"fast_sync_enabled"`
 
 	// TrustedCheckpointHeight is the height of a known-good checkpoint.
 	// Default: 0
-	TrustedCheckpointHeight uint64
+	TrustedCheckpointHeight uint64 `toml:"trusted_checkpoint_height"`
 
 	// TrustedCheckpointHash is the expected hash at checkpoint height.
 	// Default: ""
-	TrustedCheckpointHash string
+	TrustedCheckpointHash string `toml:"trusted_checkpoint_hash"`
 }
 
 // GenesisConfig contains genesis file configuration.
 type GenesisConfig struct {
 	// File is the path to the genesis JSON file.
 	// Default: ""
-	File string
+	File string `toml:"file"`
 }
 
 // DefaultConfig returns a Config with sensible defaults.

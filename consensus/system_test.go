@@ -89,7 +89,7 @@ func TestBeginBlock_NonBoundary(t *testing.T) {
 	staking.ProcessEpochTransition(s, 100)
 
 	// At height 50, no transition should occur
-	epoch, valSetHash, err := BeginBlock(s, 50)
+	epoch, valSetHash, err := BeginBlock(s, 50, uint64(1))
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), epoch, "epoch should be 1 at height 50")
 	require.NotEqual(t, types.Hash{}, valSetHash, "validator set hash should not be zero")
@@ -107,7 +107,7 @@ func TestBeginBlock_Boundary(t *testing.T) {
 	// Don't call ProcessEpochTransition yet - it should be called by BeginBlock
 
 	// At height 100, epoch transition should occur
-	epoch, valSetHash, err := BeginBlock(s, 100)
+	epoch, valSetHash, err := BeginBlock(s, 100, uint64(1))
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), epoch, "epoch should transition to 1 at height 100")
 	require.NotEqual(t, types.Hash{}, valSetHash, "validator set hash should exist")
@@ -117,7 +117,7 @@ func TestBeginBlock_Boundary(t *testing.T) {
 func TestBeginBlock_Genesis(t *testing.T) {
 	s := newMockStakingState()
 
-	epoch, valSetHash, err := BeginBlock(s, 0)
+	epoch, valSetHash, err := BeginBlock(s, 0, uint64(1))
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), epoch, "genesis should have epoch 0")
 	require.Equal(t, types.Hash{}, valSetHash, "genesis should have zero hash")
@@ -131,7 +131,7 @@ func TestBeginBlock_SnapshotCreated(t *testing.T) {
 	setupValidator(s, 1, 100_000)
 
 	// Process transition at boundary
-	BeginBlock(s, 100)
+	BeginBlock(s, 100, uint64(1))
 
 	// Get snapshot for epoch 1
 	snap, err := staking.GetSnapshot(s, 1)
@@ -149,7 +149,7 @@ func TestBeginBlock_ValidatorActivation(t *testing.T) {
 	setupValidator(s, 1, 100_000)
 
 	// Process boundary - this activates pending validators
-	BeginBlock(s, 100)
+	BeginBlock(s, 100, uint64(1))
 
 	// Check validator is now active
 	activeVals, err := staking.GetActiveValidators(s)
@@ -171,10 +171,10 @@ func TestBeginBlock_Deterministic(t *testing.T) {
 	setupValidator(s2, 1, 100_000)
 
 	// Process at same height
-	epoch1, hash1, err := BeginBlock(s1, 100)
+	epoch1, hash1, err := BeginBlock(s1, 100, uint64(1))
 	require.NoError(t, err)
 
-	epoch2, hash2, err := BeginBlock(s2, 100)
+	epoch2, hash2, err := BeginBlock(s2, 100, uint64(1))
 	require.NoError(t, err)
 
 	// Results should be identical

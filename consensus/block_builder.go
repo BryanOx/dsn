@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/dsn/dsn/staking"
-	"github.com/dsn/dsn/types"
 	"github.com/dsn/dsn/state"
+	"github.com/dsn/dsn/types"
 	"github.com/dsn/dsn/vm"
 )
 
@@ -47,7 +47,7 @@ func BuildBlock(s *state.InMemoryState, vm *vm.VM, mp MempoolI, height uint64, p
 	}
 
 	// 1. BeginBlock — system transitions
-	epoch, valSetHash, err := BeginBlock(s, height)
+	epoch, valSetHash, err := BeginBlock(s, height, uint64(1))
 	if err != nil {
 		return nil, fmt.Errorf("begin block: %w", err)
 	}
@@ -82,7 +82,7 @@ func BuildBlock(s *state.InMemoryState, vm *vm.VM, mp MempoolI, height uint64, p
 	// Capture block timestamp at start of tx processing for contract execution
 	blockTimestamp := uint64(time.Now().Unix())
 
-		for i, tx := range txList {
+	for i, tx := range txList {
 		txIndex := uint32(i)
 		// Check if this is a contract transaction
 		if tx.TxType == types.TxTypeDeployContract && vm != nil {
@@ -172,17 +172,17 @@ func BuildBlock(s *state.InMemoryState, vm *vm.VM, mp MempoolI, height uint64, p
 
 	block := &types.Block{
 		Header: types.BlockHeader{
-			Version:           1,
-			Height:            height,
-			PreviousHash:      prevHash,
-			StateRoot:         stateRoot,
-			TxRoot:            txRoot,
-			ReceiptRoot:       receiptRoot,
-			ValidatorRoot:     validatorRoot,
-			ValidatorSetHash:  valSetHash,
-			Epoch:             epoch,
-			Timestamp:         uint64(time.Now().Unix()),
-			Proposer:          proposer,
+			Version:          1,
+			Height:           height,
+			PreviousHash:     prevHash,
+			StateRoot:        stateRoot,
+			TxRoot:           txRoot,
+			ReceiptRoot:      receiptRoot,
+			ValidatorRoot:    validatorRoot,
+			ValidatorSetHash: valSetHash,
+			Epoch:            epoch,
+			Timestamp:        uint64(time.Now().Unix()),
+			Proposer:         proposer,
 		},
 		Transactions: txList,
 		FeeSummary:   types.NewFeeSummary(totalFees),

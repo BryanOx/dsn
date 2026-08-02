@@ -17,7 +17,7 @@ import (
 func DistributeValidatorRewards(s StakingState, epoch uint64) error {
 	// 1. Read validator pool amount for the epoch
 	poolKey := KeyEpochValidatorPool + strconv.FormatUint(epoch, 10)
-	validatorPoolAmount := readUint64(s, poolKey)
+	validatorPoolAmount := ReadUint64(s, poolKey)
 
 	// 2. If no pool for this epoch, nothing to distribute
 	if validatorPoolAmount == 0 {

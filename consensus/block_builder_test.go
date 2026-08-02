@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dsn/dsn/staking"
-	"github.com/dsn/dsn/types"
-	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/mempool"
+	"github.com/dsn/dsn/staking"
+	"github.com/dsn/dsn/state"
+	"github.com/dsn/dsn/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -82,6 +82,7 @@ func TestBuildBlock_Basic(t *testing.T) {
 
 	// Setup validator through staking (use different address from sender)
 	validatorAddr := setupTestValidator(s, 100, 100_000)
+	staking.WriteUint64(s, staking.KeyTotalSupply, 10_000_000)
 
 	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorAddr, &mockSigner{}, hasher, 100, nil)
 	require.NoError(t, err)
@@ -131,6 +132,7 @@ func TestBuildBlock_TxLimit(t *testing.T) {
 
 	// Setup validator (distinct address from sender)
 	validatorAddr := setupTestValidator(s, 100, 100_000)
+	staking.WriteUint64(s, staking.KeyTotalSupply, 10_000_000)
 
 	block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validatorAddr, &mockSigner{}, hasher, 3, nil)
 	require.NoError(t, err)

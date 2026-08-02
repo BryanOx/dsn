@@ -13,7 +13,7 @@ import (
 // Called BEFORE user transactions — modifies state in-place.
 // Returns the epoch number and validator set hash for this block.
 // Must be deterministic and produce identical results on replay.
-func BeginBlock(s staking.StakingState, height uint64) (epoch uint64, validatorSetHash types.Hash, err error) {
+func BeginBlock(s staking.StakingState, height uint64, blockTimeSec uint64) (epoch uint64, validatorSetHash types.Hash, err error) {
 	if height == 0 {
 		return 0, types.Hash{}, nil // genesis
 	}
@@ -23,14 +23,13 @@ func BeginBlock(s staking.StakingState, height uint64) (epoch uint64, validatorS
 		// 0a. Issue epoch inflation tokens for the completing epoch
 		// The completed epoch is EpochAtHeight(s, height) at boundary
 		completedEpoch := staking.EpochAtHeight(s, height)
-
-		// Protocol constants: 1 second block time
-		blockTimeSec := uint64(1)
 		blocksPerEpoch := staking.BlocksPerEpoch(s)
 
-		// Issue inflation tokens (10% treasury, 90% validator pool)
-		if _, err := staking.IssueEpochTokens(s, completedEpoch, blockTimeSec, blocksPerEpoch); err != nil {
-			return 0, types.Hash{}, fmt.Errorf("issue epoch tokens at height %d epoch %d: %w", height, completedEpoch, err)
+		// Only issue tokens if inflation is enabled
+		if staking.InflationEnabled(s) {
+			if _, err := staking.IssueEpochTokens(s, completedEpoch, blockTimeSec, blocksPerEpoch); err != nil {
+				return 0, types.Hash{}, fmt.Errorf("issue epoch tokens at height %d epoch %d: %w", height, completedEpoch, err)
+			}
 		}
 
 		// 0b. Distribute validator rewards using snapshot from prior epoch
@@ -79,8 +78,17 @@ func FinalizeBlock(s staking.StakingState, block *types.Block) error {
 		return nil // no fees to distribute
 	}
 	totalFees := types.NewAmount(block.FeeSummary.TotalFees)
-	_, _, _, err := staking.DistributeRewards(s, totalFees)
-	return err
+	_, burnShare, _, err := staking.DistributeRewards(s, totalFees)
+	if err != nil {
+		return fmt.Errorf("distribute rewards: %w", err)
+	}
+	// Execute the burn (20% of fees)
+	if !burnShare.IsZero() {
+		if err := staking.BurnTokens(s, burnShare); err != nil {
+			return fmt.Errorf("burn tokens: %w", err)
+		}
+	}
+	return nil
 }
 
 // CreateCheckpoint persists a chain checkpoint at the given height.

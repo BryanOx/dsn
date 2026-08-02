@@ -2,6 +2,9 @@ package staking
 
 import (
 	"testing"
+
+	"github.com/dsn/dsn/state"
+	"github.com/dsn/dsn/types"
 )
 
 func TestEpochsPerYear(t *testing.T) {
@@ -22,7 +25,7 @@ func TestEpochsPerYear(t *testing.T) {
 
 func TestPerEpochIssuance(t *testing.T) {
 	// Test case 1: 1M total supply - should be below precision threshold
-	result := PerEpochIssuance(1_000_000, 1, 100)
+	result := PerEpochIssuance(1_000_000, 1, 100, YearlyInflationBasisPoints)
 	// With 1M supply, 5% annual = 50k/year
 	// epochsPerYear = 315360
 	// perEpoch = 500000 / 3153600000 = 0 (truncates to 0)
@@ -31,7 +34,7 @@ func TestPerEpochIssuance(t *testing.T) {
 	}
 
 	// Test case 2: 100B total supply - should be > 0
-	result = PerEpochIssuance(100_000_000_000, 1, 100)
+	result = PerEpochIssuance(100_000_000_000, 1, 100, YearlyInflationBasisPoints)
 	if result == 0 {
 		t.Fatal("PerEpochIssuance(100B, 1, 100) should be > 0")
 	}
@@ -53,9 +56,11 @@ func TestIssueEpochTokens(t *testing.T) {
 	s := newTestStakingState()
 
 	// Set initial total supply: 1T
-	if err := writeUint64(s, KeyTotalSupply, 1_000_000_000_000); err != nil {
+	if err := WriteUint64(s, KeyTotalSupply, 1_000_000_000_000); err != nil {
 		t.Fatalf("writeUint64 failed: %v", err)
 	}
+	// Enable inflation for this test
+	SetInflationParams(s, true, YearlyInflationBasisPoints)
 
 	// Issue epoch tokens
 	issuance, err := IssueEpochTokens(s, 1, 1, 100)
@@ -67,21 +72,21 @@ func TestIssueEpochTokens(t *testing.T) {
 	}
 
 	// Verify total supply increased
-	totalSupply := readUint64(s, KeyTotalSupply)
+	totalSupply := ReadUint64(s, KeyTotalSupply)
 	expectedTotal := 1_000_000_000_000 + issuance
 	if totalSupply != expectedTotal {
 		t.Errorf("total supply = %d, want %d", totalSupply, expectedTotal)
 	}
 
 	// Verify treasury supply (10% of issuance)
-	treasurySupply := readUint64(s, KeyTreasurySupply)
+	treasurySupply := ReadUint64(s, KeyTreasurySupply)
 	expectedTreasury := issuance * 10 / 100
 	if treasurySupply != expectedTreasury {
 		t.Errorf("treasury supply = %d, want %d", treasurySupply, expectedTreasury)
 	}
 
 	// Verify issued supply
-	issuedSupply := readUint64(s, KeyIssuedSupply)
+	issuedSupply := ReadUint64(s, KeyIssuedSupply)
 	if issuedSupply != issuance {
 		t.Errorf("issued supply = %d, want %d", issuedSupply, issuance)
 	}
@@ -100,7 +105,7 @@ func TestIssueEpochTokens(t *testing.T) {
 	}
 
 	// Verify epoch validator pool (90% of issuance)
-	validatorPool := readUint64(s, KeyEpochValidatorPool+"1")
+	validatorPool := ReadUint64(s, KeyEpochValidatorPool+"1")
 	expectedValidatorPool := issuance * 90 / 100
 	if validatorPool != expectedValidatorPool {
 		t.Errorf("validator pool = %d, want %d", validatorPool, expectedValidatorPool)
@@ -111,7 +116,7 @@ func TestIssueEpochTokens_ZeroSupply(t *testing.T) {
 	s := newTestStakingState()
 
 	// Ensure total supply is 0
-	if err := writeUint64(s, KeyTotalSupply, 0); err != nil {
+	if err := WriteUint64(s, KeyTotalSupply, 0); err != nil {
 		t.Fatalf("writeUint64 failed: %v", err)
 	}
 
@@ -125,8 +130,61 @@ func TestIssueEpochTokens_ZeroSupply(t *testing.T) {
 	}
 
 	// Total supply should remain 0
-	totalSupply := readUint64(s, KeyTotalSupply)
+	totalSupply := ReadUint64(s, KeyTotalSupply)
 	if totalSupply != 0 {
 		t.Errorf("total supply = %d, want 0", totalSupply)
+	}
+}
+
+func TestIssueEpochTokens_CustomAnnualBP(t *testing.T) {
+	s := state.NewInMemoryState(types.SHA256Hasher{})
+
+	WriteUint64(s, KeyTotalSupply, 100000000)
+	SetInflationParams(s, true, 200)
+
+	issuance, err := IssueEpochTokens(s, 1, 1, 100)
+	if err != nil {
+		t.Fatalf("IssueEpochTokens failed: %v", err)
+	}
+
+	if issuance == 0 {
+		t.Error("expected non-zero issuance with 2% on 100M supply")
+	}
+
+	newSupply := ReadUint64(s, KeyTotalSupply)
+	if newSupply != 100000000+issuance {
+		t.Errorf("total supply = %d, want %d", newSupply, 100000000+issuance)
+	}
+}
+
+func TestBurnTokens_ReducesSupply(t *testing.T) {
+	s := state.NewInMemoryState(types.SHA256Hasher{})
+
+	WriteUint64(s, KeyTotalSupply, 1000000)
+
+	err := BurnTokens(s, types.NewAmount(200000))
+	if err != nil {
+		t.Fatalf("BurnTokens failed: %v", err)
+	}
+
+	newSupply := ReadUint64(s, KeyTotalSupply)
+	if newSupply != 800000 {
+		t.Errorf("total supply after burn = %d, want 800000", newSupply)
+	}
+}
+
+func TestIssueEpochTokens_InflationDisabled(t *testing.T) {
+	s := state.NewInMemoryState(types.SHA256Hasher{})
+
+	WriteUint64(s, KeyTotalSupply, 100000000)
+	SetInflationParams(s, false, 200)
+
+	issuance, err := IssueEpochTokens(s, 1, 1, 100)
+	if err != nil {
+		t.Fatalf("IssueEpochTokens failed: %v", err)
+	}
+
+	if issuance != 0 {
+		t.Errorf("issuance = %d, want 0 when inflation disabled", issuance)
 	}
 }

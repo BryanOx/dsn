@@ -9,20 +9,23 @@ import (
 
 // Economics key prefixes for deterministic key naming.
 const (
-	KeyTotalSupply      = "economics/total_supply"
-	KeyTreasurySupply   = "economics/treasury_supply"
-	KeyIssuedSupply     = "economics/issued_supply"
-	KeyEpochIssuance    = "economics/epoch_issuance/"
+	KeyTotalSupply        = "economics/total_supply"
+	KeyTreasurySupply     = "economics/treasury_supply"
+	KeyIssuedSupply       = "economics/issued_supply"
+	KeyEpochIssuance      = "economics/epoch_issuance/"
 	KeyEpochValidatorPool = "economics/epoch_validator_pool/"
 
-	YearlyInflationBasisPoints uint64 = 500       // 5% inflation
+	YearlyInflationBasisPoints uint64 = 500 // 5% inflation
 	BasisPointsDenominator     uint64 = 10_000
 	SecondsPerYear             uint64 = 365 * 24 * 60 * 60 // 31536000
+
+	KeyInflationEnabled  = "economics/inflation_enabled"
+	KeyInflationAnnualBP = "economics/inflation_annual_bp"
 )
 
-// readUint64 reads a uint64 value from the KV store.
+// ReadUint64 reads a uint64 value from the KV store.
 // Returns 0 if the key doesn't exist or value is too short.
-func readUint64(s KVStore, key string) uint64 {
+func ReadUint64(s KVStore, key string) uint64 {
 	val, ok := s.GetBytes(key)
 	if !ok || len(val) < 8 {
 		return 0
@@ -30,8 +33,8 @@ func readUint64(s KVStore, key string) uint64 {
 	return binary.BigEndian.Uint64(val)
 }
 
-// writeUint64 stores a uint64 value to the KV store as 8-byte big-endian.
-func writeUint64(s KVStore, key string, val uint64) error {
+// WriteUint64 stores a uint64 value to the KV store as 8-byte big-endian.
+func WriteUint64(s KVStore, key string, val uint64) error {
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], val)
 	return s.SetBytes(key, buf[:])
@@ -47,7 +50,7 @@ func EpochsPerYear(blockTimeSec, blocksPerEpoch uint64) uint64 {
 // Formula: (totalSupply * 500) / (epochsPerYear * 10000)
 // Uses math/big.Int for intermediate overflow protection.
 // The final result fits in uint64 for v1.
-func PerEpochIssuance(totalSupply uint64, blockTimeSec, blocksPerEpoch uint64) uint64 {
+func PerEpochIssuance(totalSupply uint64, blockTimeSec, blocksPerEpoch uint64, annualBP uint64) uint64 {
 	epochsPerYear := EpochsPerYear(blockTimeSec, blocksPerEpoch)
 	if epochsPerYear == 0 {
 		return 0
@@ -55,7 +58,7 @@ func PerEpochIssuance(totalSupply uint64, blockTimeSec, blocksPerEpoch uint64) u
 
 	// Use big.Int for intermediate calculations to prevent overflow
 	totalSupplyBig := new(big.Int).SetUint64(totalSupply)
-	inflationBP := new(big.Int).SetUint64(YearlyInflationBasisPoints)
+	inflationBP := new(big.Int).SetUint64(annualBP)
 	denom := new(big.Int).SetUint64(epochsPerYear * BasisPointsDenominator)
 
 	// result = (totalSupply * 500) / (epochsPerYear * 10000)
@@ -72,11 +75,19 @@ func PerEpochIssuance(totalSupply uint64, blockTimeSec, blocksPerEpoch uint64) u
 // IssueEpochTokens performs the full issuance flow for the given epoch.
 // Returns total issuance amount.
 func IssueEpochTokens(s StakingState, epoch uint64, blockTimeSec, blocksPerEpoch uint64) (uint64, error) {
-	// 1. Read KeyTotalSupply from kvstore (0 if not set)
-	totalSupply := readUint64(s, KeyTotalSupply)
+	// 0. Check if inflation is enabled
+	if !InflationEnabled(s) {
+		return 0, nil
+	}
 
-	// 2. Calculate PerEpochIssuance
-	issuance := PerEpochIssuance(totalSupply, blockTimeSec, blocksPerEpoch)
+	// 1. Read KeyTotalSupply from kvstore (0 if not set)
+	totalSupply := ReadUint64(s, KeyTotalSupply)
+
+	// 2. Read annual inflation BP from kvstore (falls back to YearlyInflationBasisPoints)
+	annualBP := AnnualInflationBP(s)
+
+	// 3. Calculate PerEpochIssuance using the stored annual BP
+	issuance := PerEpochIssuance(totalSupply, blockTimeSec, blocksPerEpoch, annualBP)
 
 	// 3. If issuance == 0, return early
 	if issuance == 0 {
@@ -94,26 +105,26 @@ func IssueEpochTokens(s StakingState, epoch uint64, blockTimeSec, blocksPerEpoch
 
 	// 6. Update KeyTotalSupply: newTotal = totalSupply + issuance
 	newTotal := totalSupply + issuance
-	if err := writeUint64(s, KeyTotalSupply, newTotal); err != nil {
+	if err := WriteUint64(s, KeyTotalSupply, newTotal); err != nil {
 		return 0, fmt.Errorf("update total supply: %w", err)
 	}
 
 	// 7. Update KeyIssuedSupply: current + issuance
-	currentIssued := readUint64(s, KeyIssuedSupply)
+	currentIssued := ReadUint64(s, KeyIssuedSupply)
 	newIssued := currentIssued + issuance
-	if err := writeUint64(s, KeyIssuedSupply, newIssued); err != nil {
+	if err := WriteUint64(s, KeyIssuedSupply, newIssued); err != nil {
 		return 0, fmt.Errorf("update issued supply: %w", err)
 	}
 
 	// 8. Store KeyEpochIssuance + epoch
 	epochIssuanceKey := KeyEpochIssuance + strconv.FormatUint(epoch, 10)
-	if err := writeUint64(s, epochIssuanceKey, issuance); err != nil {
+	if err := WriteUint64(s, epochIssuanceKey, issuance); err != nil {
 		return 0, fmt.Errorf("store epoch issuance: %w", err)
 	}
 
 	// 9. Store KeyEpochValidatorPool + epoch
 	epochValidatorPoolKey := KeyEpochValidatorPool + strconv.FormatUint(epoch, 10)
-	if err := writeUint64(s, epochValidatorPoolKey, validatorAmount); err != nil {
+	if err := WriteUint64(s, epochValidatorPoolKey, validatorAmount); err != nil {
 		return 0, fmt.Errorf("store epoch validator pool: %w", err)
 	}
 
@@ -121,3 +132,25 @@ func IssueEpochTokens(s StakingState, epoch uint64, blockTimeSec, blocksPerEpoch
 	return issuance, nil
 }
 
+func SetInflationParams(s KVStore, enabled bool, annualBP uint64) error {
+	enabledVal := uint64(0)
+	if enabled {
+		enabledVal = 1
+	}
+	if err := WriteUint64(s, KeyInflationEnabled, enabledVal); err != nil {
+		return err
+	}
+	return WriteUint64(s, KeyInflationAnnualBP, annualBP)
+}
+
+func InflationEnabled(s KVStore) bool {
+	return ReadUint64(s, KeyInflationEnabled) == 1
+}
+
+func AnnualInflationBP(s KVStore) uint64 {
+	val := ReadUint64(s, KeyInflationAnnualBP)
+	if val == 0 {
+		return YearlyInflationBasisPoints
+	}
+	return val
+}

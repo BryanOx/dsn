@@ -31,7 +31,7 @@ func (n *Node) ReplayBlocks(fromHeight, toHeight uint64) error {
 
 		// Execute BeginBlock (deterministic system transitions like epoch changes,
 		// validator activations, economic issuance)
-		_, _, err = consensus.BeginBlock(n.state, height)
+		_, _, err = consensus.BeginBlock(n.state, height, n.cfg.BlockTimeSec)
 		if err != nil {
 			return fmt.Errorf("begin block at height %d: %w", height, err)
 		}

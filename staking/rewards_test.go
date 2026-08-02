@@ -41,7 +41,7 @@ func setupAndDistribute(t *testing.T, validators []struct {
 
 	// Write validator pool for this epoch
 	poolKey := KeyEpochValidatorPool + strconv.FormatUint(epoch, 10)
-	writeUint64(s, poolKey, poolAmount)
+	WriteUint64(s, poolKey, poolAmount)
 
 	// Distribute
 	err := DistributeValidatorRewards(s, epoch)
@@ -179,7 +179,7 @@ func TestDistributeValidatorRewards_NoSnapshot(t *testing.T) {
 	s := newTestStakingState()
 
 	// Write a validator pool but don't create any snapshot
-	writeUint64(s, KeyEpochValidatorPool+"1", 1000)
+	WriteUint64(s, KeyEpochValidatorPool+"1", 1000)
 
 	// Epoch 1 looks for snapshot 0, which doesn't exist → should return nil
 	err := DistributeValidatorRewards(s, 1)
@@ -212,7 +212,7 @@ func TestDistributeValidatorRewards_ZeroPool(t *testing.T) {
 
 	// Create snapshot and write zero pool
 	CreateSnapshot(s, 1)
-	writeUint64(s, KeyEpochValidatorPool+"2", 0)
+	WriteUint64(s, KeyEpochValidatorPool+"2", 0)
 
 	err := DistributeValidatorRewards(s, 2)
 	if err != nil {
@@ -246,7 +246,7 @@ func TestDistributeValidatorRewards_RewardAddress(t *testing.T) {
 	CreateSnapshot(s, 1)
 
 	// Write validator pool for epoch 2
-	writeUint64(s, KeyEpochValidatorPool+"2", 500)
+	WriteUint64(s, KeyEpochValidatorPool+"2", 500)
 
 	// Distribute
 	err := DistributeValidatorRewards(s, 2)
@@ -292,7 +292,7 @@ func TestDistributeValidatorRewards_JailedExcluded(t *testing.T) {
 	// Since DistributeValidatorRewards uses snapshot (epoch-1), epoch 2 uses snapshot 1
 	// But wait, DistributeValidatorRewards reads snapshot at (epoch-1), so epoch 2 looks for snapshot 1
 	// That's correct - snapshot 1 has both validators active
-	writeUint64(s, KeyEpochValidatorPool+"2", 1000)
+	WriteUint64(s, KeyEpochValidatorPool+"2", 1000)
 	err := DistributeValidatorRewards(s, 2)
 	if err != nil {
 		t.Fatalf("DistributeValidatorRewards: %v", err)
@@ -331,7 +331,7 @@ func TestDistributeValidatorRewards_JailedExcluded(t *testing.T) {
 	CreateSnapshot(s2, 3)
 
 	// Distribute epoch 4 using snapshot 3 (only validator 2)
-	writeUint64(s2, KeyEpochValidatorPool+"4", 1000)
+	WriteUint64(s2, KeyEpochValidatorPool+"4", 1000)
 	err = DistributeValidatorRewards(s2, 4)
 	if err != nil {
 		t.Fatalf("DistributeValidatorRewards: %v", err)
@@ -370,7 +370,7 @@ func TestDistributeValidatorRewards_MultipleEpochs(t *testing.T) {
 	CreateSnapshot(s, 1)
 
 	// Distribute epoch 2 with pool 200 (uses snapshot 1)
-	writeUint64(s, KeyEpochValidatorPool+"2", 200)
+	WriteUint64(s, KeyEpochValidatorPool+"2", 200)
 	DistributeValidatorRewards(s, 2)
 
 	// Add a third validator
@@ -382,7 +382,7 @@ func TestDistributeValidatorRewards_MultipleEpochs(t *testing.T) {
 	CreateSnapshot(s, 2)
 
 	// Distribute epoch 3 with pool 300 (uses snapshot 2)
-	writeUint64(s, KeyEpochValidatorPool+"3", 300)
+	WriteUint64(s, KeyEpochValidatorPool+"3", 300)
 	DistributeValidatorRewards(s, 3)
 
 	// Epoch 2 distribution: validators 1 (100k), 2 (200k) = total 300k
@@ -461,7 +461,7 @@ func TestDistributeValidatorRewards_CreateAccountIfMissing(t *testing.T) {
 	UpdateValidator(s, v)
 
 	CreateSnapshot(s, 1)
-	writeUint64(s, KeyEpochValidatorPool+"2", 100)
+	WriteUint64(s, KeyEpochValidatorPool+"2", 100)
 
 	err := DistributeValidatorRewards(s, 2)
 	if err != nil {

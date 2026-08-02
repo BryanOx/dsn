@@ -8,8 +8,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/staking"
+	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/types"
 	"github.com/stretchr/testify/require"
 )
@@ -958,9 +958,9 @@ func TestBFT_HonestConsensus(t *testing.T) {
 	numRounds := 3
 
 	harness := NewBFTTestHarness(t, BFTConfig{
-		NumValidators:   numValidators,
-		ByzantineIdx:    -1, // no byzantine
-		ByzantineType:   Honest,
+		NumValidators: numValidators,
+		ByzantineIdx:  -1, // no byzantine
+		ByzantineType: Honest,
 	})
 
 	// Run multiple rounds
@@ -989,9 +989,9 @@ func TestBFT_ByzantineProposer(t *testing.T) {
 	numRounds := 2
 
 	harness := NewBFTTestHarness(t, BFTConfig{
-		NumValidators:   numValidators,
-		ByzantineIdx:    0, // first validator is byzantine
-		ByzantineType:   ByzProposer,
+		NumValidators: numValidators,
+		ByzantineIdx:  0, // first validator is byzantine
+		ByzantineType: ByzProposer,
 	})
 
 	// Run rounds - byzantine proposer may cause issues
@@ -1013,9 +1013,9 @@ func TestBFT_ByzantineVoter(t *testing.T) {
 	numRounds := 2
 
 	harness := NewBFTTestHarness(t, BFTConfig{
-		NumValidators:   numValidators,
-		ByzantineIdx:    1, // second validator is byzantine
-		ByzantineType:   ByzVoter,
+		NumValidators: numValidators,
+		ByzantineIdx:  1, // second validator is byzantine
+		ByzantineType: ByzVoter,
 	})
 
 	// Run rounds

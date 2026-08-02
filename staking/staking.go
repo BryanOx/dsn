@@ -226,6 +226,34 @@ func DistributeRewards(s StakingState, totalFees types.Amount) (types.Amount, ty
 	return validatorShare, burnShare, treasuryShare, nil
 }
 
+var BurnAddress = types.Address{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+
+func BurnTokens(s StakingState, amount types.Amount) error {
+	if amount.IsZero() {
+		return nil
+	}
+	acc, err := s.GetAccount(BurnAddress)
+	if err != nil {
+		acc = state.NewAccount(BurnAddress, [32]byte{})
+	}
+	if err := acc.AddBalance(amount); err != nil {
+		return fmt.Errorf("credit burn address: %w", err)
+	}
+	if err := s.SetAccount(BurnAddress, acc); err != nil {
+		return fmt.Errorf("set burn account: %w", err)
+	}
+	currentSupply := ReadUint64(s, KeyTotalSupply)
+	burnAmount := stakeToUint64(amount)
+	if burnAmount > currentSupply {
+		return fmt.Errorf("burn amount %d exceeds total supply %d", burnAmount, currentSupply)
+	}
+	newSupply := currentSupply - burnAmount
+	if err := WriteUint64(s, KeyTotalSupply, newSupply); err != nil {
+		return fmt.Errorf("update total supply after burn: %w", err)
+	}
+	return nil
+}
+
 // NewValidatorAccount creates an account for a validator with zero balance.
 func NewValidatorAccount(s StakingState, addr types.Address) *state.Account {
 	return state.NewAccount(addr, [32]byte{})

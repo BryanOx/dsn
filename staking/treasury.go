@@ -21,13 +21,13 @@ func CreditTreasury(s StakingState, amount uint64) error {
 	}
 
 	// 2. Read current treasury supply from kvstore
-	currentSupply := readUint64(s, KeyTreasurySupply)
+	currentSupply := ReadUint64(s, KeyTreasurySupply)
 
 	// 3. Calculate new treasury supply
 	newTreasurySupply := currentSupply + amount
 
 	// 4. Store updated treasury supply
-	if err := writeUint64(s, KeyTreasurySupply, newTreasurySupply); err != nil {
+	if err := WriteUint64(s, KeyTreasurySupply, newTreasurySupply); err != nil {
 		return fmt.Errorf("update treasury supply: %w", err)
 	}
 
@@ -54,5 +54,5 @@ func CreditTreasury(s StakingState, amount uint64) error {
 // GetTreasuryBalance returns the current treasury supply (total tokens ever minted to treasury).
 // This reads from the kvstore and returns 0 if the key hasn't been set yet.
 func GetTreasuryBalance(s KVStore) (uint64, error) {
-	return readUint64(s, KeyTreasurySupply), nil
+	return ReadUint64(s, KeyTreasurySupply), nil
 }

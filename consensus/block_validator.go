@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	"github.com/dsn/dsn/staking"
-	"github.com/dsn/dsn/types"
 	"github.com/dsn/dsn/state"
+	"github.com/dsn/dsn/types"
 	"github.com/dsn/dsn/vm"
 )
 
@@ -16,11 +16,11 @@ var (
 )
 
 var (
-	ErrWrongHeight            = errors.New("block height does not follow parent")
-	ErrWrongPreviousHash      = errors.New("previous hash mismatch")
-	ErrWrongProposer          = errors.New("wrong proposer for this height")
-	ErrInvalidSignature       = errors.New("block signature is invalid")
-	ErrWrongValidatorRoot     = errors.New("validator root mismatch")
+	ErrWrongHeight           = errors.New("block height does not follow parent")
+	ErrWrongPreviousHash     = errors.New("previous hash mismatch")
+	ErrWrongProposer         = errors.New("wrong proposer for this height")
+	ErrInvalidSignature      = errors.New("block signature is invalid")
+	ErrWrongValidatorRoot    = errors.New("validator root mismatch")
 	ErrStateRootMismatch     = errors.New("state root mismatch")
 	ErrTxRootMismatch        = errors.New("transaction root mismatch")
 	ErrFeeSummaryMismatch    = errors.New("fee summary mismatch")
@@ -57,7 +57,7 @@ func ValidateBlock(block *types.Block, parentHeader *types.BlockHeader,
 	}
 
 	// 1. Run BeginBlock on fresh state (same as BuildBlock — ensures deterministic replay)
-	_, _, err := BeginBlock(s, block.Header.Height)
+	_, _, err := BeginBlock(s, block.Header.Height, uint64(1))
 	if err != nil {
 		return fmt.Errorf("begin block: %w", err)
 	}
@@ -317,7 +317,7 @@ func validateCommitProof(block *types.Block, s *state.InMemoryState, epoch uint6
 		return fmt.Errorf("%w: signed power %d != accumulated %d", ErrInvalidCommitProof, proof.SignedPower, accumulatedPower)
 	}
 
-// Verify 2/3 majority
+	// Verify 2/3 majority
 	if !proof.HasTwoThirdsMajority() {
 		return fmt.Errorf("%w: only %d/%d power", ErrWrongValidatorSetHash, proof.SignedPower, proof.TotalPower)
 	}

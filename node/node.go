@@ -1,6 +1,7 @@
 package node
 
 import (
+	"bytes"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -51,6 +52,14 @@ type Node struct {
 	currentTipHash   atomic.Pointer[types.Hash] // atomic.Pointer because types.Hash is an array (sync/atomic can't store arrays)
 	currentEpoch     atomic.Uint64              // tracks current epoch for boundary detection
 	bestChainHeight  uint64                     // tracks best chain height for fork choice
+
+	// Two-phase voting state for the pending proposal round. voteMu guards the
+	// pending round: voting (VotingState), pendingBlock and pendingHash.
+	voteMu        sync.Mutex
+	voting        *consensus.VotingState
+	pendingBlock  *types.Block
+	pendingHash   types.Hash
+	pendingHeight uint64
 
 	// Production Node Runtime fields (Phase 5B)
 	genesisDoc      *genesis.GenesisDoc
@@ -477,6 +486,9 @@ func (n *Node) StartConsensus() {
 	// Register block handler on P2P
 	n.p2p.SetBlockHandler(n.handleBlockMessage)
 
+	// Register vote handler on P2P (two-phase voting)
+	n.p2p.SetVoteHandler(n.handleVoteMessage)
+
 	go n.runConsensusLoop()
 }
 
@@ -513,60 +525,10 @@ func (n *Node) runConsensusLoop() {
 		proposer := n.consensusProposerAtHeight(height)
 
 		if proposer != (types.Address{}) && proposer == n.consensusID() {
-			// I am the proposer — build and gossip block
-			signer := &walletSigner{kp: n.wallet}
-			// TODO: Get evidence from evidence pool
-			var evidence []types.Evidence
-			block, err := consensus.BuildBlock(n.state, n.vm, n.mempool, height, n.GetTipHash(),
-				proposer, signer, n.hasher, n.cfg.MaxTxPerBlock, evidence, n.cfg.BlockTimeSec)
-			if err == nil {
-				// Gossip block
-				data, err := consensus.EncodeBlockMessage(block)
-				if err == nil && n.p2p != nil {
-					n.p2p.Broadcast(data)
-				}
-				// Store header
-				if n.persistent != nil {
-					consensus.StoreBlockHeader(n.persistent, &block.Header)
-					consensus.StoreTip(n.persistent, &block.Header)
-					// CRITICAL: Persist state to avoid losing changes on crash
-					if _, err := n.CommitState(); err != nil {
-						panic(fmt.Sprintf("commit state failed: %v at height %d", err, height))
-					}
-				}
-				// Update tip
-				hash, _ := block.HeaderHash(n.hasher)
-				n.setTip(block.Header.Height, hash)
-				// Clean mempool
-				for _, tx := range block.Transactions {
-					n.mempool.Remove(tx.IntentID)
-				}
-
-				// Create checkpoint and snapshot at epoch boundaries
-				if n.persistent != nil && block.Header.Epoch > 0 && block.Header.Epoch != n.currentEpoch.Load() {
-					n.currentEpoch.Store(block.Header.Epoch)
-
-					// Create chain checkpoint (always at epoch boundaries)
-					_, _ = consensus.CreateCheckpoint(n.persistent,
-						block.Header.Height, block.Header.Epoch,
-						block.Header.StateRoot, n.GetTipHash(),
-						block.Header.ValidatorSetHash)
-
-					// Create state snapshot if snapshot interval matches
-					if n.cfg.SnapshotInterval > 0 &&
-						block.Header.Epoch%n.cfg.SnapshotInterval == 0 {
-						snap, err := n.state.CreateSnapshot(block.Header.Height,
-							block.Header.Epoch, block.Header.ValidatorSetHash,
-							block.Header.Timestamp)
-						if err == nil {
-							snapData, serr := state.SerializeSnapshot(snap)
-							if serr == nil {
-								_ = state.StoreSnapshot(n.persistent, block.Header.Height, snapData)
-							}
-						}
-					}
-				}
-			}
+			// I am the proposer — run the two-phase proposal round: build and
+			// broadcast a proof-less proposal, collect precommits, then attach
+			// the commit proof and finalize once a 2/3 majority exists.
+			n.runProposerRound(height, proposer)
 		}
 
 		// Wait before next check
@@ -574,6 +536,286 @@ func (n *Node) runConsensusLoop() {
 		case <-n.consensusStopCh:
 			return
 		case <-time.After(n.cfg.ProposerTimeout):
+		}
+	}
+}
+
+// runProposerRound runs the two-phase consensus round when this node is the
+// proposer for the given height. Phase 1 builds and broadcasts a proposal (a
+// signed block WITHOUT a commit proof) and votes for it. Phase 2 attaches the
+// commit proof once a 2/3 precommit majority is collected and broadcasts the
+// final block (see tryFinalizeLocked).
+//
+// BuildBlock applies the block's state mutations in place, so the proposal is
+// self-validated with the Snapshot → build → revert → validate pattern: the
+// candidate is built, the state is reverted to before the build, and the block
+// is replayed through ValidateBlockProposal. Validation both proves the block
+// is acceptable to peers and leaves the state at the post-block height — the
+// replay IS the application. On failure the state is reverted and the height
+// is skipped.
+func (n *Node) runProposerRound(height uint64, proposer types.Address) {
+	if n.wallet == nil {
+		return
+	}
+
+	n.voteMu.Lock()
+	if n.pendingHeight == height {
+		n.voteMu.Unlock()
+		return // already proposed this height
+	}
+	n.voteMu.Unlock()
+
+	snapID := n.state.Snapshot()
+
+	signer := &walletSigner{kp: n.wallet}
+	// TODO: Get evidence from evidence pool
+	var evidence []types.Evidence
+	block, err := consensus.BuildBlock(n.state, n.vm, n.mempool, height, n.GetTipHash(),
+		proposer, signer, n.hasher, n.cfg.MaxTxPerBlock, evidence, n.cfg.BlockTimeSec)
+	if err != nil {
+		_ = n.state.RevertToSnapshot(snapID)
+		return
+	}
+
+	// Revert the build, then replay the block through the exact pipeline peers
+	// will use. If the proposal is valid the replay re-applies the block and
+	// the state is left at the post-block height.
+	if err := n.state.RevertToSnapshot(snapID); err != nil {
+		return
+	}
+	parentHeader := &types.BlockHeader{
+		Height:       height - 1,
+		PreviousHash: block.Header.PreviousHash,
+	}
+	if err := consensus.ValidateBlockProposal(block, parentHeader, n.GetTipHash(),
+		n.state, n.hasher, n.vm, n.cfg.BlockTimeSec); err != nil {
+		_ = n.state.RevertToSnapshot(snapID)
+		return
+	}
+
+	// The height may have been finalized by a concurrent goroutine while we
+	// were building — drop the candidate in that case.
+	if n.currentHeight.Load() >= height {
+		_ = n.state.RevertToSnapshot(snapID)
+		return
+	}
+
+	hash, _ := block.HeaderHash(n.hasher)
+
+	n.voteMu.Lock()
+	if n.pendingHeight == height {
+		n.voteMu.Unlock()
+		_ = n.state.RevertToSnapshot(snapID)
+		return
+	}
+	// The block was built by BeginBlock in the epoch carried on its header;
+	// that is the epoch whose snapshot the block commits against.
+	epoch := block.Header.Epoch
+	snap, err := staking.GetSnapshot(n.state, epoch)
+	if err != nil || snap == nil {
+		n.voteMu.Unlock()
+		_ = n.state.RevertToSnapshot(snapID)
+		return
+	}
+	vs := consensus.NewVotingState(height, 0, hash, snap)
+	prevote := n.newVote(height, hash, types.VotePrevote)
+	precommit := n.newVote(height, hash, types.VotePrecommit)
+	_ = vs.AddPrevote(prevote)
+	_ = vs.AddPrecommit(precommit)
+	n.voting = vs
+	n.pendingBlock = block
+	n.pendingHash = hash
+	n.pendingHeight = height
+	n.voteMu.Unlock()
+
+	// Phase 1: broadcast the proposal (no commit proof yet) and our votes.
+	data, err := consensus.EncodeBlockMessage(block)
+	if err == nil && n.p2p != nil {
+		n.p2p.Broadcast(data)
+	}
+	n.broadcastVote(prevote)
+	n.broadcastVote(precommit)
+
+	// Phase 2: if our own votes already reach the 2/3 precommit majority (a
+	// single-validator network), finalize immediately.
+	n.voteMu.Lock()
+	n.tryFinalizeLocked()
+	n.voteMu.Unlock()
+}
+
+// handleVoteMessage processes an incoming consensus vote from a peer. Only the
+// proposer tracks votes in its VotingState; other validators vote and wait for
+// the final block. Votes for unknown or already-finalized rounds are ignored.
+func (n *Node) handleVoteMessage(vote *types.Vote) {
+	if vote == nil {
+		return
+	}
+	n.voteMu.Lock()
+	defer n.voteMu.Unlock()
+
+	if n.voting == nil || n.pendingHeight != vote.Height {
+		return
+	}
+
+	switch vote.VoteType {
+	case types.VotePrevote:
+		_ = n.voting.AddPrevote(vote)
+	case types.VotePrecommit:
+		if n.voting.AddPrecommit(vote) == nil {
+			n.tryFinalizeLocked()
+		}
+	}
+}
+
+// tryFinalizeLocked attaches the commit proof to the pending block and
+// finalizes it once a 2/3 precommit majority exists. Only the proposer
+// finalizes, which avoids duplicate final-block broadcasts. Must be called
+// with voteMu held.
+func (n *Node) tryFinalizeLocked() {
+	vs := n.voting
+	if vs == nil || n.pendingBlock == nil {
+		return
+	}
+	if n.pendingBlock.Header.Proposer != n.consensusID() {
+		return // only the proposer finalizes
+	}
+	if n.currentHeight.Load() >= n.pendingBlock.Header.Height {
+		n.resetPendingLocked()
+		return // already finalized by another path
+	}
+	if !vs.HasPrecommitMajority() {
+		return
+	}
+
+	proof, err := vs.BuildCommitProof()
+	if err != nil {
+		return
+	}
+
+	block := n.pendingBlock
+	block.CommitProof = proof
+	n.resetPendingLocked()
+
+	// Broadcast the final block (now carrying the commit proof).
+	data, err := consensus.EncodeBlockMessage(block)
+	if err == nil && n.p2p != nil {
+		n.p2p.Broadcast(data)
+	}
+
+	// The block's state changes are already applied by the replay in
+	// runProposerRound — this finalizes headers, persistence and the tip.
+	n.finalizeLocalBlock(block)
+}
+
+// resetPendingLocked clears the pending proposal round. Must be called with
+// voteMu held.
+func (n *Node) resetPendingLocked() {
+	n.voting = nil
+	n.pendingBlock = nil
+	n.pendingHash = types.Hash{}
+	n.pendingHeight = 0
+}
+
+// newVote builds and signs a vote for the given height/block hash with this
+// node's consensus identity.
+func (n *Node) newVote(height uint64, blockHash types.Hash, voteType types.VoteType) *types.Vote {
+	vote := &types.Vote{
+		VoteType:  voteType,
+		Height:    height,
+		Round:     0,
+		BlockHash: blockHash,
+		Validator: n.consensusID(),
+	}
+	if n.wallet != nil {
+		_ = vote.Sign(n.wallet.PrivateKey[:])
+	}
+	return vote
+}
+
+// broadcastVote sends a vote to all connected peers as a framed vote message.
+func (n *Node) broadcastVote(vote *types.Vote) {
+	if n.p2p == nil || vote == nil {
+		return
+	}
+	var buf bytes.Buffer
+	if err := vote.Encode(&buf); err != nil {
+		return
+	}
+	msg := make([]byte, 1, 1+buf.Len())
+	msg[0] = network.MsgTypeVote
+	n.p2p.Broadcast(append(msg, buf.Bytes()...))
+}
+
+// handleProposal records an incoming proof-less proposal, re-gossips it and
+// votes for it. Called after the proposal passed ValidateBlockProposal.
+func (n *Node) handleProposal(block *types.Block) {
+	n.voteMu.Lock()
+	if n.pendingHeight == block.Header.Height {
+		n.voteMu.Unlock()
+		return // already voted for this round
+	}
+	hash, _ := block.HeaderHash(n.hasher)
+	n.pendingHeight = block.Header.Height
+	n.pendingBlock = block
+	n.pendingHash = hash
+	n.voteMu.Unlock()
+
+	if n.gossip != nil {
+		if data, err := consensus.EncodeBlockMessage(block); err == nil {
+			n.gossip.GossipBlock(data)
+		}
+	}
+
+	if n.wallet == nil {
+		return
+	}
+	n.broadcastVote(n.newVote(block.Header.Height, hash, types.VotePrevote))
+	n.broadcastVote(n.newVote(block.Header.Height, hash, types.VotePrecommit))
+}
+
+// finalizeLocalBlock persists a proposer-produced block, updates the chain tip
+// and handles epoch-boundary bookkeeping. The block's state changes are already
+// applied in n.state (by BuildBlock plus the self-validation replay), so this
+// only finalizes headers, persistence and the tip.
+func (n *Node) finalizeLocalBlock(block *types.Block) {
+	if n.persistent != nil {
+		consensus.StoreBlockHeader(n.persistent, &block.Header)
+		consensus.StoreTip(n.persistent, &block.Header)
+		// CRITICAL: Persist state to avoid losing changes on crash
+		if _, err := n.CommitState(); err != nil {
+			panic(fmt.Sprintf("commit state failed: %v at height %d", err, block.Header.Height))
+		}
+	}
+
+	hash, _ := block.HeaderHash(n.hasher)
+	n.setTip(block.Header.Height, hash)
+
+	for _, tx := range block.Transactions {
+		n.mempool.Remove(tx.IntentID)
+	}
+
+	// Create checkpoint and snapshot at epoch boundaries
+	if n.persistent != nil && block.Header.Epoch > 0 && block.Header.Epoch != n.currentEpoch.Load() {
+		n.currentEpoch.Store(block.Header.Epoch)
+
+		// Create chain checkpoint (always at epoch boundaries)
+		_, _ = consensus.CreateCheckpoint(n.persistent,
+			block.Header.Height, block.Header.Epoch,
+			block.Header.StateRoot, n.GetTipHash(),
+			block.Header.ValidatorSetHash)
+
+		// Create state snapshot if snapshot interval matches
+		if n.cfg.SnapshotInterval > 0 &&
+			block.Header.Epoch%n.cfg.SnapshotInterval == 0 {
+			snap, err := n.state.CreateSnapshot(block.Header.Height,
+				block.Header.Epoch, block.Header.ValidatorSetHash,
+				block.Header.Timestamp)
+			if err == nil {
+				snapData, serr := state.SerializeSnapshot(snap)
+				if serr == nil {
+					_ = state.StoreSnapshot(n.persistent, block.Header.Height, snapData)
+				}
+			}
 		}
 	}
 }
@@ -621,8 +863,33 @@ func (n *Node) handleBlockMessage(data []byte) {
 		PreviousHash: block.Header.PreviousHash,
 	}
 
-	err = consensus.ValidateBlock(block, parentHeader, expectedPrevHash, n.state, n.hasher, n.vm, n.cfg.BlockTimeSec)
+	// A proof-less block is a phase-1 proposal: validate it without the commit
+	// proof requirement, revert the check, then vote for it. The real
+	// application happens when the proposer broadcasts the final block that
+	// carries the commit proof.
+	if block.CommitProof == nil {
+		if block.Header.Height <= n.currentHeight.Load() {
+			return // stale proposal for an already-applied height
+		}
+		snapID := n.state.Snapshot()
+		err := consensus.ValidateBlockProposal(block, parentHeader, expectedPrevHash,
+			n.state, n.hasher, n.vm, n.cfg.BlockTimeSec)
+		// The proposal check must not corrupt the working state — always revert.
+		_ = n.state.RevertToSnapshot(snapID)
+		if err != nil {
+			return
+		}
+		n.handleProposal(block)
+		return
+	}
+
+	// Final block carrying the commit proof: validate and apply.
+	snapID := n.state.Snapshot()
+	err = consensus.ValidateBlock(block, parentHeader, expectedPrevHash,
+		n.state, n.hasher, n.vm, n.cfg.BlockTimeSec)
 	if err != nil {
+		// Revert the partial state mutations from the failed validation.
+		_ = n.state.RevertToSnapshot(snapID)
 		return
 	}
 

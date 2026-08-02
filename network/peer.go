@@ -291,6 +291,11 @@ type PeerManager struct {
 	db          *bbolt.DB // optional, nil if no persistence
 	stopCh      chan struct{}
 	running     bool
+	// onConnected is invoked after ConnectToPeer dials successfully. It is
+	// set once at construction by the P2P layer (see SetOnConnectedHandler)
+	// and runs while the peer lock is held, so it must not re-enter
+	// PeerManager methods that lock the same peer.
+	onConnected func(net.Conn, string)
 }
 
 // peersBucket is the BoltDB bucket name for peer persistence.
@@ -305,6 +310,15 @@ func NewPeerManager(db *bbolt.DB) *PeerManager {
 		stopCh:      make(chan struct{}),
 	}
 	return pm
+}
+
+// SetOnConnectedHandler registers a callback invoked after ConnectToPeer
+// successfully establishes a connection. The callback runs while the peer
+// lock is held and receives the raw connection and the dialed address.
+func (pm *PeerManager) SetOnConnectedHandler(h func(net.Conn, string)) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	pm.onConnected = h
 }
 
 // AddPeer adds a peer with score 0 and state Disconnected.
@@ -571,6 +585,12 @@ func (pm *PeerManager) ConnectToPeer(id PeerID, addr string) error {
 	peer.State = PeerConnected
 	peer.ConnectedSince = time.Now()
 	peer.LastSeen = time.Now()
+
+	// Hand the connection to the P2P layer so it is registered for broadcast
+	// and read (set via SetOnConnectedHandler).
+	if pm.onConnected != nil {
+		pm.onConnected(conn, addr)
+	}
 
 	return nil
 }

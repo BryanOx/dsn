@@ -142,6 +142,10 @@ func NewP2PNode(listenPort int) (*P2PNode, error) {
 		blockCh:      make(chan blockJob, 128), // buffered channel for block processing
 	}
 
+	// Outbound connections dialed through the PeerManager (e.g. by peer
+	// discovery) must also be registered for broadcast and read.
+	n.pm.SetOnConnectedHandler(n.handlePeerConnection)
+
 	// Start accepting connections in background
 	go n.acceptConnections()
 
@@ -193,16 +197,33 @@ func (n *P2PNode) handleConnection(conn net.Conn) {
 	// Read the peer's address for identification
 	remoteAddr := conn.RemoteAddr().String()
 
+	// Register with PeerManager for metadata tracking
+	id := PeerIDFromBytes([]byte(remoteAddr))
+	cleanup := n.registerConn(conn, remoteAddr, id)
+	defer cleanup()
+
+	n.readLoop(conn, remoteAddr, id)
+}
+
+// registerConn tracks a connection for broadcasting, deduplicating against an
+// existing connection to the same address, and returns a cleanup function
+// that removes the connection from every tracking structure.
+func (n *P2PNode) registerConn(conn net.Conn, remoteAddr string, id PeerID) func() {
 	// Check for duplicate connection - close existing if present
 	n.connMu.Lock()
 	if existingConn, exists := n.connections[remoteAddr]; exists {
-		// Close existing connection, replace with new one
 		existingConn.Close()
 	}
 	n.connections[remoteAddr] = conn
 	n.connMu.Unlock()
 
-	defer func() {
+	// Register with connection limiter
+	n.connLimiter.addPeer(remoteAddr)
+
+	// Register with PeerManager for metadata tracking
+	n.pm.AddPeer(id, remoteAddr)
+
+	return func() {
 		n.connMu.Lock()
 		delete(n.connections, remoteAddr)
 		n.connMu.Unlock()
@@ -212,15 +233,13 @@ func (n *P2PNode) handleConnection(conn net.Conn) {
 		n.rateLimitMu.Unlock()
 		// Remove from connection limiter
 		n.connLimiter.removePeer(remoteAddr)
-	}()
+	}
+}
 
-	// Register with connection limiter
-	n.connLimiter.addPeer(remoteAddr)
-
-	// Register with PeerManager for metadata tracking
-	id := PeerIDFromBytes([]byte(remoteAddr))
-	n.pm.AddPeer(id, remoteAddr)
-
+// readLoop reads framed messages from a connection and dispatches them until
+// the peer disconnects, the read fails, or the node stops. It runs for both
+// incoming and outgoing connections so every connection is drained.
+func (n *P2PNode) readLoop(conn net.Conn, remoteAddr string, id PeerID) {
 	reader := bufio.NewReader(conn)
 	failures := 0 // Track consecutive failures for rate limiting
 	for {
@@ -344,7 +363,10 @@ func (n *P2PNode) Addr() string {
 	return n.addr
 }
 
-// Connect connects to a peer at the given address.
+// Connect connects to a peer at the given address and starts reading from the
+// outbound connection. Before the fix the outbound connection was only used
+// for writing, so messages a peer sent back over that socket (or that arrived
+// after both sides dialed each other) were never processed.
 func (n *P2PNode) Connect(addr string) error {
 	// Check if already connected
 	n.connMu.RLock()
@@ -359,19 +381,32 @@ func (n *P2PNode) Connect(addr string) error {
 		return fmt.Errorf("failed to dial: %w", err)
 	}
 
-	// Store in connections map
-	n.connMu.Lock()
-	n.connections[addr] = conn
-	n.connMu.Unlock()
-
-	// Register with PeerManager for metadata tracking
 	id := PeerIDFromBytes([]byte(addr))
-	n.pm.AddPeer(id, addr)
+	cleanup := n.registerConn(conn, addr, id)
 
-	// Note: The server side (peer) will handle reading via acceptConnections -> handleConnection
-	// We don't need to start a reader here because we only write (Broadcast/GossipTransaction)
+	go func() {
+		defer cleanup()
+		defer conn.Close()
+		n.readLoop(conn, addr, id)
+	}()
 
 	return nil
+}
+
+// handlePeerConnection is installed as the PeerManager's on-connected hook so
+// connections established through pm.ConnectToPeer (for example by peer
+// discovery) are registered for broadcast and read just like connections
+// established by Connect or accepted by the listener. It only touches the
+// P2PNode's own state — it must not take PeerManager locks, because
+// ConnectToPeer runs the hook while holding the peer lock.
+func (n *P2PNode) handlePeerConnection(conn net.Conn, addr string) {
+	id := PeerIDFromBytes([]byte(addr))
+	cleanup := n.registerConn(conn, addr, id)
+	go func() {
+		defer cleanup()
+		defer conn.Close()
+		n.readLoop(conn, addr, id)
+	}()
 }
 
 // NumPeers returns the number of connected peers.

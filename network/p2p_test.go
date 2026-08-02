@@ -149,3 +149,128 @@ func TestP2PNode_ConnectDuplicate(t *testing.T) {
 		t.Error("n1 should have peers after duplicate connect attempt")
 	}
 }
+
+// TestP2PNode_OutboundReceivesGossip verifies that a transaction gossiped by
+// the remote node is received on the OUTBOUND connection. Before the fix,
+// Connect only registered the connection for writing and never started a
+// reader, so a tx pushed over an outbound socket was dropped.
+func TestP2PNode_OutboundReceivesGossip(t *testing.T) {
+	hasher := types.SHA256Hasher{}
+
+	n1, _ := NewP2PNode(0)
+	defer n1.Close()
+	n2, _ := NewP2PNode(0)
+	defer n2.Close()
+
+	// n1 dials n2; n1's side of the socket is the outbound connection.
+	if err := n1.Connect(n2.Addr()); err != nil {
+		t.Fatal(err)
+	}
+
+	// n1 must read over its outbound connection.
+	received := make(chan *types.Transaction, 1)
+	n1.SetTxHandler(func(tx *types.Transaction) {
+		received <- tx
+	})
+
+	time.Sleep(100 * time.Millisecond)
+
+	tx := &types.Transaction{
+		Version:  1,
+		Nonce:    1,
+		MaxFee:   100,
+		IntentID: types.Hash{1, 2, 3},
+	}
+	if err := n2.GossipTransaction(tx, hasher); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case got := <-received:
+		if got.IntentID != tx.IntentID {
+			t.Fatalf("intent ID mismatch after outbound gossip: got %x want %x", got.IntentID, tx.IntentID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: outbound connection never read the gossiped transaction")
+	}
+}
+
+// TestP2PNode_OutboundReceivesBlock verifies that a block broadcast by the
+// remote node is received on the OUTBOUND connection. Before the fix the
+// outbound reader was missing entirely.
+func TestP2PNode_OutboundReceivesBlock(t *testing.T) {
+	n1, _ := NewP2PNode(0)
+	defer n1.Close()
+	n2, _ := NewP2PNode(0)
+	defer n2.Close()
+
+	if err := n1.Connect(n2.Addr()); err != nil {
+		t.Fatal(err)
+	}
+
+	received := make(chan []byte, 1)
+	n1.SetBlockHandler(func(data []byte) {
+		received <- data
+	})
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Framed block message: type byte 0x01 (MsgTypeBlock) + payload.
+	blockMsg := []byte{byte(MsgTypeBlock), 0xAA, 0xBB}
+	n2.Broadcast(blockMsg)
+
+	select {
+	case got := <-received:
+		if len(got) != len(blockMsg) || got[1] != blockMsg[1] {
+			t.Fatalf("block message mismatch: got %x want %x", got, blockMsg)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: outbound connection never read the broadcast block")
+	}
+}
+
+// TestPeerDiscovery_DialRegistersConnection verifies that a connection
+// dialed through the PeerManager (as peer discovery does) is registered in
+// the P2P node's broadcast set AND read. Before the fix ConnectToPeer stored
+// the connection only on the Peer and neither registered nor read it.
+func TestPeerDiscovery_DialRegistersConnection(t *testing.T) {
+	n1, _ := NewP2PNode(0)
+	defer n1.Close()
+	n2, _ := NewP2PNode(0)
+	defer n2.Close()
+
+	id := PeerIDFromBytes([]byte(n2.Addr()))
+	if err := n1.pm.ConnectToPeer(id, n2.Addr()); err != nil {
+		t.Fatal(err)
+	}
+
+	if n1.NumPeers() == 0 {
+		t.Fatal("connection dialed via PeerManager must be registered for broadcast")
+	}
+
+	received := make(chan *types.Transaction, 1)
+	n1.SetTxHandler(func(tx *types.Transaction) {
+		received <- tx
+	})
+
+	time.Sleep(100 * time.Millisecond)
+
+	tx := &types.Transaction{
+		Version:  1,
+		Nonce:    1,
+		MaxFee:   100,
+		IntentID: types.Hash{9, 9, 9},
+	}
+	if err := n2.GossipTransaction(tx, types.SHA256Hasher{}); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case got := <-received:
+		if got.IntentID != tx.IntentID {
+			t.Fatalf("intent ID mismatch after pm dial: got %x want %x", got.IntentID, tx.IntentID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: connection dialed via PeerManager was never read")
+	}
+}

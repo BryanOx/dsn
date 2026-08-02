@@ -46,7 +46,9 @@ func (p *PVCSimulator) WriteStateFile(t *testing.T, filename string, content []b
 	t.Helper()
 
 	filePath := filepath.Join(p.DataDir, filename)
-	err := os.WriteFile(filePath, content, 0644)
+	err := os.MkdirAll(filepath.Dir(filePath), 0755)
+	require.NoError(t, err, "failed to create state file directory %s", filepath.Dir(filePath))
+	err = os.WriteFile(filePath, content, 0644)
 	require.NoError(t, err, "failed to write state file %s", filename)
 }
 
@@ -177,10 +179,7 @@ func (p *PVCSimulator) WriteAccountState(t *testing.T, addr types.Address, balan
 	content = append(content, data...)
 
 	// Use hex encoding for address to avoid invalid filename chars
-	addrStr := ""
-	for _, b := range addr[:8] {
-		addrStr += string(b)
-	}
+	addrStr := fmt.Sprintf("%x", addr[:8])
 	p.WriteStateFile(t, "account-"+addrStr+".state", content)
 }
 
@@ -189,23 +188,20 @@ func (p *PVCSimulator) ReadAccountState(t *testing.T, addr types.Address) (balan
 	t.Helper()
 
 	// Use same hex encoding as WriteAccountState
-	addrStr := ""
-	for _, b := range addr[:8] {
-		addrStr += string(b)
-	}
+	addrStr := fmt.Sprintf("%x", addr[:8])
 	filename := "account-" + addrStr + ".state"
 	if !p.StateFileExists(t, filename) {
 		return 0, false
 	}
 
 	content := p.ReadStateFile(t, filename)
-	// Skip address (32 bytes), read balance
-	if len(content) < 32 {
+	// Skip address bytes, read balance
+	if len(content) < len(addr) {
 		return 0, false
 	}
 
 	var amount types.Amount
-	err := amount.UnmarshalBinary(content[32:])
+	err := amount.UnmarshalBinary(content[len(addr):])
 	if err != nil {
 		return 0, false
 	}

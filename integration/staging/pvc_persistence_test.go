@@ -3,6 +3,7 @@
 package staging
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -56,7 +57,7 @@ func TestPVC_PersistenceAcrossRestart(t *testing.T) {
 	pvc.DeletePod(t)
 
 	// Verify files still exist on "PVC" (they should - this is the whole point)
-	require.True(t, pvc.StateFileExists(t, "account-"+string(addr[:8])+".state"),
+	require.True(t, pvc.StateFileExists(t, "account-"+fmt.Sprintf("%x", addr[:8])+".state"),
 		"account state should persist after pod deletion")
 
 	// Step 3: Simulate pod recreation (new container mounts same PVC)

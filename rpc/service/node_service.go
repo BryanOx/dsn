@@ -11,7 +11,6 @@ import (
 
 	"github.com/dsn/dsn/node"
 	"github.com/dsn/dsn/staking"
-	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/types"
 )
 
@@ -412,18 +411,24 @@ func (s *nodeService) GetValidators(ctx context.Context, epoch *uint64) ([]Valid
 
 // GetSupply returns token supply metrics.
 func (s *nodeService) GetSupply(ctx context.Context) (*SupplyResult, error) {
-	// Calculate total supply by iterating all accounts
-	total := big.NewInt(0)
-	circulating := big.NewInt(0)
-	staked := big.NewInt(0)
+	// Economic supply from the KV store is the source of truth (genesis,
+	// issuance, and burn all maintain KeyTotalSupply). Summing account
+	// balances would double-count tokens held at the burn address.
+	total := types.NewAmount(staking.ReadUint64(s.node.State(), staking.KeyTotalSupply))
 
-	// Iterate accounts to calculate supply
-	_ = s.node.State().ForEachAccount(func(addr types.Address, acc *state.Account) error {
-		accBal, _ := new(big.Int).SetString(acc.Balance.String(), 10)
-		total = new(big.Int).Add(total, accBal)
-		circulating = new(big.Int).Add(circulating, accBal)
-		return nil
-	})
+	// Staked = total bonded across validators.
+	staked, err := staking.TotalBonded(s.node.State())
+	if err != nil {
+		return nil, fmt.Errorf("total bonded: %w", err)
+	}
+
+	// Circulating = total - staked (burned tokens are not in any live account).
+	circulating := total
+	if staked.Cmp(total) <= 0 {
+		if c, err := total.Sub(staked); err == nil {
+			circulating = c
+		}
+	}
 
 	return &SupplyResult{
 		Total:       total.String(),

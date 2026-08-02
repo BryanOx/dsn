@@ -302,9 +302,10 @@ func TestRollingRestart_QuorumMaintenance(t *testing.T) {
 			require.NoError(t, kp.Sign(tx, hasher))
 			txs = append(txs, tx)
 		}
-		// 4 nodes continue
+		// 4 nodes continue (the proposer for a height may be any of the 5
+		// registered validators, so pass the full keypair set for signing)
 		for i := 1; i <= 4; i++ {
-			integration.MineBlockWithTxs(t, nodes[i], kps[:4], txs)
+			integration.MineBlockWithTxs(t, nodes[i], kps, txs)
 		}
 	}
 
@@ -313,7 +314,7 @@ func TestRollingRestart_QuorumMaintenance(t *testing.T) {
 	prevHash := nodes[1].GetTipHash()
 	for i := 1; i <= 4; i++ {
 		txs := []*types.Transaction{} // empty block for catchup
-		applyManualBlock(t, nodes[0], kps[:4], txs, height+uint64(i-1), prevHash)
+		applyManualBlock(t, nodes[0], kps, txs, height+uint64(i-1), prevHash)
 		prevHash = nodes[1].GetTipHash() // simplified
 	}
 

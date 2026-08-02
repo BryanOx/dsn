@@ -80,11 +80,22 @@ func NewTestNode(t testing.TB, validators []types.Address, opts ...TestNodeOptio
 		}
 	}
 
+	// Fund each validator address so KeyTotalSupply is initialized by
+	// InitGenesisState and fee burns in FinalizeBlock can succeed.
+	balances := make([]genesis.BalanceEntry, 0, len(validators))
+	for _, addr := range validators {
+		balances = append(balances, genesis.BalanceEntry{
+			Address: fmt.Sprintf("0x%x", addr[:]),
+			Amount:  1000000,
+		})
+	}
+
 	// Create genesis document
 	doc := &genesis.GenesisDoc{
-		GenesisTime:   time.Now(),
-		ChainID:       "test-chain",
-		InitialHeight: 0,
+		GenesisVersion: genesis.GenesisVersion,
+		GenesisTime:    time.Now(),
+		ChainID:        "test-chain",
+		InitialHeight:  0,
 		ConsensusParams: genesis.ConsensusParams{
 			MaxTxPerBlock:    100,
 			MaxBytesPerBlock: 10485760, // 10MB
@@ -100,7 +111,7 @@ func NewTestNode(t testing.TB, validators []types.Address, opts ...TestNodeOptio
 			Enabled: false,
 		},
 		InitialValidators: genesisValidators,
-		InitialBalances:   []genesis.BalanceEntry{},
+		InitialBalances:   balances,
 		Treasury: genesis.TreasuryEntry{
 			Address:        "0x0000000000000000000000000000000000000000",
 			InitialBalance: 0,

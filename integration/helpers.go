@@ -31,9 +31,9 @@ func (s *consensusSigner) Sign(hash types.Hash) ([]byte, error) {
 func registerValidatorsInState(t *testing.T, s *state.InMemoryState, validators []types.Address, keyPairs []*wallet.KeyPair) {
 	t.Helper()
 
+	stake := uint64(100_000)
 	for i, addr := range validators {
 		kp := keyPairs[i]
-		stake := uint64(100_000)
 
 		// Create account with funds (stake * 2 so there's enough after staking)
 		acc := state.NewAccount(addr, kp.PublicKey)
@@ -49,6 +49,12 @@ func registerValidatorsInState(t *testing.T, s *state.InMemoryState, validators 
 		require.NoError(t, err)
 		acc.SubBalance(types.NewAmount(stake))
 		s.SetAccount(addr, acc)
+	}
+
+	// Keep economic supply consistent with the balances we just created so
+	// fee burns in FinalizeBlock don't fail.
+	if err := staking.WriteUint64(s, staking.KeyTotalSupply, uint64(len(validators))*stake*2); err != nil {
+		t.Fatalf("registerValidatorsInState: set total supply: %v", err)
 	}
 
 	// Process epoch transition (height 100 = epoch boundary with DefaultBlocksPerEpoch=100)
@@ -308,6 +314,11 @@ func FundAccount(t *testing.T, n *node.Node, addr types.Address, pubKey [32]byte
 	acc := state.NewAccount(addr, pubKey)
 	acc.AddBalance(types.NewAmount(amount))
 	n.State().SetAccount(addr, acc)
+
+	cur := staking.ReadUint64(n.State(), staking.KeyTotalSupply)
+	if err := staking.WriteUint64(n.State(), staking.KeyTotalSupply, cur+amount); err != nil {
+		t.Fatalf("FundAccount: update total supply: %v", err)
+	}
 }
 
 // testMempool implements consensus.MempoolI for building blocks with explicit transactions.

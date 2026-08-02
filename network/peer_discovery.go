@@ -71,27 +71,7 @@ func (pd *PeerDiscovery) bootstrapLoop() {
 		default:
 		}
 
-		connected := false
-		for _, addr := range pd.bootstrapAddrs {
-			pd.logger.Printf("[PEX] Attempting bootstrap connection to %s", addr)
-
-			// Generate a PeerID from the address
-			id := PeerIDFromBytes([]byte(addr))
-
-			err := pd.pm.ConnectToPeer(id, addr)
-			if err != nil {
-				pd.logger.Printf("[PEX] Failed to connect to bootstrap peer %s: %v", addr, err)
-				continue
-			}
-
-			// After connecting, send PEX message with our known peers
-			pd.logger.Printf("[PEX] Connected to bootstrap peer %s, sending PEX", addr)
-			pd.RequestPeerExchange(id)
-
-			connected = true
-		}
-
-		if connected {
+		if pd.bootstrapOnce() {
 			backoff = pd.backoffInterval // Reset backoff on success
 		} else {
 			// Exponential backoff
@@ -106,6 +86,54 @@ func (pd *PeerDiscovery) bootstrapLoop() {
 		case <-time.After(backoff):
 		}
 	}
+}
+
+// bootstrapOnce runs a single bootstrap pass: it dials bootstrap peers that
+// are not connected and sends PEX to every reachable bootstrap peer. It
+// returns true if any bootstrap peer ended the pass connected.
+func (pd *PeerDiscovery) bootstrapOnce() bool {
+	anyConnected := false
+
+	for _, addr := range pd.bootstrapAddrs {
+		if !pd.shouldReconnect(addr) {
+			// Already connected: keep PEX flowing but never re-dial. Re-dialing
+			// a healthy link closes the live connection and leaves the node
+			// with no registered peers once the stale read loop runs cleanup.
+			id := PeerIDFromBytes([]byte(addr))
+			pd.RequestPeerExchange(id)
+			anyConnected = true
+			continue
+		}
+
+		pd.logger.Printf("[PEX] Attempting bootstrap connection to %s", addr)
+
+		// Generate a PeerID from the address
+		id := PeerIDFromBytes([]byte(addr))
+
+		err := pd.pm.ConnectToPeer(id, addr)
+		if err != nil {
+			pd.logger.Printf("[PEX] Failed to connect to bootstrap peer %s: %v", addr, err)
+			continue
+		}
+
+		// After connecting, send PEX message with our known peers
+		pd.logger.Printf("[PEX] Connected to bootstrap peer %s, sending PEX", addr)
+		pd.RequestPeerExchange(id)
+
+		anyConnected = true
+	}
+
+	return anyConnected
+}
+
+// shouldReconnect reports whether a bootstrap peer needs a new dial. It
+// returns false when a connection to addr is already registered with the P2P
+// node, mirroring the legacy Discovery connectBootstrap guard.
+func (pd *PeerDiscovery) shouldReconnect(addr string) bool {
+	if pd.p2p == nil {
+		return true
+	}
+	return !pd.p2p.isConnected(addr)
 }
 
 // healthCheckLoop pings all connected peers every 30 seconds.

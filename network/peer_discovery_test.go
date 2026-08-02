@@ -129,6 +129,73 @@ func TestPeerInfoParseTruncated(t *testing.T) {
 	}
 }
 
+// TestShouldReconnect verifies the re-dial decision: a registered connection
+// must never trigger a second dial, while unknown addresses always do.
+func TestShouldReconnect(t *testing.T) {
+	n1, _ := NewP2PNode(0)
+	defer n1.Close()
+	n2, _ := NewP2PNode(0)
+	defer n2.Close()
+
+	pd := NewPeerDiscovery(n1.pm, nil, n1)
+
+	// An address with no registered connection must be re-dialed.
+	if !pd.shouldReconnect("127.0.0.1:1") {
+		t.Error("unconnected address must be re-dialed")
+	}
+
+	// Once connected, the same address must NOT be re-dialed.
+	if err := n1.Connect(n2.Addr()); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if pd.shouldReconnect(n2.Addr()) {
+		t.Error("connected address must not be re-dialed")
+	}
+
+	// A nil P2P node has no connection tracker and must fall back to dialing.
+	pdNil := NewPeerDiscovery(n1.pm, nil, nil)
+	if !pdNil.shouldReconnect(n2.Addr()) {
+		t.Error("nil P2P node must report reconnect")
+	}
+}
+
+// TestBootstrapOnce_DoesNotRedialConnectedPeer verifies that a full bootstrap
+// pass over an already-connected peer does not re-dial it. Before the fix the
+// loop called ConnectToPeer unconditionally, closing the live connection and
+// leaving n1 with zero registered peers once the stale read loop's cleanup
+// removed the replacement.
+func TestBootstrapOnce_DoesNotRedialConnectedPeer(t *testing.T) {
+	n1, _ := NewP2PNode(0)
+	defer n1.Close()
+	n2, _ := NewP2PNode(0)
+	defer n2.Close()
+
+	if err := n1.Connect(n2.Addr()); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if n1.NumPeers() != 1 {
+		t.Fatalf("setup: NumPeers = %d, want 1", n1.NumPeers())
+	}
+
+	pd := NewPeerDiscovery(n1.pm, []string{n2.Addr()}, n1)
+
+	if !pd.bootstrapOnce() {
+		t.Fatal("bootstrapOnce should report a connected bootstrap peer")
+	}
+
+	// Poll briefly: with the re-dial, the stale read loop would eventually run
+	// its cleanup and drop the (replaced) connection from the map.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if got := n1.NumPeers(); got != 1 {
+			t.Fatalf("NumPeers = %d, want 1 (connected peer was re-dialed)", got)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 // TestPeerInfoSerializationFormat verifies the exact wire format.
 func TestPeerInfoSerializationFormat(t *testing.T) {
 	peer := &Peer{

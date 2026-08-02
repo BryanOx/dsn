@@ -130,59 +130,14 @@ func ValidateBlock(block *types.Block, parentHeader *types.BlockHeader,
 	// 7. Execute user txs (uses fresh state from BeginBlock)
 	var totalFees uint64
 	var allEvents []types.Event
-	blockHeight := block.Header.Height
-	blockTimestamp := block.Header.Timestamp
 	for i := range block.Transactions {
 		tx := &block.Transactions[i]
-		txIndex := uint32(i)
-
-		// Check if this is a contract transaction and VM is available
-		if tx.TxType == types.TxTypeDeployContract && vm != nil {
-			// Decode and execute via VM with real block context
-			contractTx, err := tx.DeployContract()
-			if err != nil {
-				return fmt.Errorf("decode deploy contract: %w", err)
-			}
-			execResult, err := vm.Execute(contractTx, s, blockHeight, blockTimestamp, txIndex)
-			if err != nil {
-				return fmt.Errorf("vm execute deploy: %w", err)
-			}
-			// Only collect events if execution was not reverted
-			if !execResult.Reverted {
-				allEvents = append(allEvents, execResult.Events...)
-			}
-			// Charge gas
-			if err := chargeGasForValidate(s, tx.Sender, execResult.GasUsed); err != nil {
-				return fmt.Errorf("charge gas: %w", err)
-			}
-			totalFees += tx.MaxFee
-		} else if tx.TxType == types.TxTypeCallContract && vm != nil {
-			// Decode and execute via VM with real block context
-			contractTx, err := tx.CallContract()
-			if err != nil {
-				return fmt.Errorf("decode call contract: %w", err)
-			}
-			execResult, err := vm.Execute(contractTx, s, blockHeight, blockTimestamp, txIndex)
-			if err != nil {
-				return fmt.Errorf("vm execute call: %w", err)
-			}
-			// Only collect events if execution was not reverted
-			if !execResult.Reverted {
-				allEvents = append(allEvents, execResult.Events...)
-			}
-			// Charge gas
-			if err := chargeGasForValidate(s, tx.Sender, execResult.GasUsed); err != nil {
-				return fmt.Errorf("charge gas: %w", err)
-			}
-			totalFees += tx.MaxFee
-		} else {
-			// Standard transaction
-			_, err := state.ApplyTransaction(s, tx, hasher, block.Header.Height)
-			if err != nil {
-				return fmt.Errorf("tx %x: %w", tx.IntentID, err)
-			}
-			totalFees += tx.MaxFee
+		exec, err := ApplyTransaction(s, tx, &block.Header, vm, hasher, uint32(i))
+		if err != nil {
+			return fmt.Errorf("tx %x: %w", tx.IntentID, err)
 		}
+		totalFees += exec.Fee
+		allEvents = append(allEvents, exec.Events...)
 	}
 
 	// 7b. FinalizeBlock - distribute fees (same as BuildBlock)
@@ -335,25 +290,4 @@ func validateCommitProof(block *types.Block, s *state.InMemoryState, epoch uint6
 	}
 
 	return nil
-}
-
-// chargeGasForValidate deducts the gas cost from the sender's account balance during validation.
-func chargeGasForValidate(s *state.InMemoryState, sender types.Address, gasUsed uint64) error {
-	// Gas price is 1 token per gas unit (simple model)
-	gasCost := types.NewAmount(gasUsed)
-
-	acc, err := s.GetAccount(sender)
-	if err != nil {
-		return fmt.Errorf("get sender account: %w", err)
-	}
-
-	if acc.Balance.Cmp(gasCost) < 0 {
-		return fmt.Errorf("insufficient balance for gas: have %s, need %s", acc.Balance, gasCost)
-	}
-
-	if err := acc.SubBalance(gasCost); err != nil {
-		return err
-	}
-
-	return s.SetAccount(sender, acc)
 }

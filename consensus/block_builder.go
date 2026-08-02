@@ -80,63 +80,30 @@ func BuildBlock(s *state.InMemoryState, vm *vm.VM, mp MempoolI, height uint64, p
 	var blockEvents []types.Event
 
 	// Capture block timestamp at start of tx processing for contract execution
+	// (F5: the header carries this same single value).
 	blockTimestamp := uint64(time.Now().Unix())
 
+	// Build the header incrementally: the fields needed for tx execution are
+	// known before the transactions run, the derived roots are filled in after
+	// the state commit.
+	header := types.BlockHeader{
+		Version:          1,
+		Height:           height,
+		PreviousHash:     prevHash,
+		Epoch:            epoch,
+		ValidatorSetHash: valSetHash,
+		Proposer:         proposer,
+		Timestamp:        blockTimestamp,
+	}
+
 	for i, tx := range txList {
-		txIndex := uint32(i)
-		// Check if this is a contract transaction
-		if tx.TxType == types.TxTypeDeployContract && vm != nil {
-			// Decode contract tx from payload
-			contractTx, err := tx.DeployContract()
-			if err != nil {
-				return nil, fmt.Errorf("decode deploy contract: %w", err)
-			}
-			// Execute via VM with real block context
-			execResult, err := vm.Execute(contractTx, s, height, blockTimestamp, txIndex)
-			if err != nil {
-				return nil, fmt.Errorf("vm execute deploy: %w", err)
-			}
-			// T8-3: Gas refund on success - charge only the gas actually used
-			// Unused gas (GasLimit - GasUsed) is refunded to sender
-			if err := chargeGas(s, tx.Sender, execResult.GasUsed); err != nil {
-				return nil, fmt.Errorf("charge gas: %w", err)
-			}
-			// T8-4: Discard events on tx failure - only collect events from successful txs
-			if !execResult.Reverted {
-				blockEvents = append(blockEvents, execResult.Events...)
-			}
-			totalFees += tx.MaxFee
-			receipts = append(receipts, tx.IntentID)
-		} else if tx.TxType == types.TxTypeCallContract && vm != nil {
-			// Decode contract tx from payload
-			contractTx, err := tx.CallContract()
-			if err != nil {
-				return nil, fmt.Errorf("decode call contract: %w", err)
-			}
-			// Execute via VM with real block context
-			execResult, err := vm.Execute(contractTx, s, height, blockTimestamp, txIndex)
-			if err != nil {
-				return nil, fmt.Errorf("vm execute call: %w", err)
-			}
-			// T8-3: Gas refund on success - charge only the gas actually used
-			if err := chargeGas(s, tx.Sender, execResult.GasUsed); err != nil {
-				return nil, fmt.Errorf("charge gas: %w", err)
-			}
-			// T8-4: Discard events on tx failure - only collect events from successful txs
-			if !execResult.Reverted {
-				blockEvents = append(blockEvents, execResult.Events...)
-			}
-			totalFees += tx.MaxFee
-			receipts = append(receipts, tx.IntentID)
-		} else {
-			// Standard transaction - apply via state
-			receipt, err := state.ApplyTransaction(s, &tx, hasher, height)
-			if err != nil {
-				return nil, err
-			}
-			totalFees += tx.MaxFee
-			receipts = append(receipts, receipt)
+		exec, err := ApplyTransaction(s, &tx, &header, vm, hasher, uint32(i))
+		if err != nil {
+			return nil, err
 		}
+		totalFees += exec.Fee
+		receipts = append(receipts, exec.Receipt)
+		blockEvents = append(blockEvents, exec.Events...)
 	}
 
 	// 4. Create partial block for FinalizeBlock (only FeeSummary needed)
@@ -166,25 +133,15 @@ func BuildBlock(s *state.InMemoryState, vm *vm.VM, mp MempoolI, height uint64, p
 	}
 	validatorRoot := ValidatorRoot(consensusIDs)
 
-	// 8. Build block with new fields
-	txRoot := computeTxRoot(txList, hasher)
-	receiptRoot := computeHashesRoot(receipts, hasher)
+	// 8. Complete the header with the derived roots and build the block
+	header.StateRoot = stateRoot
+	header.TxRoot = computeTxRoot(txList, hasher)
+	header.ReceiptRoot = computeHashesRoot(receipts, hasher)
+	header.ValidatorRoot = validatorRoot
+	header.EventsRoot = types.ComputeEventsRoot(blockEvents)
 
 	block := &types.Block{
-		Header: types.BlockHeader{
-			Version:          1,
-			Height:           height,
-			PreviousHash:     prevHash,
-			StateRoot:        stateRoot,
-			TxRoot:           txRoot,
-			ReceiptRoot:      receiptRoot,
-			ValidatorRoot:    validatorRoot,
-			ValidatorSetHash: valSetHash,
-			Epoch:            epoch,
-			Timestamp:        blockTimestamp,
-			Proposer:         proposer,
-			EventsRoot:       types.ComputeEventsRoot(blockEvents),
-		},
+		Header:       header,
 		Transactions: txList,
 		FeeSummary:   types.NewFeeSummary(totalFees),
 		Evidence:     evidence,
@@ -230,25 +187,4 @@ func computeHashesRoot(hashes []types.Hash, hasher types.Hasher) types.Hash {
 	}
 	h, _ := hasher.Hash(buf.Bytes())
 	return h
-}
-
-// chargeGas deducts the gas cost from the sender's account balance.
-func chargeGas(s *state.InMemoryState, sender types.Address, gasUsed uint64) error {
-	// Gas price is 1 token per gas unit (simple model)
-	gasCost := types.NewAmount(gasUsed)
-
-	acc, err := s.GetAccount(sender)
-	if err != nil {
-		return fmt.Errorf("get sender account: %w", err)
-	}
-
-	if acc.Balance.Cmp(gasCost) < 0 {
-		return fmt.Errorf("insufficient balance for gas: have %s, need %s", acc.Balance, gasCost)
-	}
-
-	if err := acc.SubBalance(gasCost); err != nil {
-		return err
-	}
-
-	return s.SetAccount(sender, acc)
 }

@@ -489,6 +489,106 @@ func TestPeer_PersistLoad(t *testing.T) {
 	}
 }
 
+// TestPeer_UpdateSyncHeight verifies SyncHeight updates are monotonic:
+// stale (lower) announcements are ignored, higher heights are kept.
+func TestPeer_UpdateSyncHeight(t *testing.T) {
+	pm := NewPeerManager(nil)
+
+	peerID := PeerIDFromBytes([]byte("test-sync-height"))
+	pm.AddPeer(peerID, "10.0.0.9:9009")
+
+	if got := pm.GetPeer(peerID).SyncHeight; got != 0 {
+		t.Fatalf("initial SyncHeight = %d, want 0", got)
+	}
+
+	// First announcement wins
+	pm.UpdateSyncHeight(peerID, 100)
+	if got := pm.GetPeer(peerID).SyncHeight; got != 100 {
+		t.Errorf("SyncHeight after first update = %d, want 100", got)
+	}
+
+	// Stale (lower) announcement must be ignored
+	pm.UpdateSyncHeight(peerID, 50)
+	if got := pm.GetPeer(peerID).SyncHeight; got != 100 {
+		t.Errorf("SyncHeight after stale update = %d, want 100 (monotonic)", got)
+	}
+
+	// Equal announcement must be a no-op, not a regression
+	pm.UpdateSyncHeight(peerID, 100)
+	if got := pm.GetPeer(peerID).SyncHeight; got != 100 {
+		t.Errorf("SyncHeight after equal update = %d, want 100", got)
+	}
+
+	// Higher announcement is kept
+	pm.UpdateSyncHeight(peerID, 150)
+	if got := pm.GetPeer(peerID).SyncHeight; got != 150 {
+		t.Errorf("SyncHeight after higher update = %d, want 150", got)
+	}
+
+	// Unknown peer must be a safe no-op and must not create peers
+	unknown := PeerIDFromBytes([]byte("unknown-peer"))
+	pm.UpdateSyncHeight(unknown, 999)
+	if pm.GetPeer(unknown) != nil {
+		t.Error("UpdateSyncHeight must not create peers")
+	}
+}
+
+// TestPeer_PersistSyncHeight verifies SyncHeight survives a persist/load cycle.
+func TestPeer_PersistSyncHeight(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pm1 := NewPeerManager(db)
+	peerID := PeerIDFromBytes([]byte("persist-sync-height"))
+	pm1.AddPeer(peerID, "10.0.0.10:9010")
+
+	pm1.UpdateSyncHeight(peerID, 77)
+	if err := pm1.Persist(); err != nil {
+		t.Fatalf("Persist failed: %v", err)
+	}
+
+	pm2 := NewPeerManager(db)
+	if err := pm2.LoadPeers(); err != nil {
+		t.Fatalf("LoadPeers failed: %v", err)
+	}
+
+	p := pm2.GetPeer(peerID)
+	if p == nil {
+		t.Fatal("Peer not found after load")
+	}
+	if p.SyncHeight != 77 {
+		t.Errorf("Loaded SyncHeight = %d, want 77", p.SyncHeight)
+	}
+}
+
+// TestPeer_PeriodicTickPersists verifies the periodic maintenance run by the
+// 30s ticker persists peer data (including SyncHeight) to the database.
+func TestPeer_PeriodicTickPersists(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pm := NewPeerManager(db)
+	peerID := PeerIDFromBytes([]byte("periodic-persist"))
+	pm.AddPeer(peerID, "10.0.0.11:9011")
+	pm.UpdateSyncHeight(peerID, 88)
+
+	// Trigger the periodic maintenance the 30s ticker runs.
+	pm.periodicMaintenance()
+
+	// A fresh manager reading the same DB must see the persisted height.
+	pm2 := NewPeerManager(db)
+	if err := pm2.LoadPeers(); err != nil {
+		t.Fatalf("LoadPeers failed: %v", err)
+	}
+	p := pm2.GetPeer(peerID)
+	if p == nil {
+		t.Fatal("Peer not found after periodic maintenance")
+	}
+	if p.SyncHeight != 88 {
+		t.Errorf("SyncHeight after periodic maintenance = %d, want 88", p.SyncHeight)
+	}
+}
+
 // TestPeer_PersistEmpty tests persistence with no peers.
 func TestPeer_PersistEmpty(t *testing.T) {
 	db := setupTestDB(t)

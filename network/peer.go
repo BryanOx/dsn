@@ -536,6 +536,27 @@ func (pm *PeerManager) UpdateScore(id PeerID, delta int) {
 	}
 }
 
+// UpdateSyncHeight records a peer's announced sync height. Updates are
+// monotonic: a stale (lower or equal) announcement is ignored, only a strictly
+// higher height replaces the current value. Unknown peers are a safe no-op.
+func (pm *PeerManager) UpdateSyncHeight(id PeerID, height uint64) {
+	pm.mu.RLock()
+	peer, ok := pm.peers[id]
+	pm.mu.RUnlock()
+
+	if !ok {
+		return
+	}
+
+	peer.mu.Lock()
+	defer peer.mu.Unlock()
+
+	if height <= peer.SyncHeight {
+		return
+	}
+	peer.SyncHeight = height
+}
+
 // Ban sets a peer's state to Banned for the specified duration.
 func (pm *PeerManager) Ban(id PeerID, duration time.Duration) {
 	pm.mu.RLock()
@@ -764,7 +785,7 @@ func (pm *PeerManager) Start() {
 			case <-pm.stopCh:
 				return
 			case <-ticker.C:
-				pm.cleanupExpiredBans()
+				pm.periodicMaintenance()
 			}
 		}
 	}()
@@ -782,6 +803,17 @@ func (pm *PeerManager) Stop() {
 	close(pm.stopCh)
 	pm.stopCh = make(chan struct{})
 	pm.running = false
+}
+
+// periodicMaintenance runs on the 30s ticker: it cleans expired bans and
+// persists the peer registry so in-memory state (scores, sync heights) is
+// durably flushed to the database.
+func (pm *PeerManager) periodicMaintenance() {
+	pm.cleanupExpiredBans()
+	if err := pm.Persist(); err != nil {
+		// Persistence failure is non-fatal for runtime operation.
+		return
+	}
 }
 
 // cleanupExpiredBans unbans peers whose ban has expired.

@@ -170,10 +170,15 @@ func LoadConfigFromEnv(cfg *Config) *Config {
 		cfg.Chain.TrustedCheckpointHash = v
 	}
 
+	// Collapse duplicate bootstrap peers regardless of whether they came from
+	// the config file or an env var.
+	cfg.P2P.BootstrapPeers = dedupeBootstrapPeers(cfg.P2P.BootstrapPeers)
+
 	return cfg
 }
 
 // parseBootstrapPeers parses a comma-separated list of peer addresses.
+// Duplicate entries are collapsed, preserving first-seen order.
 func parseBootstrapPeers(s string) []string {
 	if s == "" {
 		return nil
@@ -185,7 +190,24 @@ func parseBootstrapPeers(s string) []string {
 			peers = append(peers, p)
 		}
 	}
-	return peers
+	return dedupeBootstrapPeers(peers)
+}
+
+// dedupeBootstrapPeers collapses duplicate addresses, preserving the order of
+// first occurrence. The same bootstrap peer may arrive from the config file
+// and from an env var; dialing it twice would churn the connection (close and
+// re-dial every backoff interval) instead of keeping a healthy link.
+func dedupeBootstrapPeers(peers []string) []string {
+	seen := make(map[string]struct{}, len(peers))
+	result := make([]string, 0, len(peers))
+	for _, p := range peers {
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		result = append(result, p)
+	}
+	return result
 }
 
 // MergeConfig merges two configurations, with src overriding dst.

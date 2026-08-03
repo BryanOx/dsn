@@ -153,3 +153,21 @@ func TestConfigFromEnv_SnapshotDefaults(t *testing.T) {
 		t.Errorf("TrustedCheckpointHash should default to %s, got %s", defaults.TrustedCheckpointHash, cfg.TrustedCheckpointHash)
 	}
 }
+
+// TestConfigFromEnv_BootstrapPeersDedupes verifies that duplicate addresses in
+// DSN_BOOTSTRAP_PEERS are collapsed, preserving order.
+func TestConfigFromEnv_BootstrapPeersDedupes(t *testing.T) {
+	t.Setenv("DSN_BOOTSTRAP_PEERS", "node0:26656,node1:26656,node0:26656")
+
+	cfg := ConfigFromEnv()
+
+	want := []string{"node0:26656", "node1:26656"}
+	if len(cfg.BootstrapPeers) != len(want) {
+		t.Fatalf("BootstrapPeers = %v, want %v", cfg.BootstrapPeers, want)
+	}
+	for i := range want {
+		if cfg.BootstrapPeers[i] != want[i] {
+			t.Errorf("BootstrapPeers = %v, want %v", cfg.BootstrapPeers, want)
+		}
+	}
+}

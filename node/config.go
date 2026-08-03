@@ -201,6 +201,7 @@ func ConfigFromEnv() Config {
 }
 
 // parseBootstrapPeers parses a comma-separated list of "ip:port" addresses.
+// Duplicate entries are collapsed, preserving first-seen order.
 func parseBootstrapPeers(s string) []string {
 	if s == "" {
 		return nil
@@ -212,5 +213,21 @@ func parseBootstrapPeers(s string) []string {
 			peers = append(peers, p)
 		}
 	}
-	return peers
+	return dedupeBootstrapPeers(peers)
+}
+
+// dedupeBootstrapPeers collapses duplicate addresses, preserving the order of
+// first occurrence. Duplicate bootstrap peers would make peer discovery dial
+// (and re-dial) the same address twice every backoff interval.
+func dedupeBootstrapPeers(peers []string) []string {
+	seen := make(map[string]struct{}, len(peers))
+	result := make([]string, 0, len(peers))
+	for _, p := range peers {
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		result = append(result, p)
+	}
+	return result
 }

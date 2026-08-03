@@ -225,8 +225,13 @@ func (n *P2PNode) registerConn(conn net.Conn, remoteAddr string, id PeerID) func
 	n.pm.AddPeer(id, remoteAddr)
 
 	return func() {
+		// Only remove the connection if the entry still points at OUR conn.
+		// A stale read loop from an older connection must never delete a newer
+		// connection that replaced it for the same address.
 		n.connMu.Lock()
-		delete(n.connections, remoteAddr)
+		if cur, ok := n.connections[remoteAddr]; ok && cur == conn {
+			delete(n.connections, remoteAddr)
+		}
 		n.connMu.Unlock()
 		// Clean up rate limiter for this peer
 		n.rateLimitMu.Lock()

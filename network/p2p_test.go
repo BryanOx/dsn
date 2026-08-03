@@ -2,6 +2,8 @@ package network
 
 import (
 	"bytes"
+	"io"
+	"net"
 	"testing"
 	"time"
 
@@ -148,6 +150,91 @@ func TestP2PNode_ConnectDuplicate(t *testing.T) {
 	peers := n1.NumPeers()
 	if peers == 0 {
 		t.Error("n1 should have peers after duplicate connect attempt")
+	}
+}
+
+// TestRegisterConn_StaleCleanupKeepsNewerConnection verifies that the cleanup
+// of a superseded connection does not delete the connection that replaced it.
+// This is the reconnect scenario: connection A is closed by registerConn when
+// connection B registers the same remote address, and A's stale read loop must
+// not remove B from the broadcast set.
+func TestRegisterConn_StaleCleanupKeepsNewerConnection(t *testing.T) {
+	n, _ := NewP2PNode(0)
+	defer n.Close()
+
+	nodeConnA, peerA := net.Pipe()
+	nodeConnB, peerB := net.Pipe()
+	defer nodeConnA.Close()
+	defer nodeConnB.Close()
+	defer peerA.Close()
+	defer peerB.Close()
+
+	addr := "10.0.0.1:26656"
+	id := PeerIDFromBytes([]byte(addr))
+
+	cleanupA := n.registerConn(nodeConnA, addr, id)
+	cleanupB := n.registerConn(nodeConnB, addr, id)
+	defer cleanupB()
+
+	// Simulate the stale read loop of connection A exiting after B replaced it.
+	cleanupA()
+
+	n.connMu.RLock()
+	cur := n.connections[addr]
+	n.connMu.RUnlock()
+	if cur != nodeConnB {
+		t.Fatal("stale cleanup removed the newer connection from the broadcast set")
+	}
+}
+
+// TestBroadcast_AfterStaleCleanupUsesNewerConnection verifies that a broadcast
+// still reaches the newer connection after a stale cleanup of a superseded one.
+func TestBroadcast_AfterStaleCleanupUsesNewerConnection(t *testing.T) {
+	n, _ := NewP2PNode(0)
+	defer n.Close()
+
+	// Two consecutive dials to the same remote address. nodeConnB is the newer
+	// generation; peerB is the matching socket on the remote side.
+	nodeConnA, _ := net.Pipe()
+	nodeConnB, peerB := net.Pipe()
+	defer nodeConnA.Close()
+	defer nodeConnB.Close()
+	defer peerB.Close()
+
+	addr := "10.0.0.2:26656"
+	id := PeerIDFromBytes([]byte(addr))
+
+	cleanupA := n.registerConn(nodeConnA, addr, id)
+	cleanupB := n.registerConn(nodeConnB, addr, id)
+	defer cleanupB()
+
+	// Stale connection A dies; only B should remain in the broadcast set.
+	cleanupA()
+
+	received := make(chan byte, 1)
+	go func() {
+		lenBuf := make([]byte, 4)
+		if _, err := io.ReadFull(peerB, lenBuf); err != nil {
+			received <- 0
+			return
+		}
+		payload := make([]byte, 1)
+		if _, err := io.ReadFull(peerB, payload); err != nil {
+			received <- 0
+			return
+		}
+		received <- payload[0]
+	}()
+
+	n.Broadcast([]byte{0x42})
+
+	select {
+	case got := <-received:
+		if got != 0x42 {
+			t.Errorf("payload = %#x, want 0x42", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: broadcast never reached the newer connection")
 	}
 }
 

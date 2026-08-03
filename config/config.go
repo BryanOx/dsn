@@ -265,7 +265,7 @@ func DefaultConfig() Config {
 			MaxTxPerBlock:           100,
 			ProposerTimeout:         5 * time.Second,
 			IndexerEnabled:          false,
-			FastSyncEnabled:         false,
+			FastSyncEnabled:         true,
 			TrustedCheckpointHeight: 0,
 			TrustedCheckpointHash:   "",
 		},

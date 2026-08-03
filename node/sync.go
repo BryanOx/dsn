@@ -49,7 +49,11 @@ func (n *Node) applySyncedBlock(data []byte) (bool, error) {
 	}
 	parent, prev := n.loadParentHeader(block)
 	snapID := n.state.Snapshot()
-	if err := consensus.ValidateBlock(block, parent, prev, n.state, n.hasher, n.vm, n.cfg.BlockTimeSec); err != nil {
+	// Sync variant: blocks being replayed were produced seconds ago and the
+	// ±5s live-gossip freshness window must not reject them; every
+	// chain-relative check (epoch, proposer, validator set, hashes, commit
+	// proof, re-executed state root) still applies.
+	if err := consensus.ValidateBlockForSync(block, parent, prev, n.state, n.hasher, n.vm, n.cfg.BlockTimeSec); err != nil {
 		_ = n.state.RevertToSnapshot(snapID)
 		return false, err
 	}

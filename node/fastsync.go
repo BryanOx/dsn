@@ -59,21 +59,23 @@ func (n *Node) FastSync() error {
 		}
 	}
 
-	// Step 3: New node — need to fetch from network
-	// For v1, full P2P snapshot discovery is not yet implemented.
-	// Use FastSyncFromCheckpoint with a trusted snapshot file instead.
-
-	// TODO: Implement P2P snapshot discovery:
-	// 1. Broadcast snapshot query to peers
-	// 2. Wait for snapshot info responses with timeout
-	// 3. Select best snapshot (highest height)
-	// 4. Download chunks from responding peers
-	// 5. Reassemble and verify snapshot
-	// 6. Restore state and replay blocks
-
-	return fmt.Errorf("fast sync from network not yet implemented; " +
-		"use FastSyncFromCheckpoint with a local snapshot file or implement P2P discovery")
+	// Step 3: New node — fetch state from the network via snapshot sync.
+	// The FastSyncEngine runs the full pipeline (query → select → download →
+	// verify → restore → replay → live); on any failure it falls back to
+	// block-range catch-up so the node still reaches the peer tip.
+	if err := n.SyncFromNetwork(defaultSnapshotTimeout); err != nil {
+		// Fallback: range replay from the on-disk tip (automatic catch-up).
+		if n.blockSync != nil {
+			n.blockSync.Start()
+		}
+		return fmt.Errorf("fast sync from network failed, falling back to block-range catch-up: %w", err)
+	}
+	return nil
 }
+
+// defaultSnapshotTimeout bounds the whole snapshot discovery/download/verify
+// window before SyncFromNetwork gives up and the caller falls back to range sync.
+const defaultSnapshotTimeout = 30 * time.Second
 
 // FastSyncFromCheckpoint performs fast sync from a provided checkpoint.
 // The checkpoint can come from a trusted source (config, genesis file, or CLI).
@@ -180,46 +182,101 @@ func (n *Node) FastSyncFromLocalSnapshot(height uint64, targetHeight uint64) err
 	return n.FastSyncFromCheckpoint(cp, snapData, targetHeight)
 }
 
-// SyncFromNetwork attempts to sync from the P2P network (placeholder for future).
-// This requires implementing:
-// - Peer discovery and selection
-// - Snapshot info query/response protocol
-// - Chunk download with parallel requests
-// - Snapshot verification and restoration
+// StoreStateSnapshot persists a state snapshot of the node's current in-memory
+// state at its current tip height, plus a chain checkpoint that references the
+// snapshot, so fast-sync peers can discover, verify and restore it. All
+// metadata (state root, validator set hash, epoch, timestamp) is taken from the
+// block at the snapshot height, guaranteeing a peer that restores this snapshot
+// and replays the following blocks converges on the same state root.
+//
+// This is the operator-facing way to publish a snapshot from live state; the
+// consensus layer also stores snapshots automatically at epoch boundaries.
+func (n *Node) StoreStateSnapshot() (*state.Checkpoint, error) {
+	if n.persistent == nil {
+		return nil, fmt.Errorf("persistent storage required")
+	}
+	height := n.currentHeight.Load()
+	if height == 0 {
+		return nil, fmt.Errorf("no finalized blocks to snapshot")
+	}
+	blk, err := n.GetBlock(height)
+	if err != nil {
+		return nil, fmt.Errorf("load block at snapshot height %d: %w", height, err)
+	}
+
+	snap, err := n.state.CreateSnapshot(height, blk.Header.Epoch,
+		blk.Header.ValidatorSetHash, blk.Header.Timestamp)
+	if err != nil {
+		return nil, fmt.Errorf("create snapshot: %w", err)
+	}
+	data, err := state.SerializeSnapshot(snap)
+	if err != nil {
+		return nil, fmt.Errorf("serialize snapshot: %w", err)
+	}
+	if err := state.StoreSnapshot(n.persistent, height, data); err != nil {
+		return nil, fmt.Errorf("store snapshot: %w", err)
+	}
+
+	cp := &state.Checkpoint{
+		Height:           height,
+		BlockHash:        n.GetTipHash(),
+		StateRoot:        blk.Header.StateRoot,
+		SnapshotHash:     state.SnapshotHash(data),
+		ValidatorSetHash: blk.Header.ValidatorSetHash,
+		Epoch:            blk.Header.Epoch,
+		Timestamp:        blk.Header.Timestamp,
+	}
+	if err := state.StoreCheckpoint(n.persistent, cp); err != nil {
+		return nil, fmt.Errorf("store checkpoint: %w", err)
+	}
+	return cp, nil
+}
+
+// SyncFromNetwork starts the FastSyncEngine against the P2P network and waits
+// for it to reach a terminal state. The engine owns the full download path —
+// snapshot discovery, chunk download with re-request, reassembly, hash
+// verification and restore — via the handlers registered in Node.New.
+//
+// Returns nil when a verified snapshot was restored (state root non-zero).
+// Returns an error when the engine fell back to live sync without restoring
+// state (query timeout, hash mismatch, restore error) or when it timed out;
+// the caller then falls back to block-range catch-up.
 func (n *Node) SyncFromNetwork(snapshotTimeout time.Duration) error {
 	if n.p2p == nil {
 		return fmt.Errorf("P2P node not available")
 	}
+	if n.fastSync == nil {
+		return fmt.Errorf("fast sync engine not available")
+	}
+	if n.persistent == nil {
+		return fmt.Errorf("persistent storage required for fast sync")
+	}
 
-	// Step 1: Set up snapshot info handler
-	infoCh := make(chan *network.SnapshotInfo, 10)
-	n.p2p.SetSnapshotInfoHandler(func(info *network.SnapshotInfo) {
-		select {
-		case infoCh <- info:
-		default:
-			// Drop if channel is full
+	// Completion signal: the engine reaches SyncLive on success (after
+	// restore + replay) and on failure (fallBackToLiveSync).
+	done := make(chan struct{}, 1)
+	n.fastSync.SetStateChangeHandler(func(oldState, newState network.SyncState) {
+		if newState == network.SyncLive {
+			select {
+			case done <- struct{}{}:
+			default:
+			}
 		}
 	})
 
-	// Step 2: Broadcast snapshot query
-	n.p2p.BroadcastSnapshotQuery()
+	// Delegated engine start: the info handler wired by SetFastSyncEngine is
+	// left untouched (no infoCh clobber) so discovery reaches the engine.
+	n.fastSync.Start()
 
-	// Step 3: Wait for responses and select best snapshot
-	var bestInfo *network.SnapshotInfo
 	select {
-	case info := <-infoCh:
-		bestInfo = info
+	case <-done:
+		// A verified restore leaves a non-zero state root; a fallback leaves
+		// the node empty so range catch-up can take over.
+		if n.persistent.GetStateRoot() != (types.Hash{}) {
+			return nil
+		}
+		return fmt.Errorf("snapshot sync failed: no verified snapshot restored")
 	case <-time.After(snapshotTimeout):
-		return fmt.Errorf("no snapshot info received from peers within %v", snapshotTimeout)
+		return fmt.Errorf("snapshot sync timed out after %v", snapshotTimeout)
 	}
-
-	// Log the selected snapshot
-	fmt.Printf("Received snapshot info: height=%d, chunks=%d, hash=%x\n",
-		bestInfo.Height, bestInfo.ChunkCount, bestInfo.SnapshotHash[:8])
-
-	// TODO: Continue with chunk download, reassembly, and restoration
-	// This requires peer tracking to know which peer to request chunks from.
-	// The current P2P design doesn't track which peer sent the SnapshotInfo.
-
-	return fmt.Errorf("P2P snapshot download not fully implemented: peer tracking required")
 }

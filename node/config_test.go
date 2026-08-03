@@ -101,8 +101,8 @@ func TestDefaultConfig_Snapshot(t *testing.T) {
 	if cfg.SnapshotInterval != 10 {
 		t.Errorf("SnapshotInterval = %d, want 10", cfg.SnapshotInterval)
 	}
-	if cfg.FastSyncEnabled != false {
-		t.Errorf("FastSyncEnabled = %v, want false", cfg.FastSyncEnabled)
+	if cfg.FastSyncEnabled != true {
+		t.Errorf("FastSyncEnabled = %v, want true", cfg.FastSyncEnabled)
 	}
 	if cfg.TrustedCheckpointHeight != 0 {
 		t.Errorf("TrustedCheckpointHeight = %d, want 0", cfg.TrustedCheckpointHeight)

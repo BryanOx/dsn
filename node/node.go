@@ -178,10 +178,65 @@ func New(cfg Config) (*Node, error) {
 
 		// Set handlers on FastSyncEngine
 		n.fastSync.SetRestoreHandler(func(data []byte, expectedHash types.Hash) error {
-			return state.RestoreFromSnapshot(persistent, data, expectedHash)
+			// Verify + persist the snapshot, rebuilding the persistent SMT
+			// (state root checked against the snapshot inside).
+			if err := state.RestoreFromSnapshot(persistent, data, expectedHash); err != nil {
+				return err
+			}
+
+			// Rebuild in-memory state from persistent storage and commit to
+			// compute the in-memory SMT root.
+			if err := persistent.ForEachAccount(func(addr types.Address, acc *state.Account) error {
+				return n.state.SetAccount(addr, acc)
+			}); err != nil {
+				return fmt.Errorf("rebuild in-memory accounts: %w", err)
+			}
+			if err := persistent.ForEachKV(func(k string, v []byte) error {
+				return n.state.SetBytes(k, v)
+			}); err != nil {
+				return fmt.Errorf("rebuild in-memory kvstore: %w", err)
+			}
+			if _, err := n.state.Commit(); err != nil {
+				return fmt.Errorf("commit in-memory state: %w", err)
+			}
+
+			// Verify the rebuilt in-memory root matches the restored root.
+			gotRoot := n.state.GetStateRoot()
+			wantRoot := persistent.GetStateRoot()
+			if gotRoot != wantRoot {
+				return fmt.Errorf("state root mismatch after restore: got %x, expected %x",
+					gotRoot[:], wantRoot[:])
+			}
+
+			// Adopt the snapshot's tip and persist it so crash recovery can
+			// resume the replay from here. The snapshot itself carries the
+			// height/root/timestamp (no block hash — a fresh node has none).
+			snap, err := state.DeserializeSnapshot(data)
+			if err != nil {
+				return fmt.Errorf("parse restored snapshot: %w", err)
+			}
+			n.setTip(snap.Height, types.Hash{})
+			if err := consensus.StoreTip(persistent, &types.BlockHeader{
+				Height:       snap.Height,
+				PreviousHash: types.Hash{},
+				StateRoot:    snap.StateRoot,
+				Timestamp:    snap.Timestamp,
+			}); err != nil {
+				return fmt.Errorf("store tip after restore: %w", err)
+			}
+			return nil
 		})
 		n.fastSync.SetReplayHandler(func(fromHeight uint64) error {
-			return n.ReplayBlocks(fromHeight, n.currentHeight.Load()) // tip will be determined by FastSyncEngine
+			// Replay target: max(peer height) — a fresh node has no local tip
+			// past the restored snapshot, so the range must extend to what the
+			// network advertises.
+			target := n.currentHeight.Load()
+			if n.blockSync != nil {
+				if mh := n.blockSync.MaxPeerHeight(); mh > target {
+					target = mh
+				}
+			}
+			return n.ReplayBlocks(fromHeight, target)
 		})
 
 		// Register with P2PNode
@@ -464,10 +519,11 @@ func (n *Node) StartConsensus() {
 			n.currentEpoch.Store(tip.Epoch)
 		}
 
-		// Fast sync: replace stub with FastSyncEngine
-		if n.cfg.FastSyncEnabled && n.fastSync != nil {
+		// Fast sync: snapshot sync for fresh (empty-state) nodes; nodes with
+		// existing state always use block-range catch-up (automatic).
+		if n.cfg.FastSyncEnabled && n.fastSync != nil && n.persistent.GetStateRoot() == (types.Hash{}) {
 			// Set up state change handler to detect when sync completes
-			n.fastSync.SetStateChangeHandler(func(oldState, newState network.SyncState) {
+			n.fastSync.SetStateChangeHandler(func(_, newState network.SyncState) {
 				if newState == network.SyncLive {
 					// Fast sync complete — start block sync if needed
 					tip, _ := consensus.LoadTip(n.persistent)
@@ -1017,6 +1073,12 @@ func (n *Node) finalizeLocalBlock(block *types.Block) {
 			}
 		}
 	}
+
+	// Announce the new tip to peers so catching-up nodes learn our height. The
+	// receiver path already publishes in applyAcceptedBlock; the proposer path
+	// advances the tip here and must publish too (single-validator networks
+	// would otherwise never announce past the connect-time poke).
+	n.publishSyncHeight()
 }
 
 // handleBlockMessage processes an incoming block from the network.

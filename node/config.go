@@ -105,7 +105,7 @@ func DefaultConfig() Config {
 		MetricsPort:             9464,  // Prometheus metrics port
 		IndexerEnabled:          false, // disabled by default
 		SnapshotInterval:        10,    // snapshot every 10 epochs
-		FastSyncEnabled:         false, // normal sync by default
+		FastSyncEnabled:         true, // snapshot fast-sync for fresh nodes
 		TrustedCheckpointHeight: 0,
 		TrustedCheckpointHash:   "",
 		VMTimeoutSeconds:        30,          // 30 second VM execution timeout

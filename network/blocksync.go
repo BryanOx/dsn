@@ -202,7 +202,8 @@ func (e *BlockSyncEngine) HandleBlockRangeRequest(payload []byte, from PeerID) [
 	}
 
 	// Serialize block list
-	return encodeBlockList(blocks)
+	resp := encodeBlockList(blocks)
+	return resp
 }
 
 // HandleBlockRangeResponse processes an incoming block range response.

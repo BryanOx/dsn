@@ -591,17 +591,17 @@ func (n *Node) startupPhase13_EnterSyncMode(ctx context.Context) error {
 	// Check if we have existing state
 	stateRoot := n.persistent.GetStateRoot()
 	if stateRoot == (types.Hash{}) {
-		// Fresh genesis - node is at height 0, waiting for initial blocks
-		// Start in normal mode but will sync from network
-		n.syncMode = SyncModeNormal
-		fmt.Println("Node at genesis height, waiting for network sync")
-	} else if n.cfg.FastSyncEnabled && n.fastSync != nil {
-		// Fast sync enabled - start fast sync
-		n.syncMode = SyncModeFastSync
-		fmt.Println("Starting fast sync...")
+		// Fresh genesis: auto-start snapshot sync when enabled; block-range
+		// catch-up stays automatic as the fallback either way.
+		if n.cfg.FastSyncEnabled && n.fastSync != nil {
+			n.syncMode = SyncModeFastSync
+			fmt.Println("Fresh node — starting snapshot fast sync")
+		} else {
+			n.syncMode = SyncModeNormal
+			fmt.Println("Node at genesis height, waiting for network sync")
+		}
 	} else {
-		// Check if we're behind network (would need catch-up sync)
-		// For now, assume we're current if we have state
+		// We have state: range catch-up (automatic) and normal participation.
 		n.syncMode = SyncModeNormal
 		fmt.Printf("Node at height %d, sync mode: normal\n", n.currentHeight.Load())
 	}

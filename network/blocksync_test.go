@@ -1,8 +1,25 @@
 package network
 
 import (
+	"encoding/binary"
+	"path/filepath"
 	"testing"
+
+	"github.com/dsn/dsn/consensus"
+	"github.com/dsn/dsn/state"
+	"github.com/dsn/dsn/types"
 )
+
+// newTestPersistentState creates a temporary persistent state for engine tests
+// and returns a cleanup function that closes it.
+func newTestPersistentState(t *testing.T) (*state.PersistentState, func()) {
+	t.Helper()
+	ps, err := state.NewPersistentState(filepath.Join(t.TempDir(), "dsn.db"), types.SHA256Hasher{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ps, func() { ps.Close() }
+}
 
 // TestBlockRangeRequestEncodeDecode tests encoding and decoding of block range requests.
 func TestBlockRangeRequestEncodeDecode(t *testing.T) {
@@ -164,7 +181,9 @@ func TestBlockSyncEngine_HandleBlockRangeRequest(t *testing.T) {
 	payload := encodeBlockRangeRequest(1, 5)
 
 	// Call handler
-	response := engine.HandleBlockRangeRequest(payload)
+	var peerID PeerID
+	peerID[0] = 9
+	response := engine.HandleBlockRangeRequest(payload, peerID)
 
 	// Response should be non-nil (may be empty if no blocks available)
 	if response == nil {
@@ -213,5 +232,117 @@ func TestBlockSyncEngine_HandleBlockRangeResponse(t *testing.T) {
 	// Callback should have been invoked
 	if !callbackInvoked {
 		t.Error("callback was not invoked for valid block in response")
+	}
+}
+
+// TestBlockSyncEngine_RequestServeMax100 verifies the serve path answers ranges
+// of at most 100 blocks and rejects larger requests.
+func TestBlockSyncEngine_RequestServeMax100(t *testing.T) {
+	ps, closeDB := newTestPersistentState(t)
+	defer closeDB()
+
+	// Store two real blocks to exercise the serve path.
+	for h := uint64(1); h <= 2; h++ {
+		block := &types.Block{Header: types.BlockHeader{Version: 1, Height: h}}
+		if err := consensus.StoreBlock(ps, block); err != nil {
+			t.Fatalf("StoreBlock(%d): %v", h, err)
+		}
+	}
+
+	pm := NewPeerManager(nil)
+	p2p, err := NewP2PNode(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p2p.Close()
+
+	engine := NewBlockSyncEngine(pm, p2p, ps)
+
+	var peerID PeerID
+	peerID[0] = 1
+
+	// A 100-block range is within the limit and served.
+	resp := engine.HandleBlockRangeRequest(encodeBlockRangeRequest(1, 100), peerID)
+	if resp == nil {
+		t.Fatal("expected a response for range 1..100, got nil")
+	}
+	decoded, err := decodeBlockList(resp)
+	if err != nil {
+		t.Fatalf("response is not a valid block list: %v", err)
+	}
+	if len(decoded) > 100 {
+		t.Errorf("served %d blocks, want at most 100", len(decoded))
+	}
+	if len(decoded) != 2 {
+		t.Errorf("served %d blocks, want 2 (the stored blocks)", len(decoded))
+	}
+
+	// A 101-block range exceeds the limit and must be rejected.
+	if resp := engine.HandleBlockRangeRequest(encodeBlockRangeRequest(1, 101), peerID); resp != nil {
+		t.Errorf("expected nil response for 101-block range, got %d bytes", len(resp))
+	}
+}
+
+// TestBlockSyncEngine_ResponseProgressEqualsTip verifies that after applying a
+// batch, sync progress equals the on-disk tip height (not the number of
+// received blocks) and is persisted per batch, so a restart resumes cleanly.
+func TestBlockSyncEngine_ResponseProgressEqualsTip(t *testing.T) {
+	ps, closeDB := newTestPersistentState(t)
+	defer closeDB()
+
+	pm := NewPeerManager(nil)
+	p2p, err := NewP2PNode(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p2p.Close()
+
+	engine := NewBlockSyncEngine(pm, p2p, ps)
+
+	// The handler decodes the height embedded in each mock block and stores it
+	// as the on-disk tip, mirroring the node adapter's apply path.
+	engine.SetBlockHandler(func(data []byte) (bool, error) {
+		height := binary.BigEndian.Uint64(data)
+		if err := consensus.StoreTip(ps, &types.BlockHeader{Version: 1, Height: height}); err != nil {
+			return false, err
+		}
+		return true, nil
+	})
+
+	var peerID PeerID
+	peerID[0] = 2
+
+	// One batch of 5 blocks whose tips advance to height 45.
+	var blocks [][]byte
+	for h := uint64(41); h <= 45; h++ {
+		data := make([]byte, 8)
+		binary.BigEndian.PutUint64(data, h)
+		blocks = append(blocks, data)
+	}
+	engine.HandleBlockRangeResponse(encodeBlockList(blocks), peerID)
+
+	// Progress must be the tip height 45, not the 5-block count.
+	if got := engine.LastSyncedHeight(); got != 45 {
+		t.Errorf("LastSyncedHeight = %d, want 45 (tip height, not block count)", got)
+	}
+
+	// Progress must be persisted per batch: a fresh engine on the same DB
+	// resumes from max(tip, persisted) + 1 = 46.
+	pm2 := NewPeerManager(nil)
+	p2p2, err := NewP2PNode(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p2p2.Close()
+
+	engine2 := NewBlockSyncEngine(pm2, p2p2, ps)
+	engine2.Start()
+	defer engine2.Stop()
+
+	if got := engine2.LastSyncedHeight(); got != 45 {
+		t.Errorf("resumed LastSyncedHeight = %d, want 45 (persisted progress)", got)
+	}
+	if got := engine2.resumeFrom(); got != 46 {
+		t.Errorf("resumeFrom = %d, want 46 (max(tip, persisted) + 1)", got)
 	}
 }

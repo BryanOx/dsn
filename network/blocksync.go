@@ -19,11 +19,13 @@ type BlockSyncEngine struct {
 	persistent *state.PersistentState
 	mu         sync.RWMutex
 	stopCh     chan struct{}
+	notifyCh   chan struct{}
 
 	// Sync state
 	lastSyncedHeight uint64
 	targetHeight     uint64
 	isSyncing        bool
+	targetPeerAddr   string // peer currently serving the active catch-up
 
 	// Callbacks
 	onBlock func(data []byte) (bool, error) // validate and apply block, returns (accepted, error)
@@ -45,6 +47,7 @@ func NewBlockSyncEngine(pm *PeerManager, p2p *P2PNode, persistent *state.Persist
 		p2p:              p2p,
 		persistent:       persistent,
 		stopCh:           make(chan struct{}),
+		notifyCh:         make(chan struct{}, 1),
 		lastSyncedHeight: 0,
 		targetHeight:     0,
 		isSyncing:        false,
@@ -57,8 +60,8 @@ func (e *BlockSyncEngine) Start() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	// Load persisted progress
-	e.lastSyncedHeight = e.loadProgress()
+	// Start from the last applied height: max(on-disk tip, persisted progress).
+	e.lastSyncedHeight = e.resumeFrom() - 1
 
 	// Start background sync checker
 	go e.syncLoop()
@@ -90,7 +93,8 @@ func (e *BlockSyncEngine) SetBlockHandler(h func(data []byte) (bool, error)) {
 	e.onBlock = h
 }
 
-// syncLoop periodically checks if we need to catch up with peers.
+// syncLoop periodically checks if we need to catch up with peers, and also
+// reacts immediately to fresh SyncHeight announcements via NotifyPeerHeight.
 func (e *BlockSyncEngine) syncLoop() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -101,23 +105,82 @@ func (e *BlockSyncEngine) syncLoop() {
 			return
 		case <-ticker.C:
 			e.startCatchUp()
+		case <-e.notifyCh:
+			e.startCatchUp()
 		}
 	}
 }
 
+// NotifyPeerHeight wakes the sync loop so catch-up starts without waiting for
+// the next 30s tick. Coalesced: a wake-up already pending is not duplicated.
+func (e *BlockSyncEngine) NotifyPeerHeight(height uint64) {
+	select {
+	case e.notifyCh <- struct{}{}:
+	default:
+	}
+}
+
+// MaxPeerHeight returns the highest SyncHeight advertised by any peer with a
+// live connection.
+func (e *BlockSyncEngine) MaxPeerHeight() uint64 {
+	if p := e.bestPeer(); p != nil {
+		p.mu.RLock()
+		defer p.mu.RUnlock()
+		return p.SyncHeight
+	}
+	return 0
+}
+
+// bestPeer returns the live peer advertising the highest SyncHeight, or nil.
+func (e *BlockSyncEngine) bestPeer() *Peer {
+	e.pm.mu.RLock()
+	defer e.pm.mu.RUnlock()
+
+	var best *Peer
+	var max uint64
+	for _, p := range e.pm.peers {
+		p.mu.RLock()
+		if p.Conn != nil && p.SyncHeight > max {
+			max = p.SyncHeight
+			best = p
+		}
+		p.mu.RUnlock()
+	}
+	return best
+}
+
+// resumeFrom returns the next height to fetch: max(on-disk tip, persisted
+// progress) + 1. It never re-requests a block at or below the applied tip.
+func (e *BlockSyncEngine) resumeFrom() uint64 {
+	tip := uint64(0)
+	if e.persistent != nil && e.persistent.DB() != nil {
+		if tipHeader, err := consensus.LoadTip(e.persistent); err == nil && tipHeader != nil {
+			tip = tipHeader.Height
+		}
+	}
+	progress := e.loadProgress()
+	resume := tip
+	if progress > resume {
+		resume = progress
+	}
+	return resume + 1
+}
+
 // HandleBlockRangeRequest processes an incoming block range request.
 // Returns serialized response payload containing the requested blocks.
-func (e *BlockSyncEngine) HandleBlockRangeRequest(payload []byte) []byte {
+func (e *BlockSyncEngine) HandleBlockRangeRequest(payload []byte, from PeerID) []byte {
 	startHeight, endHeight, err := decodeBlockRangeRequest(payload)
 	if err != nil {
+		e.pm.ReportFailure(from, 2) // malformed request
 		return nil
 	}
 
 	// Validate request
 	if startHeight > endHeight {
+		e.pm.ReportFailure(from, 2) // malformed request
 		return nil
 	}
-	if endHeight-startHeight > 100 {
+	if endHeight-startHeight >= uint64(MaxBlocksPerRangeResponse) {
 		return nil
 	}
 
@@ -150,47 +213,90 @@ func (e *BlockSyncEngine) HandleBlockRangeResponse(payload []byte, from PeerID) 
 		return
 	}
 
-	e.mu.Lock()
+	e.mu.RLock()
 	handler := e.onBlock
-	e.mu.Unlock()
+	target := e.targetHeight
+	prev := e.lastSyncedHeight
+	e.mu.RUnlock()
 
 	if handler == nil {
 		return
 	}
 
-	successCount := 0
+	applied := 0
 
 	for _, blockData := range blocks {
 		accepted, err := handler(blockData)
 		if err != nil || !accepted {
 			// Validation failed - penalize peer and stop processing
 			e.pm.ReportFailure(from, 5) // invalid block
+			e.mu.Lock()
+			e.isSyncing = false
+			e.mu.Unlock()
 			return
 		}
-		successCount++
-
-		// Try to extract height from block for tracking
-		if len(blockData) > 10 {
-			// Block data starts with type (1) + len (4) + data
-			// The actual block structure varies, so we'll track by count
-		}
+		applied++
 	}
 
-	if successCount > 0 {
-		e.pm.ReportSuccess(from, MsgTypeBlock)
+	if applied == 0 {
+		// Nothing advanced this round; stop so the next ticker or peer
+		// announcement re-evaluates with fresh targets.
 		e.mu.Lock()
-		// Update lastSyncedHeight based on number of blocks received
-		e.lastSyncedHeight += uint64(successCount)
+		e.isSyncing = false
 		e.mu.Unlock()
+		return
+	}
 
-		// Persist progress every 100 blocks
-		if e.lastSyncedHeight%100 == 0 {
+	e.pm.ReportSuccess(from, MsgTypeBlock)
+
+	// D3: progress is the on-disk tip height after applying, not a block count.
+	if e.persistent != nil && e.persistent.DB() != nil {
+		if tip, err := consensus.LoadTip(e.persistent); err == nil && tip != nil {
+			e.mu.Lock()
+			e.lastSyncedHeight = tip.Height
+			e.mu.Unlock()
+			// Persist per batch (at most MaxBlocksPerRangeResponse blocks).
 			e.persistProgress()
 		}
 	}
+
+	e.mu.RLock()
+	last := e.lastSyncedHeight
+	syncing := e.isSyncing
+	addr := e.targetPeerAddr
+	e.mu.RUnlock()
+
+	if !syncing {
+		return
+	}
+
+	if last >= target {
+		// Catch-up complete: clear persisted progress and stop syncing.
+		e.mu.Lock()
+		e.isSyncing = false
+		e.mu.Unlock()
+		e.clearProgress()
+		return
+	}
+
+	if last == prev {
+		// No tip advance (e.g. no persistent state): cannot make progress,
+		// stop so a later tick re-evaluates instead of hot-looping.
+		e.mu.Lock()
+		e.isSyncing = false
+		e.mu.Unlock()
+		return
+	}
+
+	// Request the next window from the peer serving the catch-up.
+	if addr != "" {
+		e.requestWindow(addr, last+1, target)
+	}
 }
 
-// startCatchUp begins the block sync process.
+// startCatchUp begins the block sync process. It is async: it picks the resume
+// height and target, then requests one window; each response advances the
+// window until the target is reached.
 func (e *BlockSyncEngine) startCatchUp() {
 	e.mu.Lock()
 	if e.isSyncing {
@@ -199,70 +305,40 @@ func (e *BlockSyncEngine) startCatchUp() {
 	}
 	e.mu.Unlock()
 
-	// Get current tip height
-	tip, err := consensus.LoadTip(e.persistent)
-	currentHeight := uint64(0)
-	if err == nil && tip != nil {
-		currentHeight = tip.Height
-	}
+	// Resume from max(on-disk tip, persisted progress) + 1.
+	resume := e.resumeFrom()
 
-	// Get best peers and their heights
-	bestPeers := e.pm.GetBestPeers(10)
-	if len(bestPeers) == 0 {
+	// Pick the peer advertising the highest height.
+	targetPeer := e.bestPeer()
+	if targetPeer == nil {
 		return
 	}
+	targetPeer.mu.RLock()
+	target := targetPeer.SyncHeight
+	targetPeer.mu.RUnlock()
 
-	// Find highest peer height
-	maxPeerHeight := currentHeight
-	var targetPeer *Peer
-	for _, p := range bestPeers {
-		p.mu.RLock()
-		if p.SyncHeight > maxPeerHeight {
-			maxPeerHeight = p.SyncHeight
-			targetPeer = p
-		}
-		p.mu.RUnlock()
-	}
-
-	if maxPeerHeight <= currentHeight {
-		return // already synced
+	if target < resume {
+		return // already caught up
 	}
 
 	e.mu.Lock()
-	e.targetHeight = maxPeerHeight
+	e.targetHeight = target
+	e.targetPeerAddr = targetPeer.Address
 	e.isSyncing = true
 	e.mu.Unlock()
 
-	// Request batches from peer
-	for from := currentHeight + 1; from <= maxPeerHeight; from += 100 {
-		to := from + 99
-		if to > maxPeerHeight {
-			to = maxPeerHeight
-		}
+	// Request the first window [resume, resume+99].
+	e.requestWindow(targetPeer.Address, resume, target)
+}
 
-		// Request from best available peer
-		if targetPeer != nil {
-			e.requestBlockRange(targetPeer.Address, from, to)
-		}
-
-		// Wait a bit between batches
-		select {
-		case <-e.stopCh:
-			e.mu.Lock()
-			e.isSyncing = false
-			e.mu.Unlock()
-			return
-		case <-time.After(500 * time.Millisecond):
-		}
+// requestWindow sends a block range request for the next window of at most 100
+// blocks, capped at the target height.
+func (e *BlockSyncEngine) requestWindow(addr string, from, target uint64) {
+	to := from + (uint64(MaxBlocksPerRangeResponse) - 1)
+	if to > target {
+		to = target
 	}
-
-	e.mu.Lock()
-	e.lastSyncedHeight = e.targetHeight
-	e.isSyncing = false
-	e.mu.Unlock()
-
-	// Persist final progress
-	e.persistProgress()
+	_ = e.requestBlockRange(addr, from, to)
 }
 
 // requestBlockRange sends a block range request to a peer.
@@ -290,6 +366,22 @@ func (e *BlockSyncEngine) persistProgress() {
 		key := make([]byte, 8)
 		binary.BigEndian.PutUint64(key, height)
 		return b.Put(lastSyncedHeightKey, key)
+	})
+}
+
+// clearProgress removes persisted sync progress after catch-up completes, so a
+// later restart does not resume from stale progress.
+func (e *BlockSyncEngine) clearProgress() {
+	if e.persistent == nil || e.persistent.DB() == nil {
+		return
+	}
+
+	e.persistent.DB().Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(blockSyncBucket)
+		if b == nil {
+			return nil
+		}
+		return b.Delete(lastSyncedHeightKey)
 	})
 }
 

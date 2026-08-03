@@ -132,7 +132,8 @@ type P2PNode struct {
 	fastSync  *FastSyncEngine
 	blockSync *BlockSyncEngine
 	gossip    *GossipEngine
-	discovery *PeerDiscovery
+	discovery       *PeerDiscovery // ping/pong + PEX handshake (0x24)
+	bootstrapDisc   *Discovery     // bootstrap peer-list exchange (0x21/0x22)
 	// syncHeightProvider reports the node's current chain height so a fresh
 	// SyncHeight announcement can be sent to each newly connected peer.
 	syncHeightProvider func() uint64
@@ -392,6 +393,14 @@ func (n *P2PNode) readLoop(conn net.Conn, remoteAddr string, id PeerID) {
 			case MsgTypePeerExchange:
 				if n.discovery != nil {
 					n.discovery.HandlePeerExchange(id, msgBuf[1:])
+				}
+			case MsgTypePeerListRequest:
+				if n.bootstrapDisc != nil {
+					n.bootstrapDisc.HandlePeerListRequest(msgBuf[1:], remoteAddr)
+				}
+			case MsgTypePeerListResponse:
+				if n.bootstrapDisc != nil {
+					n.bootstrapDisc.HandlePeerListResponse(msgBuf[1:], remoteAddr)
 				}
 			case MsgTypePing:
 				if n.discovery != nil {
@@ -744,6 +753,12 @@ func (n *P2PNode) SetGossipEngine(e *GossipEngine) {
 // SetDiscovery registers a PeerDiscovery with the node.
 func (n *P2PNode) SetDiscovery(e *PeerDiscovery) {
 	n.discovery = e
+}
+
+// SetBootstrapDiscovery registers the bootstrap peer-list exchange (0x21/0x22)
+// with the node so the read loop can dispatch requests and responses to it.
+func (n *P2PNode) SetBootstrapDiscovery(e *Discovery) {
+	n.bootstrapDisc = e
 }
 
 // PeerManager returns the node's PeerManager for engine wiring.

@@ -185,7 +185,12 @@ func (d *Discovery) sendPeerListRequest(addr string) {
 		return
 	}
 
-	msg := FrameMessage(MsgTypePeerListRequest, data)
+	// Single-framed: SendTo adds the transport length prefix, so pass
+	// [type][payload]. FrameMessage would add a second length prefix and the
+	// read loop would parse the inner one as the type byte (0x00) and drop it.
+	msg := make([]byte, 1+len(data))
+	msg[0] = MsgTypePeerListRequest
+	copy(msg[1:], data)
 	d.p2p.SendTo(addr, msg)
 }
 
@@ -197,7 +202,12 @@ func (d *Discovery) sendPeerListResponse(addr string, peers []string) {
 		return
 	}
 
-	msg := FrameMessage(MsgTypePeerListResponse, data)
+	// Single-framed: SendTo adds the transport length prefix, so pass
+	// [type][payload]. FrameMessage would add a second length prefix and the
+	// read loop would parse the inner one as the type byte (0x00) and drop it.
+	msg := make([]byte, 1+len(data))
+	msg[0] = MsgTypePeerListResponse
+	copy(msg[1:], data)
 	d.p2p.SendTo(addr, msg)
 }
 

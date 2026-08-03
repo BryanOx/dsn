@@ -1,9 +1,12 @@
 package network
 
 import (
+	"bytes"
 	"math"
 	"testing"
 	"time"
+
+	"github.com/dsn/dsn/types"
 )
 
 // newMockP2PNode creates a P2PNode for testing (listens on port 0).
@@ -59,6 +62,62 @@ func TestGossipEngine_ReBroadcastReachesPeer(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout: gossip re-broadcast never reached the peer")
+	}
+}
+
+// TestGossipEngine_TransactionReachesPeer verifies that a transaction gossiped
+// through GossipTransaction reaches the peer as a single-framed 0x02 message.
+// GossipTransaction used to wrap the payload in FrameMessage and then SendTo
+// added a second transport length prefix, so the read loop parsed the inner
+// length prefix as the type byte (0x00), fell into the legacy transaction
+// branch and dropped the message.
+func TestGossipEngine_TransactionReachesPeer(t *testing.T) {
+	n1, _ := NewP2PNode(0)
+	defer n1.Close()
+	n2, _ := NewP2PNode(0)
+	defer n2.Close()
+
+	if err := n1.Connect(n2.Addr()); err != nil {
+		t.Fatal(err)
+	}
+
+	// The PeerManager must know the peer as connected so SendTo can resolve it.
+	id := PeerIDFromBytes([]byte(n2.Addr()))
+	peer := n1.PeerManager().AddPeer(id, n2.Addr())
+	peer.mu.Lock()
+	peer.State = PeerConnected
+	peer.mu.Unlock()
+
+	ge := NewGossipEngine(n1.PeerManager(), n1)
+	defer ge.Stop()
+
+	received := make(chan *types.Transaction, 1)
+	n2.SetTxHandler(func(tx *types.Transaction) {
+		received <- tx
+	})
+
+	time.Sleep(100 * time.Millisecond)
+
+	tx := &types.Transaction{
+		Version:  1,
+		ChainID:  1,
+		Nonce:    7,
+		MaxFee:   100,
+		IntentID: types.Hash{1, 2, 3},
+	}
+	var buf bytes.Buffer
+	if err := tx.Encode(&buf); err != nil {
+		t.Fatal(err)
+	}
+	ge.GossipTransaction(buf.Bytes())
+
+	select {
+	case got := <-received:
+		if got.IntentID != tx.IntentID {
+			t.Fatalf("gossiped transaction corrupted: intent %v want %v", got.IntentID, tx.IntentID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: gossiped transaction never reached the peer")
 	}
 }
 

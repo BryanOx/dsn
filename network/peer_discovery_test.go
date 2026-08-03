@@ -343,3 +343,55 @@ func TestPeerInfoSerializationFormat(t *testing.T) {
 		t.Errorf("Score = %d, want 42", parsed[0].Score)
 	}
 }
+
+// TestDiscovery_PeerListExchangeReachesPeer verifies that a peer list request
+// (0x21) and its response (0x22) round-trip through the transport framing and
+// the read loop the way a live node parses them. sendPeerListRequest used to
+// wrap the payload in FrameMessage and then SendTo added a second transport
+// length prefix, so the read loop parsed the inner length prefix as the type
+// byte (0x00), hit the legacy transaction branch and dropped the message; the
+// read loop also had no dispatch case for 0x21/0x22 at all. With both fixed,
+// B answers A's request with the peer list and A's PeerManager absorbs it.
+func TestDiscovery_PeerListExchangeReachesPeer(t *testing.T) {
+	n1, _ := NewP2PNode(0)
+	defer n1.Close()
+	n2, _ := NewP2PNode(0)
+	defer n2.Close()
+
+	if err := n1.Connect(n2.Addr()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wire the peer-list exchange into both nodes' read loops.
+	d1 := NewDiscovery(n1.PeerManager(), n1, nil)
+	d2 := NewDiscovery(n2.PeerManager(), n2, nil)
+	n1.SetBootstrapDiscovery(d1)
+	n2.SetBootstrapDiscovery(d2)
+
+	// n2 knows a peer it will advertise in the response.
+	knownAddr := "10.0.0.5:8080"
+	known := n2.PeerManager().AddPeer(PeerIDFromBytes([]byte(knownAddr)), knownAddr)
+	known.mu.Lock()
+	known.State = PeerConnected
+	known.mu.Unlock()
+
+	time.Sleep(100 * time.Millisecond)
+
+	// A asks B for its peer list — the same call the 30s maintenance ticker
+	// makes against bootstrap peers.
+	d1.sendPeerListRequest(n2.Addr())
+
+	// B's read loop must dispatch 0x21 -> HandlePeerListRequest (which replies
+	// 0x22 with B's connected peers), and A's read loop must dispatch 0x22 ->
+	// HandlePeerListResponse, which absorbs the advertised peer into A's PM.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if n1.PeerManager().GetPeerByAddr(knownAddr) != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timeout: peer list response never delivered to the requester")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}

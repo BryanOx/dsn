@@ -276,9 +276,6 @@ func (ge *GossipEngine) GossipTransaction(data []byte) {
 		return
 	}
 
-	// Frame the transaction message with proper transaction message type
-	framed := FrameMessage(MsgTypeTransaction, data)
-
 	// Send to all connected peers, checking rate limit
 	for _, peer := range connectedPeers {
 		bucket := ge.getBucket(peer.ID)
@@ -287,7 +284,15 @@ func (ge *GossipEngine) GossipTransaction(data []byte) {
 			continue
 		}
 
-		if err := ge.p2p.SendTo(peer.Address, framed); err != nil {
+		// Single-framed: SendTo adds the transport length prefix, so pass
+		// [type][payload]. FrameMessage would add a second length prefix and
+		// the read loop would parse the inner one as the type byte (0x00),
+		// fall into the legacy transaction branch and drop the message.
+		msg := make([]byte, 1+len(data))
+		msg[0] = MsgTypeTransaction
+		copy(msg[1:], data)
+
+		if err := ge.p2p.SendTo(peer.Address, msg); err != nil {
 			_ = err
 		}
 	}

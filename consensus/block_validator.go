@@ -37,7 +37,21 @@ func ValidateBlock(block *types.Block, parentHeader *types.BlockHeader,
 	expectedPrevHash types.Hash, s *state.InMemoryState, hasher types.Hasher,
 	vm *vm.VM, blockTimeSec uint64) error {
 
-	return validateBlock(block, parentHeader, expectedPrevHash, s, hasher, vm, blockTimeSec, false)
+	return validateBlock(block, parentHeader, expectedPrevHash, s, hasher, vm, blockTimeSec, false, false)
+}
+
+// ValidateBlockForSync validates a block being replayed during block sync
+// (snapshot restore tail or fresh-node catch-up). It is identical to
+// ValidateBlock except that the wall-clock timestamp drift check is skipped:
+// replayed blocks were produced by the peer seconds ago and the ±5s live-gossip
+// freshness window does not apply to historical replay. Chain-relative checks
+// (epoch, proposer, validator set, hashes, commit proof, re-executed state
+// root) are unchanged and remain the integrity guarantee.
+func ValidateBlockForSync(block *types.Block, parentHeader *types.BlockHeader,
+	expectedPrevHash types.Hash, s *state.InMemoryState, hasher types.Hasher,
+	vm *vm.VM, blockTimeSec uint64) error {
+
+	return validateBlock(block, parentHeader, expectedPrevHash, s, hasher, vm, blockTimeSec, false, true)
 }
 
 // ValidateBlockProposal validates a block proposal that does not yet carry a
@@ -48,23 +62,33 @@ func ValidateBlockProposal(block *types.Block, parentHeader *types.BlockHeader,
 	expectedPrevHash types.Hash, s *state.InMemoryState, hasher types.Hasher,
 	vm *vm.VM, blockTimeSec uint64) error {
 
-	return validateBlock(block, parentHeader, expectedPrevHash, s, hasher, vm, blockTimeSec, true)
+	return validateBlock(block, parentHeader, expectedPrevHash, s, hasher, vm, blockTimeSec, true, false)
 }
 
-// validateBlock contains the full validation pipeline shared by ValidateBlock
-// and ValidateBlockProposal. When skipCommitProof is true the commit proof
-// requirement is omitted (used for proposals that have not been voted on yet).
+// validateBlock contains the full validation pipeline shared by ValidateBlock,
+// ValidateBlockForSync and ValidateBlockProposal. When skipCommitProof is true
+// the commit proof requirement is omitted (used for proposals that have not
+// been voted on yet). When skipTimeDrift is true the ±5s wall-clock timestamp
+// check is omitted (used when replaying historical blocks during sync).
 func validateBlock(block *types.Block, parentHeader *types.BlockHeader,
 	expectedPrevHash types.Hash, s *state.InMemoryState, hasher types.Hasher,
-	vm *vm.VM, blockTimeSec uint64, skipCommitProof bool) error {
+	vm *vm.VM, blockTimeSec uint64, skipCommitProof, skipTimeDrift bool) error {
 
-	if block.Header.Height != parentHeader.Height+1 {
+	// Height continuity is only checkable when the parent header is present:
+	// a fresh node replaying from the first block (or a node restoring from a
+	// snapshot) has no parent stored, and the re-executed state-root
+	// transition below is the integrity guarantee there.
+	if parentHeader != nil && block.Header.Height != parentHeader.Height+1 {
 		return fmt.Errorf("%w: expected %d, got %d", ErrWrongHeight,
 			parentHeader.Height+1, block.Header.Height)
 	}
 
-	// Skip PreviousHash check for genesis block (height 0)
-	if block.Header.Height > 0 {
+	// Skip PreviousHash check for genesis block (height 0) and when the parent
+	// header is unavailable (fresh node or snapshot-restore boundary, where
+	// loadParentHeader falls back to the zero hash): the parent chain is
+	// legitimately absent there, so the re-executed state-root transition below
+	// is the integrity guarantee instead of the link hash.
+	if block.Header.Height > 0 && expectedPrevHash != (types.Hash{}) {
 		if block.Header.PreviousHash != expectedPrevHash {
 			return fmt.Errorf("%w: expected %x, got %x", ErrWrongPreviousHash,
 				expectedPrevHash, block.Header.PreviousHash)
@@ -73,8 +97,13 @@ func validateBlock(block *types.Block, parentHeader *types.BlockHeader,
 
 	// Header freshness: reject timestamps that drift beyond the allowed skew.
 	// Contracts execute with this timestamp, so it must be sane before execution.
-	if err := types.ValidateTimestamp(block.Header.Timestamp); err != nil {
-		return fmt.Errorf("%w: %v", types.ErrInvalidTimestamp, err)
+	// Skipped when replaying historical blocks during sync (skipTimeDrift):
+	// those blocks were produced seconds ago by a peer and the ±5s live
+	// freshness window does not apply; chain-relative integrity holds instead.
+	if !skipTimeDrift {
+		if err := types.ValidateTimestamp(block.Header.Timestamp); err != nil {
+			return fmt.Errorf("%w: %v", types.ErrInvalidTimestamp, err)
+		}
 	}
 
 	// Monotonicity: a child block must not carry an older timestamp than its parent.

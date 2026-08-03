@@ -170,17 +170,10 @@ func (e *FastSyncEngine) Advance() {
 		// Query phase complete, move to selecting
 		e.setStateLocked(SyncSelecting)
 		e.selectBestSnapshot()
+		e.proceedFromSelection()
 
 	case SyncSelecting:
-		// Selection complete, move to downloading
-		if e.selectedSnapshot != nil {
-			e.setStateLocked(SyncDownloading)
-			// Start downloading asynchronously
-			go e.startDownloading()
-		} else {
-			// No valid snapshot, fall back to live sync
-			e.setStateLocked(SyncLive)
-		}
+		e.proceedFromSelection()
 
 	case SyncDownloading:
 		// Download complete, move to verifying (handled by HandleSnapshotChunk)
@@ -224,6 +217,19 @@ func (e *FastSyncEngine) Advance() {
 	}
 }
 
+// proceedFromSelection starts the chunk download when a snapshot was selected,
+// otherwise falls back to live sync. Must be called with e.mu held.
+func (e *FastSyncEngine) proceedFromSelection() {
+	if e.selectedSnapshot != nil {
+		e.setStateLocked(SyncDownloading)
+		// Start downloading asynchronously
+		go e.startDownloading()
+	} else {
+		// No valid snapshot, fall back to live sync
+		e.setStateLocked(SyncLive)
+	}
+}
+
 // queryPeers broadcasts MsgTypeSnapshotQuery to all connected peers.
 func (e *FastSyncEngine) queryPeers() {
 	// Broadcast snapshot query to all peers
@@ -240,13 +246,17 @@ func (e *FastSyncEngine) queryPeers() {
 		// Timeout reached, check results
 		e.mu.Lock()
 		if len(e.collectedInfos) > 0 {
-			// We have responses, advance to selecting
+			// We have responses, move to selecting
 			e.setStateLocked(SyncSelecting)
 			e.selectBestSnapshot()
-		} else {
-			// No responses, retry with backoff
-			e.handleQueryRetry()
+			e.mu.Unlock()
+			// Drive the machine to Downloading / Live without holding the
+			// lock (Advance takes it again).
+			e.Advance()
+			return
 		}
+		// No responses, retry with backoff
+		e.handleQueryRetry()
 		e.mu.Unlock()
 	}
 }
@@ -347,9 +357,8 @@ func (e *FastSyncEngine) selectBestSnapshot() {
 		e.selectedSnapshot = nil
 		fmt.Printf("FastSyncEngine: no valid snapshots found\n")
 	}
-
-	// Advance to next state
-	e.Advance()
+	// NOTE: no e.Advance() here — callers (queryPeers / Advance) drive the
+	// state machine after selection to avoid reentrant locking of e.mu.
 }
 
 // HandleSnapshotChunk is called by P2PNode when a snapshot chunk is received.
@@ -360,19 +369,16 @@ func (e *FastSyncEngine) HandleSnapshotChunk(chunk *SnapshotChunk, from PeerID) 
 	}
 
 	e.mu.Lock()
-	defer e.mu.Unlock()
 
 	// Only process during Downloading state
-	if e.state != SyncDownloading {
-		return
-	}
-
-	if e.scheduler == nil {
+	if e.state != SyncDownloading || e.scheduler == nil {
+		e.mu.Unlock()
 		return
 	}
 
 	// Check if already received
 	if e.scheduler.received[chunk.Index] {
+		e.mu.Unlock()
 		return
 	}
 
@@ -391,11 +397,13 @@ func (e *FastSyncEngine) HandleSnapshotChunk(chunk *SnapshotChunk, from PeerID) 
 	if !state.VerifyChunk(stateChunk) {
 		fmt.Printf("FastSyncEngine: chunk %d verification failed from peer %s\n", chunk.Index, from.String())
 		e.pm.ReportFailure(from, 5) // -5 for invalid snapshot chunk
+		e.mu.Unlock()
 		return
 	}
 
 	// Mark as received in scheduler
 	received := e.scheduler.MarkReceived(chunk.Index)
+	complete := false
 	if received {
 		// Report success to peer manager
 		e.pm.ReportSuccess(from, MsgTypeSnapshotChunk)
@@ -411,11 +419,15 @@ func (e *FastSyncEngine) HandleSnapshotChunk(chunk *SnapshotChunk, from PeerID) 
 			go e.persistSyncState()
 		}
 
-		// Check if download is complete
-		if e.scheduler.IsComplete() {
-			fmt.Printf("FastSyncEngine: all chunks received, reassembling snapshot\n")
-			e.advanceToVerifying()
-		}
+		complete = e.scheduler.IsComplete()
+	}
+	e.mu.Unlock()
+
+	// Check if download is complete (outside the lock: advanceToVerifying
+	// takes it again).
+	if complete {
+		fmt.Printf("FastSyncEngine: all chunks received, reassembling snapshot\n")
+		e.advanceToVerifying()
 	}
 }
 
@@ -802,7 +814,6 @@ func (e *FastSyncEngine) requestMissingChunks() {
 // verifyDownloadedSnapshot reassembles and verifies the full snapshot.
 func (e *FastSyncEngine) verifyDownloadedSnapshot() {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 
 	// Build sorted slice of chunks
 	if len(e.collectedChunks) == 0 {

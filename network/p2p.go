@@ -6,10 +6,12 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 	"time"
 
+	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/types"
 	"golang.org/x/time/rate"
 )
@@ -245,6 +247,7 @@ func (n *P2PNode) registerConn(conn net.Conn, remoteAddr string, id PeerID) func
 		if p := n.pm.GetPeerByAddr(remoteAddr); p != nil {
 			p.mu.Lock()
 			p.Conn = existing
+			p.State = PeerConnected
 			p.mu.Unlock()
 		}
 		conn.Close()
@@ -268,6 +271,13 @@ func (n *P2PNode) registerConn(conn net.Conn, remoteAddr string, id PeerID) func
 	peer := n.pm.AddPeer(id, remoteAddr)
 	peer.mu.Lock()
 	peer.Conn = conn
+	// A registered conn is a live peer: outbound Connect and the accept path
+	// both reach here without going through ConnectToPeer, which is the only
+	// place State was being set to PeerConnected before. Without this, peers
+	// brought up by Connect stay PeerDisconnected and are invisible to
+	// consumers that filter on the connected state (e.g. the snapshot
+	// engine's query broadcast).
+	peer.State = PeerConnected
 	peer.mu.Unlock()
 
 	// Announce our height to the fresh peer (late-joiner path): it needs to
@@ -320,8 +330,7 @@ func (n *P2PNode) readLoop(conn net.Conn, remoteAddr string, id PeerID) {
 
 		// Read message length (4 bytes)
 		lenBuf := make([]byte, 4)
-		_, err := reader.Read(lenBuf)
-		if err != nil {
+		if _, err := io.ReadFull(reader, lenBuf); err != nil {
 			return
 		}
 
@@ -330,10 +339,10 @@ func (n *P2PNode) readLoop(conn net.Conn, remoteAddr string, id PeerID) {
 			return
 		}
 
-		// Read message
+		// Read message (ReadFull: a single Read may return a partial payload
+		// for large messages such as snapshot chunks).
 		msgBuf := make([]byte, msgLen)
-		_, err = reader.Read(msgBuf)
-		if err != nil {
+		if _, err := io.ReadFull(reader, msgBuf); err != nil {
 			return
 		}
 
@@ -716,20 +725,58 @@ func (n *P2PNode) SetFastSyncEngine(e *FastSyncEngine) {
 		e.HandleSnapshotChunk(chunk, peerID)
 	}
 
-	// Server-side: respond to snapshot queries - returns latest snapshot info
-	// Note: state.LoadLatestSnapshotInfo doesn't exist, so return nil to skip serving
+	// Server-side: respond to snapshot queries with the latest stored
+	// snapshot's metadata (task 5.2). Serve handlers must not return nil when
+	// snapshots exist — the stored checkpoint + snapshot data is the source.
 	n.snapshotQueryHandler = func() *SnapshotInfo {
-		// TODO: Implement when state.LoadLatestSnapshotInfo is added
-		// This would load the latest checkpoint and return snapshot metadata
-		return nil
+		cp, err := state.LatestCheckpoint(e.persistent)
+		if err != nil {
+			return nil
+		}
+		if !state.SnapshotExists(e.persistent, cp.Height) {
+			return nil
+		}
+		data, err := state.LoadSnapshot(e.persistent, cp.Height)
+		if err != nil {
+			return nil
+		}
+		chunks, err := state.ChunkSnapshot(data, state.DefaultChunkSize)
+		if err != nil {
+			return nil
+		}
+		return &SnapshotInfo{
+			Height:       cp.Height,
+			SnapshotHash: cp.SnapshotHash,
+			StateRoot:    cp.StateRoot,
+			Epoch:        cp.Epoch,
+			Timestamp:    cp.Timestamp,
+			ChunkCount:   uint32(len(chunks)),
+		}
 	}
 
-	// Server-side: respond to chunk requests - returns requested chunk data
-	// Note: state.LoadSnapshotChunk doesn't exist, so return nil to skip serving
+	// Server-side: respond to chunk requests from the stored snapshot data.
+	// A chunk index beyond the snapshot's chunk count is not served.
 	n.snapshotRequestHandler = func(snapshotHash [32]byte, chunkIndex uint32) (*SnapshotChunk, bool) {
-		// TODO: Implement when state.LoadSnapshotChunk is added
-		// This would load chunk data from persistent storage and convert to network.SnapshotChunk
-		return nil, false
+		cp, err := state.LatestCheckpoint(e.persistent)
+		if err != nil || cp.SnapshotHash != snapshotHash {
+			return nil, false
+		}
+		data, err := state.LoadSnapshot(e.persistent, cp.Height)
+		if err != nil {
+			return nil, false
+		}
+		chunks, err := state.ChunkSnapshot(data, state.DefaultChunkSize)
+		if err != nil || chunkIndex >= uint32(len(chunks)) {
+			return nil, false
+		}
+		ch := chunks[chunkIndex]
+		return &SnapshotChunk{
+			Index:        ch.Index,
+			TotalCount:   ch.TotalCount,
+			SnapshotHash: ch.SnapshotHash,
+			ChunkHash:    ch.ChunkHash,
+			Data:         ch.Data,
+		}, true
 	}
 }
 

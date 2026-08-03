@@ -10,6 +10,7 @@ import (
 type SnapshotInfo struct {
 	Height       uint64
 	SnapshotHash [32]byte
+	StateRoot    [32]byte
 	Epoch        uint64
 	Timestamp    uint64
 	ChunkCount   uint32
@@ -192,28 +193,30 @@ func (n *P2PNode) SendSnapshotChunk(peer string, chunk *SnapshotChunk) error {
 }
 
 // serializeSnapshotInfo serializes SnapshotInfo to wire format.
-// Format: Height(8) + SnapshotHash(32) + Epoch(8) + Timestamp(8) + ChunkCount(4) = 60 bytes
+// Format: Height(8) + SnapshotHash(32) + StateRoot(32) + Epoch(8) + Timestamp(8) + ChunkCount(4) = 92 bytes
 func serializeSnapshotInfo(info *SnapshotInfo) ([]byte, error) {
-	buf := make([]byte, 60)
+	buf := make([]byte, 92)
 	binary.BigEndian.PutUint64(buf[0:8], info.Height)
 	copy(buf[8:40], info.SnapshotHash[:])
-	binary.BigEndian.PutUint64(buf[40:48], info.Epoch)
-	binary.BigEndian.PutUint64(buf[48:56], info.Timestamp)
-	binary.BigEndian.PutUint32(buf[56:60], info.ChunkCount)
+	copy(buf[40:72], info.StateRoot[:])
+	binary.BigEndian.PutUint64(buf[72:80], info.Epoch)
+	binary.BigEndian.PutUint64(buf[80:88], info.Timestamp)
+	binary.BigEndian.PutUint32(buf[88:92], info.ChunkCount)
 	return buf, nil
 }
 
 // parseSnapshotInfo deserializes SnapshotInfo from wire format.
 func parseSnapshotInfo(data []byte) *SnapshotInfo {
-	if len(data) < 60 {
+	if len(data) < 92 {
 		return nil
 	}
 	info := &SnapshotInfo{}
 	info.Height = binary.BigEndian.Uint64(data[0:8])
 	copy(info.SnapshotHash[:], data[8:40])
-	info.Epoch = binary.BigEndian.Uint64(data[40:48])
-	info.Timestamp = binary.BigEndian.Uint64(data[48:56])
-	info.ChunkCount = binary.BigEndian.Uint32(data[56:60])
+	copy(info.StateRoot[:], data[40:72])
+	info.Epoch = binary.BigEndian.Uint64(data[72:80])
+	info.Timestamp = binary.BigEndian.Uint64(data[80:88])
+	info.ChunkCount = binary.BigEndian.Uint32(data[88:92])
 	return info
 }
 

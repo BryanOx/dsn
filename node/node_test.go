@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dsn/dsn/consensus"
+	"github.com/dsn/dsn/staking"
 	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/types"
 	"github.com/dsn/dsn/wallet"
@@ -448,4 +449,183 @@ func TestNodeNew_NoP2P_NoValidators(t *testing.T) {
 	// Should not panic
 	n.StartConsensus()
 	n.StopConsensus()
+}
+
+// ---------------------------------------------------------------------------
+// Block-sync adapter tests (tasks 1.4)
+// ---------------------------------------------------------------------------
+
+// registerStakingValidator registers a single validator in the node's staking
+// state so blocks can be built (BuildBlock → BeginBlock queries the active
+// validator set). Mirror of the integration package's registerValidatorsInState.
+func registerStakingValidator(t *testing.T, n *Node, kp *wallet.KeyPair) {
+	t.Helper()
+	stake := uint64(100_000)
+
+	acc := state.NewAccount(kp.Address(), kp.PublicKey)
+	acc.AddBalance(types.NewAmount(stake * 2))
+	n.State().SetAccount(kp.Address(), acc)
+
+	_, err := staking.RegisterValidator(n.State(), kp.PublicKey, kp.Address(), types.NewAmount(stake), 0, 0)
+	require.NoError(t, err)
+
+	acc, err = n.State().GetAccount(kp.Address())
+	require.NoError(t, err)
+	acc.SubBalance(types.NewAmount(stake))
+	n.State().SetAccount(kp.Address(), acc)
+
+	require.NoError(t, staking.WriteUint64(n.State(), staking.KeyTotalSupply, stake*2))
+	require.NoError(t, staking.ProcessEpochTransition(n.State(), 100))
+	_, err = staking.CreateSnapshot(n.State(), 1)
+	require.NoError(t, err)
+}
+
+// newSyncedNode creates a persistent node with P2P disabled and one registered
+// validator — the minimal setup for exercising the block-sync adapter.
+func newSyncedNode(t *testing.T) (*Node, *wallet.KeyPair) {
+	t.Helper()
+	kp, err := wallet.GenerateKey()
+	require.NoError(t, err)
+	return newSyncedNodeWith(t, kp), kp
+}
+
+// newSyncedNodeWith creates a persistent node registered with the GIVEN keypair
+// as its single validator. Tests that build a block on a scratch node and apply
+// it to a second node must use the same keypair on both, because proposer
+// selection and the commit proof bind the block to one validator identity.
+func newSyncedNodeWith(t *testing.T, kp *wallet.KeyPair) *Node {
+	t.Helper()
+	cfg := Config{
+		DataDir:          t.TempDir(),
+		P2PPort:          0,
+		Validators:       []types.Address{kp.Address()},
+		MaxTxPerBlock:    100,
+		ProposerTimeout:  100 * time.Millisecond,
+		MempoolMaxSize:   10000,
+		MempoolTTL:       300 * time.Second,
+		SnapshotInterval: 10,
+		BlockTimeSec:     1,
+	}
+	n, err := New(cfg)
+	require.NoError(t, err)
+	n.SetWallet(kp)
+	registerStakingValidator(t, n, kp)
+	return n
+}
+
+// buildSignedBlock builds a signed final block (with commit proof) for the
+// next height on the node's state, without applying it to the chain.
+func buildSignedBlock(t *testing.T, n *Node, kp *wallet.KeyPair) *types.Block {
+	t.Helper()
+
+	active, err := staking.GetActiveValidators(n.State())
+	require.NoError(t, err)
+	require.Greater(t, len(active), 0, "no active validators")
+	height := n.CurrentHeight() + 1
+	proposer := consensus.WeightedProposerAtHeight(height, active)
+
+	block, err := consensus.BuildBlock(
+		n.State(), n.vm, n.mempool,
+		height, n.GetTipHash(),
+		proposer,
+		&walletSigner{kp: kp},
+		n.hasher, n.cfg.MaxTxPerBlock, nil, n.cfg.BlockTimeSec,
+	)
+	require.NoError(t, err)
+
+	snap, err := staking.GetSnapshot(n.State(), block.Header.Epoch)
+	require.NoError(t, err)
+	require.NotNil(t, snap, "epoch snapshot missing")
+
+	headerHash, err := block.HeaderHash(n.hasher)
+	require.NoError(t, err)
+	vs := consensus.NewVotingState(block.Header.Height, 0, headerHash, snap)
+
+	validatorID := types.DeriveConsensusID(kp.PublicKey)
+	prevote := &types.Vote{VoteType: types.VotePrevote, Height: block.Header.Height, Round: 0, BlockHash: headerHash, Validator: validatorID}
+	require.NoError(t, prevote.Sign(kp.PrivateKey[:]))
+	require.NoError(t, vs.AddPrevote(prevote))
+	precommit := &types.Vote{VoteType: types.VotePrecommit, Height: block.Header.Height, Round: 0, BlockHash: headerHash, Validator: validatorID}
+	require.NoError(t, precommit.Sign(kp.PrivateKey[:]))
+	require.NoError(t, vs.AddPrecommit(precommit))
+
+	proof, err := vs.BuildCommitProof()
+	require.NoError(t, err)
+	block.CommitProof = proof
+	return block
+}
+
+// TestDecodeSyncedBlock_ReaddsTypeByte verifies the block-sync decode choke
+// point: range responses carry EncodeBlockMessage frames with the leading
+// BlockMessageType byte stripped (network.encodeBlockAsWireFromBlock), so
+// decodeSyncedBlock must re-add it before DecodeBlockMessage can parse the
+// frame. The round trip must yield an identical block, and a frame that
+// already carries the type byte must fail to decode.
+func TestDecodeSyncedBlock_ReaddsTypeByte(t *testing.T) {
+	n, kp := newSyncedNode(t)
+	defer n.Close()
+
+	block := buildSignedBlock(t, n, kp)
+
+	wire, err := consensus.EncodeBlockMessage(block)
+	require.NoError(t, err)
+	served := wire[1:] // served block list strips the leading type byte
+
+	decoded, err := decodeSyncedBlock(served)
+	require.NoError(t, err)
+
+	// Round-trip identity: header (height, hashes, state root), commit proof
+	// and transactions must survive decode exactly. Comparing the re-encoded
+	// bytes to the original wire also sidesteps nil-vs-empty slice
+	// representation differences in the tx list.
+	require.Equal(t, block.Header, decoded.Header)
+	require.Equal(t, block.CommitProof, decoded.CommitProof)
+	require.Equal(t, len(block.Transactions), len(decoded.Transactions))
+	reencoded, err := consensus.EncodeBlockMessage(decoded)
+	require.NoError(t, err)
+	require.Equal(t, wire, reencoded)
+
+	// A frame that already carries the type byte must not decode: the extra
+	// prepend corrupts the length prefix.
+	_, err = decodeSyncedBlock(wire)
+	require.Error(t, err)
+}
+
+// TestApplySyncedBlock_RootMismatchAborts verifies that a block whose state
+// root fails re-execution is rejected without touching the node's chain state.
+// The root check runs before the commit-proof check in ValidateBlock, so the
+// proof attached by the builder is irrelevant to the outcome.
+func TestApplySyncedBlock_RootMismatchAborts(t *testing.T) {
+	n, kp := newSyncedNode(t)
+	defer n.Close()
+
+	// Build the block on a scratch node with identical genesis AND the same
+	// validator keypair so the block passes every check except the tampered
+	// state root: proposer selection and the commit proof bind the block to
+	// one validator identity (n and scratch must share it).
+	scratch := newSyncedNodeWith(t, kp)
+	defer scratch.Close()
+	block := buildSignedBlock(t, scratch, kp)
+
+	// Tamper the state root after building.
+	block.Header.StateRoot[0] ^= 0xFF
+
+	wire, err := consensus.EncodeBlockMessage(block)
+	require.NoError(t, err)
+	served := wire[1:]
+
+	accepted, err := n.applySyncedBlock(served)
+	require.False(t, accepted)
+	require.ErrorIs(t, err, consensus.ErrStateRootMismatch)
+
+	// Chain state untouched: tip still genesis, height unchanged, and the
+	// reverted validator account still holds its post-registration balance.
+	// Note: InMemoryState snapshots cover accounts+kvstore only, so the SMT
+	// root memo is stale after the revert and is recomputed on the next
+	// successful apply — assert the reverted KV evidence instead.
+	require.Equal(t, uint64(0), n.CurrentHeight())
+	require.Equal(t, types.Hash{}, n.GetTipHash())
+	acc, err := n.State().GetAccount(kp.Address())
+	require.NoError(t, err)
+	require.Equal(t, types.NewAmount(100_000), acc.Balance)
 }

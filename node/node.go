@@ -2,6 +2,7 @@ package node
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"log"
 	"path/filepath"
@@ -187,6 +188,15 @@ func New(cfg Config) (*Node, error) {
 		p2pNode.SetFastSyncEngine(n.fastSync)
 		p2pNode.SetBlockSyncEngine(n.blockSync)
 		p2pNode.SetGossipEngine(n.gossip)
+
+		// Adapter (Task 5.4): the block-sync engine applies served blocks
+		// through the node's validation pipeline (decodeSyncedBlock →
+		// ValidateBlock → applyAcceptedBlock), never the gossip wire format.
+		n.blockSync.SetBlockHandler(n.applySyncedBlock)
+
+		// Height provider: announce our tip to every new peer (late-joiner
+		// visibility) without the node coupling into p2p connection handling.
+		p2pNode.SetSyncHeightProvider(func() uint64 { return n.currentHeight.Load() })
 
 		// Create PeerDiscovery for every node so the read loop can answer
 		// pings/PEX even for a seed node with no bootstrap peers. node0 in the
@@ -552,6 +562,16 @@ func (n *Node) runConsensusLoop() {
 			return
 		case <-time.After(n.cfg.ProposerTimeout):
 		}
+
+		// Missed-proposal detection: the height this iteration targeted never
+		// materialized while a peer advertises a longer chain — the node is
+		// likely behind and should catch up over block ranges instead of
+		// waiting for the block-sync engine's periodic tick.
+		if n.blockSync != nil && n.currentHeight.Load() < height {
+			if peerHeight := n.blockSync.MaxPeerHeight(); peerHeight > n.currentHeight.Load() {
+				n.blockSync.NotifyPeerHeight(peerHeight)
+			}
+		}
 	}
 }
 
@@ -726,6 +746,22 @@ func (n *Node) votingHasExternalVotes(vs *consensus.VotingState) bool {
 		}
 	}
 	return false
+}
+
+// publishSyncHeight announces this node's current tip to all connected peers.
+// Peers use the announcement to start catch-up without waiting for their
+// periodic tick; connect-time announcements are handled in p2p registerConn
+// via the sync-height provider.
+func (n *Node) publishSyncHeight() {
+	if n.p2p == nil {
+		return
+	}
+	payload := make([]byte, 8)
+	binary.BigEndian.PutUint64(payload, n.currentHeight.Load())
+	msg := make([]byte, 1+len(payload))
+	msg[0] = network.MsgTypeSyncHeight
+	copy(msg[1:], payload)
+	n.p2p.Broadcast(msg)
 }
 
 // rebroadcastPendingProposal re-sends the proposal this node is currently
@@ -939,8 +975,11 @@ func (n *Node) finalizeLocalBlock(block *types.Block) {
 	}
 
 	if n.persistent != nil {
-		consensus.StoreBlockHeader(n.persistent, &block.Header)
-		consensus.StoreTip(n.persistent, &block.Header)
+		// Persist the FULL block (header + body + tip) atomically so this
+		// node can serve its own produced blocks to catching-up peers;
+		// header-only storage would leave them invisible to block-range
+		// requests and block sync could never converge on them.
+		consensus.AtomicStoreBlockAndTip(n.persistent, block)
 		// CRITICAL: Persist state to avoid losing changes on crash
 		if _, err := n.CommitState(); err != nil {
 			panic(fmt.Sprintf("commit state failed: %v at height %d", err, block.Header.Height))
@@ -1182,4 +1221,9 @@ func (n *Node) applyAcceptedBlock(block *types.Block) {
 			}
 		}
 	}
+
+	// Announce the new tip to peers so late joiners learn our height (spec:
+	// publication after applyAcceptedBlock advances the tip). Runs after
+	// setTip so the published height is the applied tip.
+	n.publishSyncHeight()
 }

@@ -344,7 +344,9 @@ func (e *BlockSyncEngine) requestWindow(addr string, from, target uint64) {
 // requestBlockRange sends a block range request to a peer.
 func (e *BlockSyncEngine) requestBlockRange(addr string, startHeight, endHeight uint64) error {
 	payload := encodeBlockRangeRequest(startHeight, endHeight)
-	msg := FrameMessage(MsgTypeBlockRangeRequest, payload)
+	msg := make([]byte, 1+len(payload))
+	msg[0] = MsgTypeBlockRangeRequest
+	copy(msg[1:], payload)
 	return e.p2p.SendTo(addr, msg)
 }
 

@@ -89,9 +89,21 @@ func (cl *connectionLimiter) removePeer(peerID string) {
 	delete(cl.peers, peerID)
 }
 
+// blockJobKind discriminates the payloads the single-consumer block processor
+// handles: full gossip block frames (which include the message type byte) and
+// raw block-range response payloads (type byte already stripped by the read
+// loop, per the known-types convention).
+type blockJobKind uint8
+
+const (
+	blockJobGossip blockJobKind = iota
+	blockJobRangeResponse
+)
+
 // blockJob represents a block processing task for the single-consumer channel.
 type blockJob struct {
-	data []byte // raw block message bytes (includes type byte)
+	kind blockJobKind
+	data []byte // raw message bytes (gossip: full frame; range: payload only)
 	src  string // peer ID or remote address
 }
 
@@ -121,6 +133,9 @@ type P2PNode struct {
 	blockSync *BlockSyncEngine
 	gossip    *GossipEngine
 	discovery *PeerDiscovery
+	// syncHeightProvider reports the node's current chain height so a fresh
+	// SyncHeight announcement can be sent to each newly connected peer.
+	syncHeightProvider func() uint64
 	// Block processing: single-consumer channel pattern for goroutine safety
 	blockCh   chan blockJob
 	blockOnce sync.Once // ensures block processor starts only once
@@ -254,6 +269,17 @@ func (n *P2PNode) registerConn(conn net.Conn, remoteAddr string, id PeerID) func
 	peer.Conn = conn
 	peer.mu.Unlock()
 
+	// Announce our height to the fresh peer (late-joiner path): it needs to
+	// know we exist and how far ahead we are before it can request ranges.
+	if n.syncHeightProvider != nil {
+		payload := make([]byte, 8)
+		binary.BigEndian.PutUint64(payload, n.syncHeightProvider())
+		msg := make([]byte, 1+len(payload))
+		msg[0] = MsgTypeSyncHeight
+		copy(msg[1:], payload)
+		_ = n.SendTo(remoteAddr, msg)
+	}
+
 	return func() {
 		// Only remove the connection if the entry still points at OUR conn.
 		// A stale read loop from an older connection must never delete a newer
@@ -375,8 +401,40 @@ func (n *P2PNode) readLoop(conn net.Conn, remoteAddr string, id PeerID) {
 				if n.discovery != nil {
 					n.discovery.HandlePong(id, msgBuf[1:])
 				}
-			case MsgTypeBlockRangeRequest, MsgTypeBlockRangeResponse:
-				// Valid but no block range handlers wired yet.
+			case MsgTypeBlockRangeRequest:
+				// Serve block ranges without blocking the read loop. The
+				// engine returns nil for malformed or out-of-bounds requests
+				// (reporting the failure itself); the response goes back over
+				// the same connection.
+				if n.blockSync != nil {
+					req := msgBuf[1:]
+					peer := id
+					src := remoteAddr
+					go func() {
+						resp := n.blockSync.HandleBlockRangeRequest(req, peer)
+						if resp != nil {
+							out := make([]byte, 1+len(resp))
+							out[0] = MsgTypeBlockRangeResponse
+							copy(out[1:], resp)
+							_ = n.SendTo(src, out)
+						}
+					}()
+				}
+			case MsgTypeBlockRangeResponse:
+				// Route through the single-consumer block channel so range
+				// responses apply serially with gossip blocks (D5).
+				if n.blockSync != nil {
+					n.enqueueBlockRangeResponse(msgBuf[1:], remoteAddr)
+				}
+			case MsgTypeSyncHeight:
+				// Height announcement: record it monotonically and wake the
+				// block-sync engine so catch-up starts without waiting for
+				// its periodic tick.
+				if n.blockSync != nil && len(msgBuf) >= 1+8 {
+					h := binary.BigEndian.Uint64(msgBuf[1:9])
+					n.pm.UpdateSyncHeight(id, h)
+					n.blockSync.NotifyPeerHeight(h)
+				}
 			}
 		} else {
 			// Transaction message (legacy format - no type byte - raw transaction encoding)
@@ -671,6 +729,13 @@ func (n *P2PNode) SetBlockSyncEngine(e *BlockSyncEngine) {
 	n.blockSync = e
 }
 
+// SetSyncHeightProvider registers a callback reporting the node's current chain
+// height. It is used to announce the height to each newly connected peer so
+// late joiners and restarted nodes are immediately visible.
+func (n *P2PNode) SetSyncHeightProvider(fn func() uint64) {
+	n.syncHeightProvider = fn
+}
+
 // SetGossipEngine registers a GossipEngine with the node.
 func (n *P2PNode) SetGossipEngine(e *GossipEngine) {
 	n.gossip = e
@@ -701,10 +766,23 @@ func (n *P2PNode) startBlockProcessor() {
 					if !ok {
 						return // channel closed
 					}
-					// Process block in the single consumer goroutine
-					// Pass raw bytes to handler (same as original implementation)
-					if n.blockHandler != nil {
-						n.blockHandler(job.data)
+					// Dispatch by job kind: gossip frames go to the gossip
+					// handler, range responses to the block-sync engine. Both
+					// are processed in this single consumer goroutine so no
+					// two block applies ever run concurrently.
+					switch job.kind {
+					case blockJobRangeResponse:
+						if n.blockSync != nil {
+							var peerID PeerID
+							if p := n.pm.GetPeerByAddr(job.src); p != nil {
+								peerID = p.ID
+							}
+							n.blockSync.HandleBlockRangeResponse(job.data, peerID)
+						}
+					default: // blockJobGossip
+						if n.blockHandler != nil {
+							n.blockHandler(job.data)
+						}
 					}
 				}
 			}
@@ -712,13 +790,25 @@ func (n *P2PNode) startBlockProcessor() {
 	})
 }
 
-// handleBlock enqueues a block job to the single-consumer channel.
+// handleBlock enqueues a gossip block job to the single-consumer channel.
 // The actual processing happens in the single-consumer block processor goroutine.
 func (n *P2PNode) handleBlock(data []byte, src string) {
 	select {
-	case n.blockCh <- blockJob{data: data, src: src}:
+	case n.blockCh <- blockJob{kind: blockJobGossip, data: data, src: src}:
 		// Job enqueued successfully
 	default:
 		// Channel full - drop block (backpressure)
+	}
+}
+
+// enqueueBlockRangeResponse routes a block-range response payload through the
+// single-consumer block channel so it is applied serially with gossip blocks.
+// Concurrent applies from multiple read loops would break determinism (D5).
+func (n *P2PNode) enqueueBlockRangeResponse(data []byte, src string) {
+	select {
+	case n.blockCh <- blockJob{kind: blockJobRangeResponse, data: data, src: src}:
+		// Job enqueued successfully
+	default:
+		// Channel full - drop response (backpressure)
 	}
 }

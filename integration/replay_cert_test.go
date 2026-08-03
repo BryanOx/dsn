@@ -415,3 +415,67 @@ func TestReplayCert_SnapshotReplay(t *testing.T) {
 	require.NotEqual(t, initialRoot, postOpenRoot,
 		"state should have evolved from initial state")
 }
+
+// TestReplayCert_CatchUpSync verifies the late-joiner catch-up path end to end:
+// a fresh node that has never seen the chain catches up over real block-range
+// requests and converges on the producer's state roots. A mines blocks through
+// the real two-phase consensus pipeline as a single-validator network; B
+// connects afterwards, is not a validator, and must reach A's tip purely via
+// 0x43 height announcements + 0x30/0x31 range requests.
+func TestReplayCert_CatchUpSync(t *testing.T) {
+	kpA, err := wallet.GenerateKey()
+	require.NoError(t, err)
+	kpB, err := wallet.GenerateKey()
+	require.NoError(t, err)
+
+	// Both nodes share the same genesis: only A is registered as an active
+	// validator, so B's consensus loop can never propose and B stays passive
+	// while its block-sync engine catches it up.
+	newNetworkNode := func(kp *wallet.KeyPair) *node.Node {
+		cfg := node.Config{
+			DataDir:          t.TempDir(),
+			P2PPort:          freePort(t),
+			MaxTxPerBlock:    100,
+			ProposerTimeout:  50 * time.Millisecond,
+			MempoolMaxSize:   10000,
+			MempoolTTL:       300 * time.Second,
+			SnapshotInterval: 10,
+			Validators:       []types.Address{kpA.Address()},
+		}
+		n, err := node.New(cfg)
+		require.NoError(t, err)
+		n.SetWallet(kp)
+		return n
+	}
+
+	a := newNetworkNode(kpA)
+	defer a.Close()
+	b := newNetworkNode(kpB)
+	defer b.Close()
+
+	registerValidatorsInState(t, a.State(), []types.Address{kpA.Address()}, []*wallet.KeyPair{kpA})
+	registerValidatorsInState(t, b.State(), []types.Address{kpA.Address()}, []*wallet.KeyPair{kpA})
+
+	// A mines through the real consensus pipeline (a single validator
+	// finalizes every height immediately).
+	a.StartConsensus()
+	require.Eventually(t, func() bool { return a.CurrentHeight() >= 5 },
+		15*time.Second, 100*time.Millisecond, "A did not produce 5 blocks (tip %d)", a.CurrentHeight())
+	a.StopConsensus()
+	heightA := a.CurrentHeight()
+
+	// Fresh B joins: its engines (including block sync) start, but B is never
+	// the proposer, so its consensus loop idles.
+	b.StartConsensus()
+
+	// Late-joiner path: B connects to A, A announces its height, B catches up
+	// over block-range requests and converges on A's state root.
+	require.NoError(t, b.P2P().Connect(a.P2P().Addr()))
+	require.Eventually(t, func() bool {
+		return b.CurrentHeight() >= heightA && b.State().GetStateRoot() == a.State().GetStateRoot()
+	}, 30*time.Second, 100*time.Millisecond,
+		"B did not catch up to A's tip %d (B at %d)", heightA, b.CurrentHeight())
+
+	CompareStateRoots(t, []*node.Node{a, b})
+	require.Equal(t, heightA, b.CurrentHeight())
+}

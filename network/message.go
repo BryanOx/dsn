@@ -19,6 +19,7 @@ const (
 	MsgTypePing               byte = 0x40 // Keepalive ping
 	MsgTypePong               byte = 0x41 // Keepalive pong
 	MsgTypeVote               byte = 0x42 // Consensus vote (prevote/precommit)
+	MsgTypeSyncHeight         byte = 0x43 // Peer announces its current sync height
 )
 
 // Max payload size limits.
@@ -48,9 +49,10 @@ var knownMessageTypes = map[byte]bool{
 	MsgTypePing:               true,
 	MsgTypePong:               true,
 	MsgTypeVote:               true,
+	MsgTypeSyncHeight:         true,
 }
 
-// maxPayloadByType defines per-type payload limits (currently all 1 MiB).
+// maxPayloadByType defines per-type payload limits.
 var maxPayloadByType = map[byte]uint32{
 	MsgTypeBlock:              MaxPayloadSize,
 	MsgTypeTransaction:        MaxPayloadSize,
@@ -64,6 +66,7 @@ var maxPayloadByType = map[byte]uint32{
 	MsgTypePing:               MaxPayloadSize,
 	MsgTypePong:               MaxPayloadSize,
 	MsgTypeVote:               MaxPayloadSize,
+	MsgTypeSyncHeight:         8, // payload is one uint64 big-endian height
 }
 
 // FrameMessage creates a framed message with length prefix, message type, and payload.
@@ -103,6 +106,12 @@ func ParseMessage(data []byte) (msgType byte, payload []byte, err error) {
 	msgType = data[4]
 	if !IsKnownType(msgType) {
 		return 0, nil, ErrUnknownMessageType
+	}
+
+	// Enforce per-type payload limits. The declared length includes the
+	// 1-byte type prefix, so compare against the actual payload length.
+	if msgLen-1 > MaxPayloadForType(msgType) {
+		return 0, nil, ErrPayloadTooLarge
 	}
 
 	payload = data[5 : 4+msgLen]

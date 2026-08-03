@@ -15,6 +15,11 @@ type PeerInfo struct {
 	LastSeen time.Time
 }
 
+// pingInterval is how often the health-check loop pings connected peers. The
+// P2P read loop sizes its read deadline (readDeadline in p2p.go) relative to
+// this interval so a peer whose only traffic is pongs does not time out.
+const pingInterval = 30 * time.Second
+
 // PeerDiscovery handles peer discovery, PEX protocol, and health checks.
 type PeerDiscovery struct {
 	pm             *PeerManager
@@ -30,6 +35,10 @@ type PeerDiscovery struct {
 	// Backoff for bootstrap retries
 	backoffInterval time.Duration
 	maxBackoff      time.Duration
+
+	// started guards Start() against spawning the background loops more than
+	// once. Reset by Stop() so the discovery can be restarted.
+	started bool
 }
 
 // NewPeerDiscovery creates a new PeerDiscovery instance.
@@ -46,8 +55,18 @@ func NewPeerDiscovery(pm *PeerManager, bootstrapAddrs []string, p2p *P2PNode) *P
 	}
 }
 
-// Start begins the peer discovery background goroutines.
+// Start begins the peer discovery background goroutines. It is invoked from
+// multiple node startup paths, so the second call is a no-op: only the first
+// invocation spawns the bootstrap/health-check/PEX/prune loops.
 func (pd *PeerDiscovery) Start() {
+	pd.mu.Lock()
+	if pd.started {
+		pd.mu.Unlock()
+		return
+	}
+	pd.started = true
+	pd.mu.Unlock()
+
 	go pd.bootstrapLoop()
 	go pd.healthCheckLoop()
 	go pd.pexLoop()
@@ -56,6 +75,12 @@ func (pd *PeerDiscovery) Start() {
 
 // Stop halts all peer discovery background goroutines.
 func (pd *PeerDiscovery) Stop() {
+	pd.mu.Lock()
+	defer pd.mu.Unlock()
+	if !pd.started {
+		return
+	}
+	pd.started = false
 	close(pd.stopCh)
 	pd.stopCh = make(chan struct{})
 }
@@ -138,7 +163,7 @@ func (pd *PeerDiscovery) shouldReconnect(addr string) bool {
 
 // healthCheckLoop pings all connected peers every 30 seconds.
 func (pd *PeerDiscovery) healthCheckLoop() {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(pingInterval)
 	defer ticker.Stop()
 
 	for {
@@ -280,10 +305,18 @@ func (pd *PeerDiscovery) pruneDeadPeers() {
 func (pd *PeerDiscovery) HandlePeerExchange(peerID PeerID, payload []byte) {
 	peers := parsePeerInfo(payload)
 
-	// Penalize for invalid/malformed PEX data
-	if peers == nil || len(peers) == 0 {
+	// A nil result means the payload is malformed. An empty list is a valid
+	// (if uninteresting) response from a peer that knows nobody worth sharing
+	// yet, so it must not be penalized: penalizing it drives the peer's score
+	// down to an auto-ban and tears the connection down.
+	if peers == nil {
 		pd.logger.Printf("[PEX] Invalid peer info from %s, reporting failure", peerID.String())
 		pd.pm.ReportFailure(peerID, 2)
+		return
+	}
+
+	if len(peers) == 0 {
+		pd.logger.Printf("[PEX] Received empty peer list from %s", peerID.String())
 		return
 	}
 

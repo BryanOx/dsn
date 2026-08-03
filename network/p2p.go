@@ -25,6 +25,14 @@ type connectionLimiter struct {
 	burst     int
 }
 
+// readDeadline is the per-read timeout for P2P connections. It is sized at 2x
+// the peer-discovery ping interval (pingInterval in peer_discovery.go): a peer
+// that only ever hears pongs — one per interval — must be granted at least one
+// interval of slack for the ping round trip, otherwise its read times out
+// whenever the pong lands a few milliseconds past the deadline and the
+// connection is torn down, forcing a reconnect cycle.
+const readDeadline = 2 * pingInterval
+
 // newConnectionLimiter creates a new connection limiter with the specified limits.
 func newConnectionLimiter() *connectionLimiter {
 	return &connectionLimiter{
@@ -210,10 +218,24 @@ func (n *P2PNode) handleConnection(conn net.Conn) {
 // existing connection to the same address, and returns a cleanup function
 // that removes the connection from every tracking structure.
 func (n *P2PNode) registerConn(conn net.Conn, remoteAddr string, id PeerID) func() {
-	// Check for duplicate connection - close existing if present
 	n.connMu.Lock()
-	if existingConn, exists := n.connections[remoteAddr]; exists {
-		existingConn.Close()
+	if existing, exists := n.connections[remoteAddr]; exists && existing != conn {
+		// The connection map only holds connections whose read loop has not
+		// exited yet, so a present entry is a live connection. Keep it and
+		// discard the duplicate dial instead of tearing the healthy link
+		// down; redirect the PeerManager's peer to the survivor so pings and
+		// PEX keep flowing over it.
+		n.connMu.Unlock()
+		if p := n.pm.GetPeerByAddr(remoteAddr); p != nil {
+			p.mu.Lock()
+			p.Conn = existing
+			p.mu.Unlock()
+		}
+		conn.Close()
+		return func() {}
+	}
+	if existing, exists := n.connections[remoteAddr]; exists && existing != conn {
+		existing.Close()
 	}
 	n.connections[remoteAddr] = conn
 	n.connMu.Unlock()
@@ -221,8 +243,16 @@ func (n *P2PNode) registerConn(conn net.Conn, remoteAddr string, id PeerID) func
 	// Register with connection limiter
 	n.connLimiter.addPeer(remoteAddr)
 
-	// Register with PeerManager for metadata tracking
-	n.pm.AddPeer(id, remoteAddr)
+	// Register with PeerManager for metadata tracking and wire the peer's
+	// Conn to this connection so the discovery handlers (ping/pong/PEX) can
+	// respond over the same socket. This is required for inbound connections,
+	// which ConnectToPeer never touches: without it HandlePing finds a nil
+	// Conn and no pong is ever sent back, so the remote's read deadline
+	// tears the connection down.
+	peer := n.pm.AddPeer(id, remoteAddr)
+	peer.mu.Lock()
+	peer.Conn = conn
+	peer.mu.Unlock()
 
 	return func() {
 		// Only remove the connection if the entry still points at OUR conn.
@@ -255,8 +285,11 @@ func (n *P2PNode) readLoop(conn net.Conn, remoteAddr string, id PeerID) {
 		default:
 		}
 
-		// Set deadline for reading
-		conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+		// Set deadline for reading. Must comfortably exceed the peer-discovery
+		// ping interval (readDeadline = 2x pingInterval): a peer that only
+		// hears pongs once per interval would otherwise time out whenever the
+		// pong lands just past the deadline, tearing the connection down.
+		conn.SetReadDeadline(time.Now().Add(readDeadline))
 
 		// Read message length (4 bytes)
 		lenBuf := make([]byte, 4)
@@ -327,10 +360,23 @@ func (n *P2PNode) readLoop(conn net.Conn, remoteAddr string, id PeerID) {
 			n.handleVote(msgBuf, id)
 		} else if isKnown {
 			// Other known protocol messages (PEX, block range, ping/pong)
-			// Process based on type
+			// Process based on type. Handlers expect the payload WITHOUT the
+			// leading type byte (the type is passed separately).
 			switch msgType {
-			case MsgTypePeerExchange, MsgTypeBlockRangeRequest, MsgTypeBlockRangeResponse, MsgTypePing, MsgTypePong:
-				// These are valid but we don't have handlers yet
+			case MsgTypePeerExchange:
+				if n.discovery != nil {
+					n.discovery.HandlePeerExchange(id, msgBuf[1:])
+				}
+			case MsgTypePing:
+				if n.discovery != nil {
+					n.discovery.HandlePing(id, msgBuf[1:])
+				}
+			case MsgTypePong:
+				if n.discovery != nil {
+					n.discovery.HandlePong(id, msgBuf[1:])
+				}
+			case MsgTypeBlockRangeRequest, MsgTypeBlockRangeResponse:
+				// Valid but no block range handlers wired yet.
 			}
 		} else {
 			// Transaction message (legacy format - no type byte - raw transaction encoding)
@@ -420,9 +466,8 @@ func (n *P2PNode) Connect(addr string) error {
 // handlePeerConnection is installed as the PeerManager's on-connected hook so
 // connections established through pm.ConnectToPeer (for example by peer
 // discovery) are registered for broadcast and read just like connections
-// established by Connect or accepted by the listener. It only touches the
-// P2PNode's own state — it must not take PeerManager locks, because
-// ConnectToPeer runs the hook while holding the peer lock.
+// established by Connect or accepted by the listener. It runs after the peer
+// lock has been released.
 func (n *P2PNode) handlePeerConnection(conn net.Conn, addr string) {
 	id := PeerIDFromBytes([]byte(addr))
 	cleanup := n.registerConn(conn, addr, id)

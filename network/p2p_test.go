@@ -2,6 +2,7 @@ package network
 
 import (
 	"bytes"
+	"encoding/binary"
 	"io"
 	"net"
 	"testing"
@@ -153,11 +154,11 @@ func TestP2PNode_ConnectDuplicate(t *testing.T) {
 	}
 }
 
-// TestRegisterConn_StaleCleanupKeepsNewerConnection verifies that the cleanup
-// of a superseded connection does not delete the connection that replaced it.
-// This is the reconnect scenario: connection A is closed by registerConn when
-// connection B registers the same remote address, and A's stale read loop must
-// not remove B from the broadcast set.
+// TestRegisterConn_StaleCleanupKeepsNewerConnection verifies that a stale
+// cleanup of a superseded connection does not delete the connection that
+// replaced it. Connection A dies and its read loop cleans it up; a fresh
+// connection B registers afterwards. A repeated stale cleanup from A must not
+// remove B.
 func TestRegisterConn_StaleCleanupKeepsNewerConnection(t *testing.T) {
 	n, _ := NewP2PNode(0)
 	defer n.Close()
@@ -173,10 +174,15 @@ func TestRegisterConn_StaleCleanupKeepsNewerConnection(t *testing.T) {
 	id := PeerIDFromBytes([]byte(addr))
 
 	cleanupA := n.registerConn(nodeConnA, addr, id)
+
+	// Connection A dies and its read loop cleans it up.
+	cleanupA()
+
+	// A fresh connection registers afterwards and becomes the entry.
 	cleanupB := n.registerConn(nodeConnB, addr, id)
 	defer cleanupB()
 
-	// Simulate the stale read loop of connection A exiting after B replaced it.
+	// Simulate a stale, repeated cleanup of connection A.
 	cleanupA()
 
 	n.connMu.RLock()
@@ -193,22 +199,24 @@ func TestBroadcast_AfterStaleCleanupUsesNewerConnection(t *testing.T) {
 	n, _ := NewP2PNode(0)
 	defer n.Close()
 
-	// Two consecutive dials to the same remote address. nodeConnB is the newer
-	// generation; peerB is the matching socket on the remote side.
-	nodeConnA, _ := net.Pipe()
+	// Connection A dies and is cleaned up before connection B registers.
+	nodeConnA, peerA := net.Pipe()
 	nodeConnB, peerB := net.Pipe()
 	defer nodeConnA.Close()
 	defer nodeConnB.Close()
+	defer peerA.Close()
 	defer peerB.Close()
 
 	addr := "10.0.0.2:26656"
 	id := PeerIDFromBytes([]byte(addr))
 
 	cleanupA := n.registerConn(nodeConnA, addr, id)
+	cleanupA()
+
 	cleanupB := n.registerConn(nodeConnB, addr, id)
 	defer cleanupB()
 
-	// Stale connection A dies; only B should remain in the broadcast set.
+	// A stale, repeated cleanup of the dead connection must not remove B.
 	cleanupA()
 
 	received := make(chan byte, 1)
@@ -235,6 +243,135 @@ func TestBroadcast_AfterStaleCleanupUsesNewerConnection(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout: broadcast never reached the newer connection")
+	}
+}
+
+// TestRegisterConn_KeepsLiveExistingConnection verifies that registering a
+// duplicate connection while a live connection to the same address exists
+// keeps the existing connection and discards the duplicate. Before the fix
+// every re-dial closed the live connection, amplifying reconnect churn.
+func TestRegisterConn_KeepsLiveExistingConnection(t *testing.T) {
+	n, _ := NewP2PNode(0)
+	defer n.Close()
+
+	nodeConnA, peerA := net.Pipe()
+	nodeConnB, peerB := net.Pipe()
+	defer nodeConnA.Close()
+	defer nodeConnB.Close()
+	defer peerA.Close()
+	defer peerB.Close()
+
+	addr := "10.0.0.3:26656"
+	id := PeerIDFromBytes([]byte(addr))
+
+	cleanupA := n.registerConn(nodeConnA, addr, id)
+	defer cleanupA()
+
+	// Registering B (a duplicate dial) must keep A and discard B.
+	cleanupB := n.registerConn(nodeConnB, addr, id)
+
+	n.connMu.RLock()
+	cur := n.connections[addr]
+	n.connMu.RUnlock()
+	if cur != nodeConnA {
+		t.Fatal("registerConn replaced the live existing connection with the duplicate")
+	}
+
+	// The surviving connection must still carry broadcasts.
+	received := make(chan byte, 1)
+	go func() {
+		lenBuf := make([]byte, 4)
+		if _, err := io.ReadFull(peerA, lenBuf); err != nil {
+			received <- 0
+			return
+		}
+		payload := make([]byte, 1)
+		if _, err := io.ReadFull(peerA, payload); err != nil {
+			received <- 0
+			return
+		}
+		received <- payload[0]
+	}()
+	n.Broadcast([]byte{0x42})
+	select {
+	case got := <-received:
+		if got != 0x42 {
+			t.Errorf("payload = %#x, want 0x42", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: broadcast never reached the surviving connection")
+	}
+
+	// The duplicate connection was closed and the peer redirects to the
+	// surviving connection so pings/PEX keep flowing over a live socket.
+	if p := n.pm.GetPeerByAddr(addr); p == nil {
+		t.Fatal("peer not registered")
+	} else if p.Conn != nodeConnA {
+		t.Fatal("peer connection was not redirected to the surviving connection")
+	}
+
+	cleanupB()
+	if _, err := peerB.Read(make([]byte, 1)); err == nil {
+		t.Fatal("duplicate connection was not closed")
+	}
+}
+
+// TestReadLoop_PingGetsPong verifies the read loop dispatches an incoming
+// ping to HandlePing and that the pong reaches the sender over the same
+// socket. Before the fix the ping was dropped in the read loop switch and no
+// pong ever flowed, so the sender's 30s read deadline tore the connection
+// down.
+func TestReadLoop_PingGetsPong(t *testing.T) {
+	n1, _ := NewP2PNode(0)
+	defer n1.Close()
+	n2, _ := NewP2PNode(0)
+	defer n2.Close()
+
+	// Wire discovery on both ends so the read loops can dispatch ping/pong.
+	pd1 := NewPeerDiscovery(n1.pm, nil, n1)
+	n1.SetDiscovery(pd1)
+	pd2 := NewPeerDiscovery(n2.pm, nil, n2)
+	n2.SetDiscovery(pd2)
+
+	if err := n1.Connect(n2.Addr()); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	// Send a ping with a timestamp 3s in the past so the latency measured by
+	// HandlePong is clearly nonzero. The frame is written directly to the
+	// outbound connection (as discovery's SendPing does); SendTo would add a
+	// second transport length prefix.
+	pingPayload := make([]byte, 8)
+	binary.BigEndian.PutUint64(pingPayload, uint64(time.Now().Add(-3*time.Second).Unix()))
+	n1.connMu.RLock()
+	outConn := n1.connections[n2.Addr()]
+	n1.connMu.RUnlock()
+	if outConn == nil {
+		t.Fatal("outbound connection not registered")
+	}
+	if _, err := outConn.Write(FrameMessage(MsgTypePing, pingPayload)); err != nil {
+		t.Fatal(err)
+	}
+
+	// n1 must receive the pong on its outbound connection; HandlePong turns
+	// it into a latency update on the peer.
+	id := PeerIDFromBytes([]byte(n2.Addr()))
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		p := n1.pm.GetPeer(id)
+		if p != nil {
+			p.mu.RLock()
+			latency := p.Latency
+			p.mu.RUnlock()
+			if latency >= 3*time.Second {
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timeout: pong never arrived on the outbound connection")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 

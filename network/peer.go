@@ -292,9 +292,9 @@ type PeerManager struct {
 	stopCh      chan struct{}
 	running     bool
 	// onConnected is invoked after ConnectToPeer dials successfully. It is
-	// set once at construction by the P2P layer (see SetOnConnectedHandler)
-	// and runs while the peer lock is held, so it must not re-enter
-	// PeerManager methods that lock the same peer.
+	// set once at construction by the P2P layer (see SetOnConnectedHandler).
+	// It runs after the peer lock is released, so it may safely take
+	// PeerManager and peer locks (the P2P registration logic does both).
 	onConnected func(net.Conn, string)
 }
 
@@ -313,8 +313,8 @@ func NewPeerManager(db *bbolt.DB) *PeerManager {
 }
 
 // SetOnConnectedHandler registers a callback invoked after ConnectToPeer
-// successfully establishes a connection. The callback runs while the peer
-// lock is held and receives the raw connection and the dialed address.
+// successfully establishes a connection. The callback runs after the peer
+// lock is released and receives the raw connection and the dialed address.
 func (pm *PeerManager) SetOnConnectedHandler(h func(net.Conn, string)) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
@@ -571,13 +571,13 @@ func (pm *PeerManager) ConnectToPeer(id PeerID, addr string) error {
 	}
 
 	peer.mu.Lock()
-	defer peer.mu.Unlock()
 
 	peer.State = PeerConnecting
 
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		peer.State = PeerDisconnected
+		peer.mu.Unlock()
 		return fmt.Errorf("failed to connect to peer: %w", err)
 	}
 
@@ -585,9 +585,13 @@ func (pm *PeerManager) ConnectToPeer(id PeerID, addr string) error {
 	peer.State = PeerConnected
 	peer.ConnectedSince = time.Now()
 	peer.LastSeen = time.Now()
+	peer.mu.Unlock()
 
 	// Hand the connection to the P2P layer so it is registered for broadcast
-	// and read (set via SetOnConnectedHandler).
+	// and read (set via SetOnConnectedHandler). The hook runs outside the
+	// peer lock so the registration logic can safely reconcile the peer's
+	// connection, e.g. keep a live existing connection when this dial turns
+	// out to duplicate it.
 	if pm.onConnected != nil {
 		pm.onConnected(conn, addr)
 	}

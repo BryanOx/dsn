@@ -1,7 +1,9 @@
 package network
 
 import (
+	"bytes"
 	"reflect"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -193,6 +195,125 @@ func TestBootstrapOnce_DoesNotRedialConnectedPeer(t *testing.T) {
 			t.Fatalf("NumPeers = %d, want 1 (connected peer was re-dialed)", got)
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// countRunningGoroutines returns how many goroutines are currently executing
+// the given function name (used to assert goroutine spawn counts).
+func countRunningGoroutines(fn string) int {
+	buf := make([]byte, 1<<20)
+	n := runtime.Stack(buf, true)
+	return bytes.Count(buf[:n], []byte(fn))
+}
+
+// TestPeerDiscovery_StartIsIdempotent verifies that a second Start call is a
+// no-op: only the first invocation spawns the bootstrap/health-check/PEX/
+// prune loops. Start is invoked from multiple node startup paths, and without
+// the guard two bootstrap loops ran and double-dialed every cycle.
+func TestPeerDiscovery_StartIsIdempotent(t *testing.T) {
+	n1, _ := NewP2PNode(0)
+	defer n1.Close()
+
+	pd := NewPeerDiscovery(n1.pm, nil, n1)
+	defer pd.Stop()
+
+	loops := []string{
+		"(*PeerDiscovery).bootstrapLoop",
+		"(*PeerDiscovery).healthCheckLoop",
+		"(*PeerDiscovery).pexLoop",
+		"(*PeerDiscovery).pruneLoop",
+	}
+
+	pd.Start()
+	pd.Start()
+
+	// Wait for exactly one instance of each loop from the first Start.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		all := true
+		for _, fn := range loops {
+			if countRunningGoroutines(fn) != 1 {
+				all = false
+				break
+			}
+		}
+		if all {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("loops never reached a single running instance")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// The second Start must not have spawned duplicates.
+	time.Sleep(150 * time.Millisecond)
+	for _, fn := range loops {
+		if got := countRunningGoroutines(fn); got != 1 {
+			t.Errorf("%s running %d times, want exactly 1", fn, got)
+		}
+	}
+
+	// Stop then Start again: the guard must still allow a clean restart.
+	pd.Stop()
+	deadline = time.Now().Add(2 * time.Second)
+	for {
+		if countRunningGoroutines("(*PeerDiscovery).bootstrapLoop") == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("loops still running after Stop")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	pd.Start()
+	deadline = time.Now().Add(2 * time.Second)
+	for {
+		if countRunningGoroutines("(*PeerDiscovery).bootstrapLoop") == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("bootstrapLoop did not restart after Stop+Start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestHandlePeerExchange_EmptyListNotPenalized verifies that a well-formed
+// empty peer list is treated as valid (nothing worth sharing yet) and is not
+// scored as a failure. Before the fix every empty PEX response drove the peer
+// score toward the auto-ban threshold, tearing the connection down.
+func TestHandlePeerExchange_EmptyListNotPenalized(t *testing.T) {
+	n1, _ := NewP2PNode(0)
+	defer n1.Close()
+
+	pd := NewPeerDiscovery(n1.pm, nil, n1)
+
+	id := PeerIDFromBytes([]byte("10.0.0.1:26656"))
+	n1.pm.AddPeer(id, "10.0.0.1:26656")
+
+	pd.HandlePeerExchange(id, serializePeerInfo(nil))
+
+	peer := n1.pm.GetPeer(id)
+	if peer == nil {
+		t.Fatal("peer missing")
+	}
+	peer.mu.RLock()
+	score := peer.Score
+	peer.mu.RUnlock()
+	if score != 0 {
+		t.Errorf("empty PEX penalized the peer: score = %d, want 0", score)
+	}
+
+	// A truly malformed payload (missing the count header) must still be
+	// penalized.
+	pd.HandlePeerExchange(id, []byte{0x01})
+
+	peer.mu.RLock()
+	score = peer.Score
+	peer.mu.RUnlock()
+	if score != -2 {
+		t.Errorf("malformed PEX not penalized: score = %d, want -2", score)
 	}
 }
 

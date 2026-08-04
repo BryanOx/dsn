@@ -1,8 +1,12 @@
 package network
 
 import (
+	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/dsn/dsn/state"
+	"github.com/dsn/dsn/types"
 )
 
 // TestChunkScheduler_New
@@ -421,4 +425,120 @@ func TestFastSyncEngine_SelectBestSnapshotRejectsZeroHash(t *testing.T) {
 	if engine.selectedSnapshot != nil {
 		t.Error("selectedSnapshot should be nil when all have zero hash")
 	}
+}
+
+// storeChunkedSnapshot persists a snapshot at the given height and returns its
+// serialized data and checkpoint. The payload is big enough to split into 2
+// chunks at the default chunk size.
+func storeChunkedSnapshot(t *testing.T, ps *state.PersistentState, height uint64) ([]byte, *state.Checkpoint) {
+	t.Helper()
+
+	src := state.NewInMemoryState(types.SHA256Hasher{})
+	addr := types.Address{0: 0x01}
+	acc := state.NewAccount(addr, [32]byte{0: 0x01})
+	acc.AddBalance(types.NewAmount(5000))
+	src.SetAccount(addr, acc)
+	big := make([]byte, 300*1024)
+	for i := range big {
+		big[i] = byte(i % 251)
+	}
+	src.SetBytes("big", big)
+	root, err := src.Commit()
+	if err != nil {
+		t.Fatalf("storeChunkedSnapshot: commit source state: %v", err)
+	}
+
+	snap, err := src.CreateSnapshot(height, 2, types.Hash{0xAA}, 1000000)
+	if err != nil {
+		t.Fatalf("storeChunkedSnapshot: create snapshot: %v", err)
+	}
+	snapData, err := state.SerializeSnapshot(snap)
+	if err != nil {
+		t.Fatalf("storeChunkedSnapshot: serialize snapshot: %v", err)
+	}
+	if err := state.StoreSnapshot(ps, height, snapData); err != nil {
+		t.Fatalf("storeChunkedSnapshot: store snapshot: %v", err)
+	}
+
+	cp := &state.Checkpoint{
+		Height:           height,
+		BlockHash:        types.Hash{0xBB},
+		StateRoot:        root,
+		SnapshotHash:     state.SnapshotHash(snapData),
+		ValidatorSetHash: types.Hash{0xAA},
+		Epoch:            2,
+		Timestamp:        1000000,
+	}
+	if err := state.StoreCheckpoint(ps, cp); err != nil {
+		t.Fatalf("storeChunkedSnapshot: store checkpoint: %v", err)
+	}
+	return snapData, cp
+}
+
+// TestFastSyncEngine_ServeSnapshotCachesLatest verifies the latest-only
+// snapshot serve cache (8.3): the first ServeSnapshot call computes chunks
+// from the stored snapshot, subsequent calls reuse the cached result, and the
+// cache is recomputed once the on-disk checkpoint moves to a newer snapshot.
+func TestFastSyncEngine_ServeSnapshotCachesLatest(t *testing.T) {
+	ps, err := state.NewPersistentState(filepath.Join(t.TempDir(), "node.db"), types.SHA256Hasher{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ps.Close() })
+
+	engine := NewFastSyncEngine(nil, nil, ps)
+
+	snapData, cp := storeChunkedSnapshot(t, ps, 100)
+
+	info, chunks := engine.ServeSnapshot()
+	if info == nil {
+		t.Fatal("ServeSnapshot returned nil for a stored snapshot")
+	}
+	if info.Height != 100 || info.SnapshotHash != cp.SnapshotHash || info.ChunkCount != 2 {
+		t.Fatalf("ServeSnapshot info mismatch: got height %d chunks %d hash %x", info.Height, info.ChunkCount, info.SnapshotHash)
+	}
+	if len(chunks) != 2 {
+		t.Fatalf("ServeSnapshot returned %d chunks, want 2", len(chunks))
+	}
+	want, err := state.ChunkSnapshot(snapData, state.DefaultChunkSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range chunks {
+		if chunks[i].Data == nil || !bytesEqual(chunks[i].Data, want[i].Data) || chunks[i].SnapshotHash != cp.SnapshotHash {
+			t.Fatalf("chunk %d data/hash mismatch", i)
+		}
+	}
+
+	// Cache hit: a second call must not recompute chunks from disk.
+	info2, chunks2 := engine.ServeSnapshot()
+	if info2.Height != 100 || len(chunks2) != 2 {
+		t.Fatalf("second ServeSnapshot did not return the cached snapshot: %+v", info2)
+	}
+	if got := engine.serveChunkComputations; got != 1 {
+		t.Fatalf("expected 1 chunk computation after two calls, got %d (cache not honored)", got)
+	}
+
+	// Invalidation: storing a newer snapshot must recompute and serve it.
+	storeChunkedSnapshot(t, ps, 101)
+	info3, chunks3 := engine.ServeSnapshot()
+	if info3.Height != 101 || len(chunks3) != 2 {
+		t.Fatalf("ServeSnapshot did not switch to the newer snapshot: %+v", info3)
+	}
+	if got := engine.serveChunkComputations; got != 2 {
+		t.Fatalf("expected recomputation on checkpoint change, got %d computations", got)
+	}
+}
+
+// bytesEqual compares byte slices without relying on reflect.DeepEqual.
+func bytesEqual(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

@@ -78,6 +78,14 @@ type FastSyncEngine struct {
 	requestTimes    map[uint32]time.Time // track when each chunk was last requested
 	lastRequestID   uint64
 
+	// Snapshot serve cache: latest-only (8.3). The stored snapshot's chunks
+	// are computed once and reused for every query/chunk request until the
+	// on-disk checkpoint moves to a different snapshot, then recomputed.
+	cachedSnapshotHeight    uint64
+	cachedSnapshotHash      types.Hash
+	cachedChunks            []*state.SnapshotChunk
+	serveChunkComputations  uint64 // number of times ChunkSnapshot ran (cache contract, asserted by tests)
+
 	// Config
 	maxQueryRetries int
 	chunkTimeout    time.Duration
@@ -607,6 +615,66 @@ func (cs *ChunkScheduler) RestoreBitmap(bitmap []bool) {
 	}
 
 	copy(cs.received, bitmap)
+}
+
+// ServeSnapshot returns the latest stored snapshot's metadata and chunks for
+// the server-side handlers, computing chunks once and caching them until the
+// on-disk checkpoint moves (latest-only cache, 8.3). Returns (nil, nil) when
+// no valid snapshot exists.
+func (e *FastSyncEngine) ServeSnapshot() (*SnapshotInfo, []*state.SnapshotChunk) {
+	cp, err := state.LatestCheckpoint(e.persistent)
+	if err != nil {
+		return nil, nil
+	}
+	if !state.SnapshotExists(e.persistent, cp.Height) {
+		return nil, nil
+	}
+
+	e.mu.RLock()
+	cached := e.cachedSnapshotHeight == cp.Height && e.cachedSnapshotHash == cp.SnapshotHash && len(e.cachedChunks) > 0
+	if cached {
+		info := &SnapshotInfo{
+			Height:       cp.Height,
+			SnapshotHash: cp.SnapshotHash,
+			StateRoot:    cp.StateRoot,
+			Epoch:        cp.Epoch,
+			Timestamp:    cp.Timestamp,
+			ChunkCount:   uint32(len(e.cachedChunks)),
+		}
+		chunks := e.cachedChunks
+		e.mu.RUnlock()
+		return info, chunks
+	}
+	e.mu.RUnlock()
+
+	data, err := state.LoadSnapshot(e.persistent, cp.Height)
+	if err != nil {
+		return nil, nil
+	}
+	chunkList, err := state.ChunkSnapshot(data, state.DefaultChunkSize)
+	if err != nil {
+		return nil, nil
+	}
+	chunks := make([]*state.SnapshotChunk, len(chunkList))
+	for i := range chunkList {
+		chunks[i] = &chunkList[i]
+	}
+
+	e.mu.Lock()
+	e.cachedSnapshotHeight = cp.Height
+	e.cachedSnapshotHash = cp.SnapshotHash
+	e.cachedChunks = chunks
+	e.serveChunkComputations++
+	e.mu.Unlock()
+
+	return &SnapshotInfo{
+		Height:       cp.Height,
+		SnapshotHash: cp.SnapshotHash,
+		StateRoot:    cp.StateRoot,
+		Epoch:        cp.Epoch,
+		Timestamp:    cp.Timestamp,
+		ChunkCount:   uint32(len(chunks)),
+	}, chunks
 }
 
 // GetSelectedSnapshot returns the currently selected snapshot info.

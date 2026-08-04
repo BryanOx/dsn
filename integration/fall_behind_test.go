@@ -18,7 +18,8 @@ import (
 // resuming at tip+1 — without reorging or re-applying anything at or below its
 // finalized height. The stale-range guard itself is pinned by
 // TestApplySyncedBlock_AlreadyFinalizedSkipped (S1); this test proves the
-// resume-at-tip+1 path over real P2P with a 40-block offline gap.
+// resume-at-tip+1 path over real P2P with a 50-block offline gap (spec
+// scenario: "a live node whose tip falls 50 blocks below a peer mid-epoch").
 func TestFallBehind_BlockSyncCatchUp(t *testing.T) {
 	kpA, err := wallet.GenerateKey()
 	require.NoError(t, err)
@@ -84,12 +85,13 @@ func TestFallBehind_BlockSyncCatchUp(t *testing.T) {
 	CompareStateRoots(t, []*node.Node{a, b})
 	cfgB := *b.Config()
 
-	// B goes offline while A extends the chain by 40 blocks (tipA → tipA+40):
+	// B goes offline while A extends the chain by 50 blocks (tipA → tipA+50),
+	// matching the spec scenario ("falls 50 blocks below a peer mid-epoch"):
 	// a gap well past B's finalized height 6.
 	b.Close()
 	a.StartConsensus()
-	require.Eventually(t, func() bool { return a.CurrentHeight() >= tipA+40 },
-		30*time.Second, 100*time.Millisecond, "A did not reach %d (at %d)", tipA+40, a.CurrentHeight())
+	require.Eventually(t, func() bool { return a.CurrentHeight() >= tipA+50 },
+		30*time.Second, 100*time.Millisecond, "A did not reach %d (at %d)", tipA+50, a.CurrentHeight())
 	a.StopConsensus()
 
 	// B restarts and must resume at tip+1 (tipA+1), never re-applying its
@@ -112,7 +114,7 @@ func TestFallBehind_BlockSyncCatchUp(t *testing.T) {
 		br, ar := b2.State().GetStateRoot(), a.State().GetStateRoot()
 		return b2.CurrentHeight() >= a.CurrentHeight() && br == ar
 	}, 30*time.Second, 100*time.Millisecond,
-		"B did not catch up the 40-block gap and converge on A's tip %d (B at %d)", a.CurrentHeight(), b2.CurrentHeight())
+		"B did not catch up the 50-block gap and converge on A's tip %d (B at %d)", a.CurrentHeight(), b2.CurrentHeight())
 
 	CompareStateRoots(t, []*node.Node{a, b2})
 	require.Equal(t, a.CurrentHeight(), b2.CurrentHeight())

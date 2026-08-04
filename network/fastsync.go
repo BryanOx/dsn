@@ -81,10 +81,10 @@ type FastSyncEngine struct {
 	// Snapshot serve cache: latest-only (8.3). The stored snapshot's chunks
 	// are computed once and reused for every query/chunk request until the
 	// on-disk checkpoint moves to a different snapshot, then recomputed.
-	cachedSnapshotHeight    uint64
-	cachedSnapshotHash      types.Hash
-	cachedChunks            []*state.SnapshotChunk
-	serveChunkComputations  uint64 // number of times ChunkSnapshot ran (cache contract, asserted by tests)
+	cachedSnapshotHeight   uint64
+	cachedSnapshotHash     types.Hash
+	cachedChunks           []*state.SnapshotChunk
+	serveChunkComputations uint64 // number of times ChunkSnapshot ran (cache contract, asserted by tests)
 
 	// Config
 	maxQueryRetries int

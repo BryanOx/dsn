@@ -40,6 +40,11 @@ var blockSyncBucket = []byte("block_sync")
 // lastSyncedHeightKey is the key for storing last synced height.
 var lastSyncedHeightKey = []byte("last_synced_height")
 
+// blockSyncRequestTimeout is how long a requested window may stay unanswered
+// before it is re-requested from the serving peer (design: "10s tick
+// re-requests timed-out pending").
+const blockSyncRequestTimeout = 10 * time.Second
+
 // NewBlockSyncEngine creates a new BlockSyncEngine.
 func NewBlockSyncEngine(pm *PeerManager, p2p *P2PNode, persistent *state.PersistentState) *BlockSyncEngine {
 	return &BlockSyncEngine{
@@ -104,8 +109,10 @@ func (e *BlockSyncEngine) syncLoop() {
 		case <-e.stopCh:
 			return
 		case <-ticker.C:
+			e.recheckPendingRequests()
 			e.startCatchUp()
 		case <-e.notifyCh:
+			e.recheckPendingRequests()
 			e.startCatchUp()
 		}
 	}
@@ -181,6 +188,7 @@ func (e *BlockSyncEngine) HandleBlockRangeRequest(payload []byte, from PeerID) [
 		return nil
 	}
 	if endHeight-startHeight >= uint64(MaxBlocksPerRangeResponse) {
+		e.pm.ReportFailure(from, 2) // oversized range: penalize like malformed (S4)
 		return nil
 	}
 
@@ -224,13 +232,30 @@ func (e *BlockSyncEngine) HandleBlockRangeResponse(payload []byte, from PeerID) 
 		return
 	}
 
+	// This response answers the outstanding window [prev+1, ...]: drop it from
+	// the pending set so the timeout re-request does not re-send a window the
+	// peer already served.
+	e.mu.Lock()
+	delete(e.pendingRequests, prev+1)
+	e.mu.Unlock()
+
 	applied := 0
 
 	for _, blockData := range blocks {
 		accepted, err := handler(blockData)
 		if err != nil || !accepted {
-			// Validation failed - penalize peer and stop processing
+			// Validation failed - penalize peer and stop processing. The last
+			// accepted height (the on-disk tip) is recorded and persisted so
+			// the retry resumes narrowed from it (W4).
 			e.pm.ReportFailure(from, 5) // invalid block
+			if e.persistent != nil && e.persistent.DB() != nil {
+				if tip, terr := consensus.LoadTip(e.persistent); terr == nil && tip != nil {
+					e.mu.Lock()
+					e.lastSyncedHeight = tip.Height
+					e.mu.Unlock()
+					e.persistProgress()
+				}
+			}
 			e.mu.Lock()
 			e.isSyncing = false
 			e.mu.Unlock()
@@ -342,13 +367,57 @@ func (e *BlockSyncEngine) requestWindow(addr string, from, target uint64) {
 	_ = e.requestBlockRange(addr, from, to)
 }
 
-// requestBlockRange sends a block range request to a peer.
+// requestBlockRange sends a block range request to a peer and records it as
+// pending so a dropped response is re-requested after the timeout (S3).
 func (e *BlockSyncEngine) requestBlockRange(addr string, startHeight, endHeight uint64) error {
 	payload := encodeBlockRangeRequest(startHeight, endHeight)
 	msg := make([]byte, 1+len(payload))
 	msg[0] = MsgTypeBlockRangeRequest
 	copy(msg[1:], payload)
-	return e.p2p.SendTo(addr, msg)
+	if err := e.p2p.SendTo(addr, msg); err != nil {
+		return err
+	}
+	e.mu.Lock()
+	e.pendingRequests[startHeight] = time.Now()
+	e.mu.Unlock()
+	return nil
+}
+
+// recheckPendingRequests re-requests any window whose response has not arrived
+// within blockSyncRequestTimeout. A dropped or lost response must not strand
+// the catch-up: the same window is re-requested from the same serving peer and
+// the pending entry is refreshed.
+func (e *BlockSyncEngine) recheckPendingRequests() {
+	e.mu.Lock()
+	if !e.isSyncing || e.targetPeerAddr == "" {
+		e.mu.Unlock()
+		return
+	}
+	addr := e.targetPeerAddr
+	target := e.targetHeight
+	type retry struct{ from, to uint64 }
+	var retries []retry
+	now := time.Now()
+	for from, t := range e.pendingRequests {
+		if now.Sub(t) <= blockSyncRequestTimeout {
+			continue
+		}
+		to := from + (uint64(MaxBlocksPerRangeResponse) - 1)
+		if to > target {
+			to = target
+		}
+		retries = append(retries, retry{from: from, to: to})
+	}
+	e.mu.Unlock()
+
+	for _, r := range retries {
+		if err := e.requestBlockRange(addr, r.from, r.to); err != nil {
+			continue
+		}
+		e.mu.Lock()
+		e.pendingRequests[r.from] = time.Now()
+		e.mu.Unlock()
+	}
 }
 
 // persistProgress saves the last synced height to persistent state.

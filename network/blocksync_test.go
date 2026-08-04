@@ -2,6 +2,7 @@ package network
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 	"net"
 	"path/filepath"
@@ -263,6 +264,7 @@ func TestBlockSyncEngine_RequestServeMax100(t *testing.T) {
 
 	var peerID PeerID
 	peerID[0] = 1
+	pm.AddPeer(peerID, "peer-addr")
 
 	// A 100-block range is within the limit and served.
 	resp := engine.HandleBlockRangeRequest(encodeBlockRangeRequest(1, 100), peerID)
@@ -283,6 +285,16 @@ func TestBlockSyncEngine_RequestServeMax100(t *testing.T) {
 	// A 101-block range exceeds the limit and must be rejected.
 	if resp := engine.HandleBlockRangeRequest(encodeBlockRangeRequest(1, 101), peerID); resp != nil {
 		t.Errorf("expected nil response for 101-block range, got %d bytes", len(resp))
+	}
+
+	// The oversized range must also penalize the requester (S4), consistent
+	// with the malformed-request path (−2).
+	p := pm.GetPeer(peerID)
+	p.mu.RLock()
+	score := p.Score
+	p.mu.RUnlock()
+	if score != -2 {
+		t.Errorf("peer score = %d, want -2 for an oversized range request", score)
 	}
 }
 
@@ -488,6 +500,153 @@ func TestBlockSyncEngine_ResumePrefersPersistedProgress(t *testing.T) {
 	engine2 := NewBlockSyncEngine(pm2, p2p2, ps)
 	if got := engine2.resumeFrom(); got != 121 {
 		t.Errorf("resumeFrom = %d, want 121 (progress 120 beats tip 100)", got)
+	}
+}
+
+// TestBlockSyncEngine_InvalidBlockPenalizesStopsAndResumes verifies the
+// invalid-block contract (W4): the serving peer is penalized −5, the remaining
+// blocks in the window are rejected, the engine stops, and the last accepted
+// height is persisted so the retry resumes narrowed from it.
+func TestBlockSyncEngine_InvalidBlockPenalizesStopsAndResumes(t *testing.T) {
+	ps, closeDB := newTestPersistentState(t)
+	defer closeDB()
+
+	pm := NewPeerManager(nil)
+	p2p, err := NewP2PNode(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p2p.Close()
+
+	engine := NewBlockSyncEngine(pm, p2p, ps)
+
+	var applied []uint64
+	engine.SetBlockHandler(func(data []byte) (bool, error) {
+		height := binary.BigEndian.Uint64(data)
+		if height == 46 {
+			return false, errors.New("invalid block")
+		}
+		if err := consensus.StoreTip(ps, &types.BlockHeader{Version: 1, Height: height}); err != nil {
+			return false, err
+		}
+		applied = append(applied, height)
+		return true, nil
+	})
+
+	var peerID PeerID
+	peerID[0] = 3
+	pm.AddPeer(peerID, "peer-addr")
+
+	// Window [41..46]; block 46 is invalid.
+	var blocks [][]byte
+	for h := uint64(41); h <= 46; h++ {
+		data := make([]byte, 8)
+		binary.BigEndian.PutUint64(data, h)
+		blocks = append(blocks, data)
+	}
+	engine.HandleBlockRangeResponse(encodeBlockList(blocks), peerID)
+
+	// Remaining blocks rejected: only 41..45 reached the handler.
+	if len(applied) != 5 {
+		t.Errorf("applied %d blocks, want 5 (41..45; 46 must stop the window)", len(applied))
+	}
+
+	// Sender penalized −5 for the invalid block.
+	p := pm.GetPeer(peerID)
+	p.mu.RLock()
+	score := p.Score
+	p.mu.RUnlock()
+	if score != -5 {
+		t.Errorf("peer score = %d, want -5", score)
+	}
+
+	// Engine stopped.
+	if engine.IsSyncing() {
+		t.Error("engine must stop after an invalid block")
+	}
+
+	// Last accepted height persisted so the retry resumes narrowed from 46.
+	if got := engine.LastSyncedHeight(); got != 45 {
+		t.Errorf("LastSyncedHeight = %d, want 45 (last accepted)", got)
+	}
+	if got := engine.loadProgress(); got != 45 {
+		t.Errorf("persisted progress = %d, want 45 (resume boundary)", got)
+	}
+	if got := engine.resumeFrom(); got != 46 {
+		t.Errorf("resumeFrom = %d, want 46 (last accepted + 1)", got)
+	}
+}
+
+// TestBlockSyncEngine_TimeoutReRequestsPending verifies the timeout re-request
+// (design: "10s tick re-requests timed-out pending"; S3): a window whose
+// response never arrived is re-requested after the timeout instead of being
+// abandoned, so catch-up survives a dropped response.
+func TestBlockSyncEngine_TimeoutReRequestsPending(t *testing.T) {
+	pm := NewPeerManager(nil)
+	p2p, err := NewP2PNode(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p2p.Close()
+
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	const peerAddr = "peer-addr"
+	peerID := PeerIDFromBytes([]byte(peerAddr))
+	peer := pm.AddPeer(peerID, peerAddr)
+	peer.mu.Lock()
+	peer.Conn = client
+	peer.SyncHeight = 500
+	peer.State = PeerConnected
+	peer.mu.Unlock()
+
+	p2p.connMu.Lock()
+	p2p.connections[peerAddr] = client
+	p2p.connMu.Unlock()
+
+	engine := NewBlockSyncEngine(pm, p2p, nil)
+	engine.Start()
+	defer engine.Stop()
+
+	// Simulate an in-flight request pending past the timeout.
+	engine.mu.Lock()
+	engine.isSyncing = true
+	engine.targetPeerAddr = peerAddr
+	engine.targetHeight = 500
+	engine.pendingRequests[81] = time.Now().Add(-blockSyncRequestTimeout - time.Second)
+	engine.mu.Unlock()
+
+	got := make(chan []byte, 1)
+	go func() {
+		buf := make([]byte, 4+1+16)
+		if _, err := io.ReadFull(server, buf); err == nil {
+			got <- buf
+		}
+	}()
+
+	engine.recheckPendingRequests()
+
+	select {
+	case buf := <-got:
+		if buf[4] != MsgTypeBlockRangeRequest {
+			t.Fatalf("message type = 0x%02x, want 0x30", buf[4])
+		}
+		start := binary.BigEndian.Uint64(buf[5:13])
+		if start != 81 {
+			t.Errorf("re-request starts at %d, want 81 (timed-out window)", start)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: no re-request observed for the pending window")
+	}
+
+	// The pending entry is refreshed so the next timeout is a full window away.
+	engine.mu.RLock()
+	_, still := engine.pendingRequests[81]
+	engine.mu.RUnlock()
+	if !still {
+		t.Error("pending entry must be refreshed after the re-request")
 	}
 }
 

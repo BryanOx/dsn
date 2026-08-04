@@ -20,6 +20,12 @@ type Config struct {
 	MaxTxPerBlock   int
 	ProposerTimeout time.Duration
 
+	// MaxRound caps the consensus view-change round index. On the round
+	// deadline the node advances its pending round, but never past MaxRound —
+	// at the cap it keeps waiting and re-broadcasting instead of advancing.
+	// Defaults to 8.
+	MaxRound uint32
+
 	// GenesisFile is the path to the genesis JSON file.
 	GenesisFile string
 
@@ -98,14 +104,15 @@ func DefaultConfig() Config {
 		P2PPort:                 0, // 0 = P2P disabled (use env var DSN_P2P_PORT to enable)
 		Validators:              []types.Address{},
 		MaxTxPerBlock:           100,
-		ProposerTimeout:         5 * time.Second,
+		ProposerTimeout:         6 * time.Second,
+		MaxRound:                8,
 		GenesisFile:             "",    // genesis file path
 		ValidatorKeyFile:        "",    // validator key file path
 		MaxPeers:                50,    // max P2P peers
 		MetricsPort:             9464,  // Prometheus metrics port
 		IndexerEnabled:          false, // disabled by default
 		SnapshotInterval:        10,    // snapshot every 10 epochs
-		FastSyncEnabled:         true, // snapshot fast-sync for fresh nodes
+		FastSyncEnabled:         true,  // snapshot fast-sync for fresh nodes
 		TrustedCheckpointHeight: 0,
 		TrustedCheckpointHash:   "",
 		VMTimeoutSeconds:        30,          // 30 second VM execution timeout
@@ -155,8 +162,16 @@ func ConfigFromEnv() Config {
 		}
 	}
 	if v := os.Getenv("DSN_PROPOSER_TIMEOUT"); v != "" {
-		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+		// S9: a timeout base at or below the ±5s clock-skew window
+		// (types.MaxTimestampDrift) cannot distinguish a stalled proposer from
+		// a stale block, so it is rejected by keeping the default.
+		if d, err := time.ParseDuration(v); err == nil && d > types.MaxTimestampDrift {
 			cfg.ProposerTimeout = d
+		}
+	}
+	if v := os.Getenv("DSN_MAX_ROUND"); v != "" {
+		if r, err := strconv.ParseUint(v, 10, 32); err == nil {
+			cfg.MaxRound = uint32(r)
 		}
 	}
 	if v := os.Getenv("DSN_SNAPSHOT_INTERVAL"); v != "" {

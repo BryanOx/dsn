@@ -15,6 +15,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/tetratelabs/wazero v1.8.0
 	go.etcd.io/bbolt v1.4.3
+	golang.org/x/crypto v0.39.0
 	golang.org/x/time v0.15.0
 )
 

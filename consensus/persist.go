@@ -181,8 +181,8 @@ func AtomicStoreBlockAndTip(ps *state.PersistentState, block *types.Block) error
 // encodeHeader serializes a BlockHeader to bytes.
 // Layout: Version(8) + Height(8) + PreviousHash(32) + StateRoot(32) + TxRoot(32) +
 //
-//	ReceiptRoot(32) + ValidatorRoot(32) + ValidatorSetHash(32) + Epoch(8) + Timestamp(8) + Proposer(20) = 244 bytes
-const expectedHeaderLen = 244
+//	ReceiptRoot(32) + ValidatorRoot(32) + ValidatorSetHash(32) + Epoch(8) + Round(4) + Timestamp(8) + Proposer(20) = 248 bytes
+const expectedHeaderLen = 248
 
 // encodeHeader serializes a BlockHeader to bytes.
 func encodeHeader(h *types.BlockHeader) []byte {
@@ -207,6 +207,8 @@ func encodeHeader(h *types.BlockHeader) []byte {
 	offset += 32
 	binary.BigEndian.PutUint64(data[offset:], h.Epoch)
 	offset += 8
+	binary.BigEndian.PutUint32(data[offset:], h.Round)
+	offset += 4
 	binary.BigEndian.PutUint64(data[offset:], h.Timestamp)
 	offset += 8
 	copy(data[offset:], h.Proposer[:])
@@ -242,6 +244,8 @@ func decodeHeader(data []byte) (*types.BlockHeader, error) {
 	offset += 32
 	h.Epoch = binary.BigEndian.Uint64(data[offset:])
 	offset += 8
+	h.Round = binary.BigEndian.Uint32(data[offset:])
+	offset += 4
 	h.Timestamp = binary.BigEndian.Uint64(data[offset:])
 	offset += 8
 	copy(h.Proposer[:], data[offset:])

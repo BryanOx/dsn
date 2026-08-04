@@ -162,6 +162,24 @@ func BuildBlock(s *state.InMemoryState, vm *vm.VM, mp MempoolI, height uint64, p
 	return block, nil
 }
 
+// SetProposalRound stamps a freshly built proposal with the consensus round it
+// was proposed in and re-signs the header. Round is part of HeaderHash, so it
+// must be set before the header is hashed and signed for the proposal to
+// validate against its own HeaderHash.
+func SetProposalRound(block *types.Block, round uint32, signer Signer, hasher types.Hasher) error {
+	block.Header.Round = round
+	headerHash, err := block.HeaderHash(hasher)
+	if err != nil {
+		return err
+	}
+	sig, err := signer.Sign(headerHash)
+	if err != nil {
+		return err
+	}
+	block.Signature = sig
+	return nil
+}
+
 func computeTxRoot(txs []types.Transaction, hasher types.Hasher) types.Hash {
 	if len(txs) == 0 {
 		return types.Hash{}

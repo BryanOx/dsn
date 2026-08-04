@@ -395,15 +395,17 @@ The consensus system is composed of several integrated modules:
 
 ## Key Concepts
 
-- **Round**: A single attempt to produce a block. Each round has a designated proposer and a voting period. If the proposer fails or the block doesn't reach finality, the protocol moves to the next round.
+- **Round**: A single per-height attempt to produce a block. `BlockHeader.Round` carries the round, is hashed into `HeaderHash`, and is the single source of truth for proposer selection, vote matching, and commit proofs. If the round's proposer fails or the block doesn't reach finality, the protocol moves to the next round.
 
-- **View**: A view represents the current state of the consensus for a specific block height. Each view has a round number and a proposer. Views change when the protocol needs to retry block production.
+- **View**: A view represents the current state of the consensus for a specific block height. Each view has a round number and a proposer. The proposer for `(height, round)` is selected by `(height+round) % totalPower` over the active validator set — round 0 reproduces the height-only schedule exactly. Without finalization the node advances to round `r+1` after `ProposerTimeout × (1+r)` (linear backoff), capped by `MaxRound` (default 8). Advancing abandons the old round's vote set and resets the precommit gate while keeping the pending block; a higher-round proposal is adopted only while the node is unvoted in the current round.
 
-- **Proposal**: A block proposed by the designated proposer for a given round. The proposal includes transactions, state root, and metadata required for validation.
+- **Proposal**: A block proposed by the designated proposer for a given round. The proposal includes the header (with its round), transactions, state root, and metadata required for validation.
 
-- **Pre-vote**: The first voting step in the two-phase commit. Validators broadcast a pre-vote for the proposed block after validating it. A block reaches pre-vote majority when 2/3+ of total voting power pre-votes.
+- **Pre-vote**: The first voting step in the two-phase commit. Validators broadcast a pre-vote for the proposed block after validating it. A block reaches pre-vote majority when 2/3+ of total voting power pre-votes for it in the current round.
 
-- **Pre-commit**: The second voting step. After seeing pre-vote majority for a block, validators broadcast a pre-commit. A block reaches pre-commit majority (finality) when 2/3+ of total voting power pre-commits.
+- **Pre-commit**: The second voting step, gated on a 2/3 pre-vote majority for the same block in the current round. A block reaches pre-commit majority (finality) when 2/3+ of total voting power pre-commits it at that round.
+
+- **Cross-round caveat**: A partition could let two different blocks each reach 2/3 pre-commits in different rounds at the same height. The chain stays single-valued via first-arrival and fork-weight tie-breaking, and `k=6` (`finalityK`) remains the finality answer. Tendermint-style locking and amnesia evidence are documented non-goals; double-vote detection is per-`VotingState` and in-memory only.
 
 - **CommitProof**: A cryptographic proof that a block has reached finality, containing the block hash and pre-commits from 2/3+ validators.
 

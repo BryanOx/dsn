@@ -136,6 +136,21 @@ func TestConfigFromEnv_MaxRound(t *testing.T) {
 	}
 }
 
+// TestConfigFromEnv_MaxRoundZeroRejected is the S8 lower-bound test: a
+// configured MaxRound of 0 would pin the pending round at 0 forever (no view
+// change possible), so DSN_MAX_ROUND=0 must be rejected — the default cap stays
+// in effect.
+func TestConfigFromEnv_MaxRoundZeroRejected(t *testing.T) {
+	t.Setenv("DSN_MAX_ROUND", "0")
+	cfg := ConfigFromEnv()
+	if cfg.MaxRound == 0 {
+		t.Fatal("MaxRound = 0: DSN_MAX_ROUND=0 must be rejected (it would pin round 0 forever)")
+	}
+	if want := DefaultConfig().MaxRound; cfg.MaxRound != want {
+		t.Fatalf("MaxRound = %d, want default %d when DSN_MAX_ROUND=0 is rejected", cfg.MaxRound, want)
+	}
+}
+
 func TestConfigFromEnv_InvalidConsensus(t *testing.T) {
 	// Invalid values should be ignored, defaults used
 	t.Setenv("DSN_MAX_TX_PER_BLOCK", "-1")

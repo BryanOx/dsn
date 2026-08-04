@@ -1,6 +1,7 @@
 package node
 
 import (
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -170,8 +171,13 @@ func ConfigFromEnv() Config {
 		}
 	}
 	if v := os.Getenv("DSN_MAX_ROUND"); v != "" {
-		if r, err := strconv.ParseUint(v, 10, 32); err == nil {
+		// A MaxRound of 0 would pin the pending round at 0 forever (no view
+		// change possible), so it is rejected by keeping the default — the
+		// same fallback used for the ≤5s timeout base above.
+		if r, err := strconv.ParseUint(v, 10, 32); err == nil && r >= 1 {
 			cfg.MaxRound = uint32(r)
+		} else if err == nil {
+			log.Printf("[config] DSN_MAX_ROUND=%q rejected: MaxRound must be >= 1; keeping default %d", v, cfg.MaxRound)
 		}
 	}
 	if v := os.Getenv("DSN_SNAPSHOT_INTERVAL"); v != "" {

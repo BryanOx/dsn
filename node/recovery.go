@@ -51,6 +51,16 @@ func (n *Node) Recover() error {
 		return fmt.Errorf("recovery: rebuild SMT: %w", err)
 	}
 
+	// The authoritative consistency check is the TIP block header root: the
+	// persistent root tracks the tip (CommitState runs at every block), while
+	// the latest checkpoint only reflects the last epoch boundary. Comparing
+	// against the checkpoint alone would flag every chain with transactions
+	// applied after a checkpoint as corrupt — those roots legitimately differ.
+	// The checkpoint/snapshot path below only applies when the tip check fails.
+	if tipErr == nil && tip.Height > 0 && stateRoot == tip.StateRoot {
+		return nil // state is consistent at the tip
+	}
+
 	// Verify state against checkpoint if available
 	cp, cpErr := state.LatestCheckpoint(n.persistent)
 	if cpErr != nil {

@@ -589,6 +589,167 @@ func TestConsensus_PrecommitGatedOnPrevoteQuorum(t *testing.T) {
 	require.Equal(t, uint32(0), header.Round, "round-0 finalization needed no view change")
 }
 
+// TestConsensus_EquivocationDroppedRoundAdvances is the S12 dedicated test.
+// A same-round conflicting proposal for the same height is classic
+// equivocation: the node must drop it (no second prevote, no pending-value
+// switch), and with no precommit majority the view change must still advance
+// past the stalled round — the node re-proposes at its next scheduled round and
+// votes exactly once there.
+func TestConsensus_EquivocationDroppedRoundAdvances(t *testing.T) {
+	kpA, kpB := generateTwoValidators(t)
+	cidA := types.DeriveConsensusID(kpA.PublicKey)
+
+	// 500ms base: round 0 lives one tick (wide enough to deliver the conflict
+	// deterministically); A re-proposes at round 2 (its round) after ~2s.
+	nA := newTwoValidatorNodeTimeout(t, kpA, kpA, kpB, 5, 500*time.Millisecond)
+	defer nA.Close()
+
+	nA.StartConsensus()
+	defer nA.StopConsensus()
+
+	// Round 0: A proposes height 1 and prevotes; B stays offline so no
+	// precommit majority ever forms.
+	require.Eventually(t, func() bool {
+		nA.voteMu.Lock()
+		defer nA.voteMu.Unlock()
+		return nA.pendingHeight == 1 && nA.pendingBlock != nil && nA.voting != nil && nA.pendingRound == 0
+	}, 10*time.Second, 20*time.Millisecond)
+
+	nA.voteMu.Lock()
+	originalHash := nA.pendingHash
+	originalRound := nA.pendingRound
+	nA.voteMu.Unlock()
+
+	// A conflicting round-0 proposal for the same height: same proposer, same
+	// round, different hash. A shallow copy mutated only in timestamp hashes
+	// differently while remaining the same proof-less proposal structure.
+	nA.voteMu.Lock()
+	conflicting := *nA.pendingBlock
+	nA.voteMu.Unlock()
+	conflicting.Header.Timestamp -= 1
+	conflictHash, err := conflicting.HeaderHash(nA.hasher)
+	require.NoError(t, err)
+	require.NotEqual(t, originalHash, conflictHash, "conflicting proposal must carry a different hash")
+
+	// S12: the equivocation is dropped at the node's adopt-or-drop decision
+	// point — pending value stays, the round counter stays, no second vote.
+	nA.handleProposalWithSnap(&conflicting, nil)
+
+	nA.voteMu.Lock()
+	require.Equal(t, originalHash, nA.pendingHash, "conflicting round-r proposal must be dropped (S12)")
+	require.Equal(t, originalRound, nA.pendingRound, "a dropped equivocation must not advance the round")
+	prevotes := nA.voting.Prevotes()
+	nA.voteMu.Unlock()
+	require.Len(t, prevotes, 1, "the node must have voted exactly once in round r (S12)")
+	require.Equal(t, originalHash, prevotes[0].BlockHash, "the single round-r prevote must target the original value")
+
+	// No precommit majority, so after the deadline the view change advances
+	// past the equivocated round: A re-proposes at round 2 and votes once.
+	require.Eventually(t, func() bool {
+		nA.voteMu.Lock()
+		defer nA.voteMu.Unlock()
+		return nA.pendingRound == 2 && nA.pendingBlock != nil &&
+			nA.pendingBlock.Header.Round == 2 && nA.voting != nil
+	}, 15*time.Second, 20*time.Millisecond)
+
+	nA.voteMu.Lock()
+	newPrevotes := nA.voting.Prevotes()
+	newHash := nA.pendingHash
+	nA.voteMu.Unlock()
+	require.Len(t, newPrevotes, 1, "the node must vote at most once in round r+1 (S12)")
+	require.Equal(t, cidA, newPrevotes[0].Validator, "the new-round prevote must be A's own")
+	require.Equal(t, newHash, newPrevotes[0].BlockHash, "the new-round prevote must target the round r+1 value")
+}
+
+// TestConsensus_OneVotePerHeightAndRound is the S7 node-level test: a
+// validator votes at most once per (height, round). The proposer prevotes once
+// when the round opens and precommits once when the 2/3 prevote gate is met;
+// re-broadcasts of the same round-r vote are dropped by VotingState, so power
+// is never double-counted and the round finalizes exactly once.
+func TestConsensus_OneVotePerHeightAndRound(t *testing.T) {
+	kpA, kpB := generateTwoValidators(t)
+	cidA := types.DeriveConsensusID(kpA.PublicKey)
+	cidB := types.DeriveConsensusID(kpB.PublicKey)
+
+	// 3s base keeps A on round 0 for the entire assertion window.
+	nA := newTwoValidatorNodeTimeout(t, kpA, kpA, kpB, 5, 3*time.Second)
+	defer nA.Close()
+
+	nA.StartConsensus()
+	defer nA.StopConsensus()
+
+	// A proposes round 0 and prevotes once (100k of 200k power).
+	require.Eventually(t, func() bool {
+		nA.voteMu.Lock()
+		defer nA.voteMu.Unlock()
+		return nA.pendingHeight == 1 && nA.pendingBlock != nil && nA.voting != nil
+	}, 10*time.Second, 20*time.Millisecond)
+
+	nA.voteMu.Lock()
+	hash := nA.pendingHash
+	round := nA.pendingRound
+	nA.voteMu.Unlock()
+
+	// B's prevote crosses the 2/3 prevote gate; A precommits exactly once.
+	prevote := &types.Vote{VoteType: types.VotePrevote, Height: 1, Round: round, BlockHash: hash, Validator: cidB}
+	require.NoError(t, prevote.Sign(kpB.PrivateKey[:]))
+	nA.handleVoteMessage(prevote)
+
+	nA.voteMu.Lock()
+	precommitPower := nA.voting.PrecommitPower()
+	selfPrecommits := 0
+	for _, pc := range nA.voting.Precommits() {
+		if pc.Validator == cidA {
+			selfPrecommits++
+		}
+	}
+	nA.voteMu.Unlock()
+	require.Equal(t, uint64(100_000), precommitPower, "A must precommit once when the gate is met")
+	require.Equal(t, 1, selfPrecommits, "A must not precommit more than once per (height, round)")
+
+	// S7: re-broadcasting the same prevote is dropped — power is not counted
+	// twice and the vote set stays single-valued.
+	nA.handleVoteMessage(prevote)
+	nA.voteMu.Lock()
+	prevotePower := nA.voting.PrevotePower()
+	prevoteCount := len(nA.voting.Prevotes())
+	nA.voteMu.Unlock()
+	require.Equal(t, uint64(200_000), prevotePower, "duplicate round-r prevote must not double-count power")
+	require.Equal(t, 2, prevoteCount, "exactly one prevote per validator")
+
+	// The proposer's own prevote, re-broadcast alongside the proposal, is
+	// dropped the same way and must not double A's precommit.
+	nA.voteMu.Lock()
+	var ownPrevote *types.Vote
+	for _, v := range nA.voting.Prevotes() {
+		if v.Validator == cidA {
+			ownPrevote = v
+		}
+	}
+	nA.voteMu.Unlock()
+	require.NotNil(t, ownPrevote, "A must have prevoted its round-0 proposal")
+	nA.handleVoteMessage(ownPrevote)
+	nA.voteMu.Lock()
+	require.Equal(t, uint64(200_000), nA.voting.PrevotePower(), "re-broadcast own prevote must be dropped")
+	require.Equal(t, uint64(100_000), nA.voting.PrecommitPower(), "A must not precommit twice")
+	nA.voteMu.Unlock()
+
+	// B's precommit closes the round; the SAME precommit delivered again is
+	// dropped (the round is reset after finalization), so there is exactly one
+	// round-0 value on the chain.
+	precommit := &types.Vote{VoteType: types.VotePrecommit, Height: 1, Round: round, BlockHash: hash, Validator: cidB}
+	require.NoError(t, precommit.Sign(kpB.PrivateKey[:]))
+	nA.handleVoteMessage(precommit)
+	require.Eventually(t, func() bool { return nA.CurrentHeight() >= 1 }, 10*time.Second, 20*time.Millisecond)
+
+	nA.handleVoteMessage(precommit)
+	require.Equal(t, uint64(1), nA.CurrentHeight(), "duplicate round-r precommit must not re-finalize or corrupt state")
+
+	header, err := consensus.LoadBlockHeader(nA.persistent, 1)
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), header.Round, "round-0 finalization needed no view change")
+}
+
 // TestConsensus_AcceptsHigherRoundProposalAfterVotingRoundZero is the S6/S13
 // RED test for the receiver path: a node that already voted round 0 must
 // accept a round-1 proposal (higher round) and switch its pending value, so a

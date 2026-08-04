@@ -1475,16 +1475,21 @@ curl -X POST http://localhost:8545 \
 2. Store on encrypted media (USB drive, hardware wallet).
 3. Keep the address handy — it's not derivable from memory if you lose the file.
 
-### Recovery Risk
+### Wallet Recovery (BIP-39 Mnemonic)
 
-Without the key file, there is **no recovery mechanism**. No mnemonic, no seed phrase. Loss of `wallet.json` means permanent loss of access.
+`dsn wallet generate` now creates an encrypted keystore and prints a 12-word BIP-39 recovery mnemonic exactly once. This mnemonic is the **only** way to recover your wallet if the key file is lost — write it down and store it offline immediately.
+
+`dsn wallet migrate` encrypts legacy plaintext wallets in place (the original is preserved as a `.bak` file). After migration, you will be prompted for a passphrase whenever you sign a transaction.
+
+For programmatic access, the Go SDK provides `NewKeyFromBIP39Mnemonic`, `GenerateMnemonic`, and `RestoreFromMnemonic` in the `sdk` package. The legacy `NewKeyFromMnemonic` (SHA-256 derivation) is deprecated but remains available for backward compatibility.
 
 ### Backup Checklist
 
-- [ ] Copy `wallet.json` to encrypted USB drive
-- [ ] Record the 0x address separately (printed during generation)
+- [ ] Write down the 12-word mnemonic and store it offline (it is never saved to disk)
+- [ ] Copy `wallet.json` (or the mnemonic) to encrypted USB drive
+- [ ] Record the 0x address separately
 - [ ] Store a second backup in a different physical location
-- [ ] Test key loading on a separate machine with `LoadKey()`
+- [ ] Test wallet restore on a separate machine with `dsn wallet restore --mnemonic "..."`
 
 ---
 

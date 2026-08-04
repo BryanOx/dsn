@@ -2084,18 +2084,19 @@ Keys are managed through the wallet subsystem:
 
 ```
 Key Management Flow:
-1. Wallet generates secp256k1 key pair (private key → public key)
-2. Public key is hashed (keccak256) to produce address (last 20 bytes)
-3. Private key is stored encrypted at rest (configurable encryption)
-4. Signing operations use the private key to produce signatures
-5. Public key is recoverable from any valid signature (ECDSA recovery)
+1. Wallet generates Ed25519 key pair (private key → public key)
+2. Public key is hashed to produce address (first 20 bytes)
+3. Private key is stored in an encrypted keystore (scrypt + AES-256-GCM)
+4. A 12-word BIP-39 mnemonic is generated for offline backup and recovery
+5. Signing operations use the private key to produce signatures
 ```
 
 The `wallet` package provides:
-- Key generation: `wallet.Generate()`
-- Key import/export: `wallet.Import()`, `wallet.Export()`
-- Signing: `wallet.Sign(tx, privateKey)`
-- Nonce management: `wallet.NextNonce(address)`
+- Key generation: `wallet.GenerateKey()`
+- Encrypted keystore: `wallet.SaveKeystore()` / `wallet.LoadKeyFile()`
+- BIP-39 recovery: `wallet.KeyFromMnemonic()` derives keys from a mnemonic phrase
+- Signing: `wallet.Sign(tx, hasher)`
+- Migration: `wallet.Migrate()` encrypts legacy plaintext wallets in place
 
 **29.3 Signature Verification**
 

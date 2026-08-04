@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dsn/dsn/indexer"
-	"github.com/dsn/dsn/rpc/service"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/indexer"
+	"github.com/BryanOx/dsn/rpc/service"
+	"github.com/BryanOx/dsn/types"
 	"github.com/gorilla/mux"
 )
 

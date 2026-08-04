@@ -8,10 +8,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/dsn/dsn/config"
-	"github.com/dsn/dsn/node"
-	"github.com/dsn/dsn/rpc"
-	"github.com/dsn/dsn/rpc/service"
+	"github.com/BryanOx/dsn/config"
+	"github.com/BryanOx/dsn/node"
+	"github.com/BryanOx/dsn/rpc"
+	"github.com/BryanOx/dsn/rpc/service"
 	"github.com/spf13/cobra"
 )
 

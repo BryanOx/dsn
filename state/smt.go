@@ -1,7 +1,7 @@
 package state
 
 import (
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 const smtDepth = 256

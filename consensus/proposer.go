@@ -1,8 +1,8 @@
 package consensus
 
 import (
-	"github.com/dsn/dsn/staking"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/staking"
+	"github.com/BryanOx/dsn/types"
 )
 
 // WeightedProposerAtHeight selects a proposer using voting-power-weighted round-robin.

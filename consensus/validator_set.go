@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"sort"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // SortedValidators returns a copy of validators sorted by ConsensusID.

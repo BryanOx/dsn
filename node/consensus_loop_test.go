@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dsn/dsn/consensus"
-	"github.com/dsn/dsn/network"
-	"github.com/dsn/dsn/staking"
-	"github.com/dsn/dsn/types"
-	"github.com/dsn/dsn/wallet"
+	"github.com/BryanOx/dsn/consensus"
+	"github.com/BryanOx/dsn/network"
+	"github.com/BryanOx/dsn/staking"
+	"github.com/BryanOx/dsn/types"
+	"github.com/BryanOx/dsn/wallet"
 	"github.com/stretchr/testify/require"
 )
 

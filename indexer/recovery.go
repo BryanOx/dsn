@@ -3,7 +3,7 @@ package indexer
 import (
 	"log"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // Recover performs catch-up recovery on startup.

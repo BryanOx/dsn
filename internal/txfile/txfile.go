@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // TransactionFile represents a transaction in a portable JSON file format.

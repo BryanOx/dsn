@@ -5,8 +5,8 @@ package integration
 import (
 	"testing"
 
-	"github.com/dsn/dsn/types"
-	"github.com/dsn/dsn/wallet"
+	"github.com/BryanOx/dsn/types"
+	"github.com/BryanOx/dsn/wallet"
 	"github.com/stretchr/testify/require"
 )
 

@@ -5,7 +5,7 @@ package benchmarks
 import (
 	"testing"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // BenchmarkWASMExec_Simple measures WASM execution performance.

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dsn/dsn/telemetry"
+	"github.com/BryanOx/dsn/telemetry"
 	"github.com/gorilla/websocket"
 )
 

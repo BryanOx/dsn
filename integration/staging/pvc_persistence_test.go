@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dsn/dsn/wallet"
+	"github.com/BryanOx/dsn/wallet"
 	"github.com/stretchr/testify/require"
 )
 

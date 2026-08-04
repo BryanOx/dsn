@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/dsn/dsn/tools/soakrunner/pkg/harness"
+	"github.com/BryanOx/dsn/tools/soakrunner/pkg/harness"
 	"github.com/spf13/cobra"
 )
 

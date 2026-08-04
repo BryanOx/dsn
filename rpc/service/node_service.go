@@ -9,9 +9,9 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/dsn/dsn/node"
-	"github.com/dsn/dsn/staking"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/node"
+	"github.com/BryanOx/dsn/staking"
+	"github.com/BryanOx/dsn/types"
 )
 
 var (

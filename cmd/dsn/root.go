@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dsn/dsn/config"
+	"github.com/BryanOx/dsn/config"
 	"github.com/spf13/cobra"
 )
 

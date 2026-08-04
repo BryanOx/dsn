@@ -4,8 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/dsn/dsn/staking"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/staking"
+	"github.com/BryanOx/dsn/types"
 )
 
 // evidenceProcessedKey returns the kvstore key for tracking processed evidence.

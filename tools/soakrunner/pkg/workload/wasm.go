@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // WASMConfig holds configuration for WASM workload

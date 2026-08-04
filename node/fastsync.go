@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dsn/dsn/consensus"
-	"github.com/dsn/dsn/network"
-	"github.com/dsn/dsn/state"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/consensus"
+	"github.com/BryanOx/dsn/network"
+	"github.com/BryanOx/dsn/state"
+	"github.com/BryanOx/dsn/types"
 )
 
 // SyncMode represents the synchronization mode of the node.

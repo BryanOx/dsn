@@ -3,9 +3,9 @@ package consensus
 import (
 	"fmt"
 
-	"github.com/dsn/dsn/state"
-	"github.com/dsn/dsn/types"
-	"github.com/dsn/dsn/vm"
+	"github.com/BryanOx/dsn/state"
+	"github.com/BryanOx/dsn/types"
+	"github.com/BryanOx/dsn/vm"
 )
 
 // TxExecution captures the outcome of applying a single transaction.

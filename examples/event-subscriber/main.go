@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dsn/dsn/sdk"
+	"github.com/BryanOx/dsn/sdk"
 )
 
 func main() {

@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dsn/dsn/types"
-	"github.com/dsn/dsn/wallet"
+	"github.com/BryanOx/dsn/types"
+	"github.com/BryanOx/dsn/wallet"
 )
 
 func TestParseFile_MissingSender(t *testing.T) {

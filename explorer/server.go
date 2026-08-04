@@ -9,8 +9,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dsn/dsn/indexer"
-	"github.com/dsn/dsn/rpc/service"
+	"github.com/BryanOx/dsn/indexer"
+	"github.com/BryanOx/dsn/rpc/service"
 	"github.com/gorilla/mux"
 )
 

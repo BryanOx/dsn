@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/dsn/dsn/indexer"
-	"github.com/dsn/dsn/rpc/middleware"
-	"github.com/dsn/dsn/rpc/service"
-	"github.com/dsn/dsn/telemetry"
+	"github.com/BryanOx/dsn/indexer"
+	"github.com/BryanOx/dsn/rpc/middleware"
+	"github.com/BryanOx/dsn/rpc/service"
+	"github.com/BryanOx/dsn/telemetry"
 	"github.com/gorilla/mux"
 )
 

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // BenchmarkBuildBlock_Empty measures the cost of building a block with no transactions.

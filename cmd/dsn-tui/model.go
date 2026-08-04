@@ -4,9 +4,9 @@ import (
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/dsn/dsn/cmd/dsn-tui/client"
-	"github.com/dsn/dsn/cmd/dsn-tui/screens"
-	"github.com/dsn/dsn/wallet"
+	"github.com/BryanOx/dsn/cmd/dsn-tui/client"
+	"github.com/BryanOx/dsn/cmd/dsn-tui/screens"
+	"github.com/BryanOx/dsn/wallet"
 )
 
 // rootModel is the top-level Bubbletea model.

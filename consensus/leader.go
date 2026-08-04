@@ -1,6 +1,6 @@
 package consensus
 
-import "github.com/dsn/dsn/types"
+import "github.com/BryanOx/dsn/types"
 
 // ProposerAtHeight returns the validator address that should propose a block at the given height.
 // Panics if validators is empty (programming error — should never happen at runtime).

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dsn/dsn/internal/txfile"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/internal/txfile"
+	"github.com/BryanOx/dsn/types"
 	"github.com/spf13/cobra"
 )
 

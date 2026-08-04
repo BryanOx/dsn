@@ -8,7 +8,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/dsn/dsn/rpc/service"
+	"github.com/BryanOx/dsn/rpc/service"
 )
 
 // Handler wraps a NodeService for HTTP handling.

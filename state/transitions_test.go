@@ -3,7 +3,7 @@ package state
 import (
 	"testing"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 func TestTransfer_Success(t *testing.T) {

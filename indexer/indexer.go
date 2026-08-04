@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/dsn/dsn/telemetry"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/telemetry"
+	"github.com/BryanOx/dsn/types"
 	"go.etcd.io/bbolt"
 )
 

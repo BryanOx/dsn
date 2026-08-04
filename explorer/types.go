@@ -3,7 +3,7 @@ package explorer
 import (
 	"encoding/hex"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // BlockSummary represents a summary of a block for list views.

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // KVStore is the subset of state functionality needed for validator registry operations.

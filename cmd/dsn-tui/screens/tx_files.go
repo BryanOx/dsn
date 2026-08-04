@@ -8,10 +8,10 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/dsn/dsn/cmd/dsn-tui/client"
-	"github.com/dsn/dsn/internal/txfile"
-	"github.com/dsn/dsn/types"
-	"github.com/dsn/dsn/wallet"
+	"github.com/BryanOx/dsn/cmd/dsn-tui/client"
+	"github.com/BryanOx/dsn/internal/txfile"
+	"github.com/BryanOx/dsn/types"
+	"github.com/BryanOx/dsn/wallet"
 )
 
 type txFilesState int

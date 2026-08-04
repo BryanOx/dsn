@@ -5,7 +5,7 @@ package benchmarks
 import (
 	"testing"
 
-	"github.com/dsn/dsn/state"
+	"github.com/BryanOx/dsn/state"
 )
 
 // BenchmarkSMTUpdate measures the cost of updating a single key in the SMT.

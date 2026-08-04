@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/dsn/dsn/staking"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/staking"
+	"github.com/BryanOx/dsn/types"
 )
 
 // VotingThresholdNumerator is the numerator for the 2/3 threshold.

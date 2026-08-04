@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dsn/dsn/consensus"
-	"github.com/dsn/dsn/state"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/consensus"
+	"github.com/BryanOx/dsn/state"
+	"github.com/BryanOx/dsn/types"
 	"go.etcd.io/bbolt"
 )
 

@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dsn/dsn/staking"
-	"github.com/dsn/dsn/state"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/staking"
+	"github.com/BryanOx/dsn/state"
+	"github.com/BryanOx/dsn/types"
 	"go.etcd.io/bbolt"
 )
 

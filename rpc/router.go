@@ -3,10 +3,10 @@ package rpc
 import (
 	"net/http"
 
-	"github.com/dsn/dsn/rpc/middleware"
-	"github.com/dsn/dsn/rpc/service"
-	"github.com/dsn/dsn/rpc/ws"
-	"github.com/dsn/dsn/telemetry"
+	"github.com/BryanOx/dsn/rpc/middleware"
+	"github.com/BryanOx/dsn/rpc/service"
+	"github.com/BryanOx/dsn/rpc/ws"
+	"github.com/BryanOx/dsn/telemetry"
 	"github.com/gorilla/mux"
 )
 

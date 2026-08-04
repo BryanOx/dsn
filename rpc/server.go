@@ -7,10 +7,10 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/dsn/dsn/node"
-	"github.com/dsn/dsn/rpc/middleware"
-	"github.com/dsn/dsn/rpc/service"
-	"github.com/dsn/dsn/rpc/ws"
+	"github.com/BryanOx/dsn/node"
+	"github.com/BryanOx/dsn/rpc/middleware"
+	"github.com/BryanOx/dsn/rpc/service"
+	"github.com/BryanOx/dsn/rpc/ws"
 )
 
 type RPCRequest struct {

@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dsn/dsn/internal/txfile"
-	"github.com/dsn/dsn/types"
-	"github.com/dsn/dsn/wallet"
+	"github.com/BryanOx/dsn/internal/txfile"
+	"github.com/BryanOx/dsn/types"
+	"github.com/BryanOx/dsn/wallet"
 	"github.com/spf13/cobra"
 )
 

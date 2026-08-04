@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dsn/dsn/types"
-	wallet2 "github.com/dsn/dsn/wallet"
+	"github.com/BryanOx/dsn/types"
+	wallet2 "github.com/BryanOx/dsn/wallet"
 	"github.com/spf13/cobra"
 )
 

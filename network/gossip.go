@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dsn/dsn/consensus"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/consensus"
+	"github.com/BryanOx/dsn/types"
 )
 
 // TokenBucket implements a token bucket rate limiter.

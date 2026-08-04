@@ -3,8 +3,8 @@ package screens
 import (
 	"fmt"
 
-	"github.com/dsn/dsn/cmd/dsn-tui/client"
-	"github.com/dsn/dsn/wallet"
+	"github.com/BryanOx/dsn/cmd/dsn-tui/client"
+	"github.com/BryanOx/dsn/wallet"
 )
 
 // WalletModel shows wallet information.

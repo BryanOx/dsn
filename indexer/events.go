@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 	"go.etcd.io/bbolt"
 )
 

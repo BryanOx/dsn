@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/dsn/dsn/node"
+	"github.com/BryanOx/dsn/node"
 )
 
 func TestNewServer(t *testing.T) {

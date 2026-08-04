@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // TestGenesisHash_Deterministic tests that HashGenesis() always returns

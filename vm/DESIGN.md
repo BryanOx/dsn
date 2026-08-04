@@ -20,7 +20,7 @@ vm/
 └── contract.go    # Deploy helpers, DeriveContractID
 ```
 
-All packages import `github.com/dsn/dsn/types`, `github.com/dsn/dsn/state`, and `github.com/tetratelabs/wazero`.
+All packages import `github.com/BryanOx/dsn/types`, `github.com/BryanOx/dsn/state`, and `github.com/tetratelabs/wazero`.
 
 ---
 
@@ -112,8 +112,8 @@ package vm
 
 import (
     "context"
-    "github.com/dsn/dsn/types"
-    "github.com/dsn/dsn/state"
+    "github.com/BryanOx/dsn/types"
+    "github.com/BryanOx/dsn/state"
     "github.com/tetratelabs/wazero"
 )
 
@@ -982,7 +982,7 @@ wazero is a pure-Go WASM runtime with zero platform dependencies, deterministic 
 
 ## 18. Open Questions
 
-1. **ABI encoding**: Define a standard ABI for WASM contract arguments (similar to Ethereum's ABI). Options: minimal binary encoding (type-length-value), or use `github.com/dsn/dsn/types` binary serialization patterns.
+1. **ABI encoding**: Define a standard ABI for WASM contract arguments (similar to Ethereum's ABI). Options: minimal binary encoding (type-length-value), or use `github.com/BryanOx/dsn/types` binary serialization patterns.
 2. **Contract address vs ContractID**: Contracts that hold tokens need an Address (20 bytes). Proposal: `ContractAddress = Address(ContractID[:20])` — take first 20 bytes of the 32-byte ID and register as an account on first transfer.
 3. **Revert semantics**: Should storage writes roll back on revert? Yes — the `ExecutionResult.Reverted = true` signals that all state mutations from the call are discarded. Implementation: snapshot state before call, restore on revert.
 4. **WASM SDK**: Provide a TinyGo/Rust SDK with the `dsn` host import wrappers for contract developers.

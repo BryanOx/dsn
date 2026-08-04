@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 const (

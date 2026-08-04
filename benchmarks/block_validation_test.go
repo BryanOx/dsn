@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // BenchmarkValidateBlock_10 measures the cost of validating a block with 10 transactions.

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dsn/dsn/genesis"
+	"github.com/BryanOx/dsn/genesis"
 )
 
 // TestGenerateLocalnet_Validates tests that GenerateLocalnet produces a genesis

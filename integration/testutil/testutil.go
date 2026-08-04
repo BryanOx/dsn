@@ -12,13 +12,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dsn/dsn/consensus"
-	"github.com/dsn/dsn/genesis"
-	"github.com/dsn/dsn/node"
-	"github.com/dsn/dsn/state"
-	"github.com/dsn/dsn/types"
-	"github.com/dsn/dsn/vm"
-	"github.com/dsn/dsn/wallet"
+	"github.com/BryanOx/dsn/consensus"
+	"github.com/BryanOx/dsn/genesis"
+	"github.com/BryanOx/dsn/node"
+	"github.com/BryanOx/dsn/state"
+	"github.com/BryanOx/dsn/types"
+	"github.com/BryanOx/dsn/vm"
+	"github.com/BryanOx/dsn/wallet"
 )
 
 // TestNode wraps a node.Node for integration tests

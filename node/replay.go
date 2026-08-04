@@ -3,8 +3,8 @@ package node
 import (
 	"fmt"
 
-	"github.com/dsn/dsn/consensus"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/consensus"
+	"github.com/BryanOx/dsn/types"
 )
 
 // ReplayBlocks re-executes blocks from fromHeight to toHeight (inclusive)

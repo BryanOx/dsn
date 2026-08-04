@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // ValidatorStatus represents the current state of a validator in its lifecycle.

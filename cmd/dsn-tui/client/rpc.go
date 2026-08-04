@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // RPCRequest is a JSON-RPC 2.0 request.

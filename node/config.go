@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 type Config struct {

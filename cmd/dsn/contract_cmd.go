@@ -9,9 +9,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dsn/dsn/types"
-	"github.com/dsn/dsn/vm"
-	wallet2 "github.com/dsn/dsn/wallet"
+	"github.com/BryanOx/dsn/types"
+	"github.com/BryanOx/dsn/vm"
+	wallet2 "github.com/BryanOx/dsn/wallet"
 	"github.com/spf13/cobra"
 )
 

@@ -1723,7 +1723,7 @@ The Go SDK provides a full-featured client for interacting with the DSN network.
 ### Installation
 
 ```bash
-import "github.com/dsn/dsn/sdk"
+import "github.com/BryanOx/dsn/sdk"
 ```
 
 ### Initialization
@@ -1986,7 +1986,7 @@ The WASM SDK is used for **writing contracts** in Go. It provides helper functio
 ### Installation
 
 ```go
-import "github.com/dsn/dsn/sdk/wasm"
+import "github.com/BryanOx/dsn/sdk/wasm"
 ```
 
 ### Build Requirements
@@ -2064,7 +2064,7 @@ err := wasm.TransferUint64(recipient [20]byte, amount uint64)
 package main
 
 import (
-    "github.com/dsn/dsn/sdk/wasm"
+    "github.com/BryanOx/dsn/sdk/wasm"
 )
 
 func main() {}
@@ -2141,7 +2141,7 @@ package main
 import (
 	"encoding/binary"
 
-	"github.com/dsn/dsn/sdk/wasm"
+	"github.com/BryanOx/dsn/sdk/wasm"
 )
 
 // State keys

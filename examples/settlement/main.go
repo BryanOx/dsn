@@ -3,7 +3,7 @@
 package main
 
 import (
-	"github.com/dsn/dsn/sdk/wasm"
+	"github.com/BryanOx/dsn/sdk/wasm"
 )
 
 // State keys

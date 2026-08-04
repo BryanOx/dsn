@@ -3,7 +3,7 @@ package screens
 import (
 	"fmt"
 
-	"github.com/dsn/dsn/cmd/dsn-tui/client"
+	"github.com/BryanOx/dsn/cmd/dsn-tui/client"
 )
 
 // DashboardModel shows node status overview.

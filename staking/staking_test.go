@@ -3,8 +3,8 @@ package staking
 import (
 	"testing"
 
-	"github.com/dsn/dsn/state"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/state"
+	"github.com/BryanOx/dsn/types"
 )
 
 // testStakingState implements StakingState using the real state package.

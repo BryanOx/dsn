@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	wallet2 "github.com/dsn/dsn/wallet"
+	wallet2 "github.com/BryanOx/dsn/wallet"
 	"github.com/spf13/cobra"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // ValidatorFlags holds flags for validator commands.

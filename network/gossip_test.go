@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // newMockP2PNode creates a P2PNode for testing (listens on port 0).

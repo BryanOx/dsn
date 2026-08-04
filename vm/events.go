@@ -3,7 +3,7 @@ package vm
 import (
 	"sync"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // EventLog collects deterministic events during contract execution.

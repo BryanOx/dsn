@@ -1,8 +1,8 @@
 package node
 
 import (
-	"github.com/dsn/dsn/consensus"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/consensus"
+	"github.com/BryanOx/dsn/types"
 )
 
 // decodeSyncedBlock decodes a block served by a peer during block sync. The

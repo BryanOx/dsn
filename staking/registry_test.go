@@ -3,7 +3,7 @@ package staking
 import (
 	"testing"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // testKVStore is a simple in-memory KVStore implementation for testing.

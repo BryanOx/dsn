@@ -30,7 +30,7 @@ The DSN Sandbox is a public test network for developers to experiment with DSN's
 ### 1. Install DSN
 
 ```bash
-git clone https://github.com/dsn/dsn.git
+git clone https://github.com/BryanOx/dsn.git
 cd dsn
 make install
 ```
@@ -162,7 +162,7 @@ See SANDBOX_KNOWN_LIMITATIONS.md in the DSN repository.
 
 ## Support
 
-- GitHub Issues: https://github.com/dsn/dsn/issues
+- GitHub Issues: https://github.com/BryanOx/dsn/issues
 - Discord: https://discord.gg/dsn-network
 
 ## File Structure

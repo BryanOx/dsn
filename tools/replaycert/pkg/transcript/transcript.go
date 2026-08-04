@@ -7,7 +7,7 @@ import (
 
 	"golang.org/x/crypto/blake2b"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // Transcript represents a complete execution transcript for a block.

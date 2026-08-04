@@ -10,16 +10,16 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/dsn/dsn/consensus"
-	"github.com/dsn/dsn/genesis"
-	"github.com/dsn/dsn/indexer"
-	"github.com/dsn/dsn/mempool"
-	"github.com/dsn/dsn/network"
-	"github.com/dsn/dsn/staking"
-	"github.com/dsn/dsn/state"
-	"github.com/dsn/dsn/types"
-	"github.com/dsn/dsn/vm"
-	"github.com/dsn/dsn/wallet"
+	"github.com/BryanOx/dsn/consensus"
+	"github.com/BryanOx/dsn/genesis"
+	"github.com/BryanOx/dsn/indexer"
+	"github.com/BryanOx/dsn/mempool"
+	"github.com/BryanOx/dsn/network"
+	"github.com/BryanOx/dsn/staking"
+	"github.com/BryanOx/dsn/state"
+	"github.com/BryanOx/dsn/types"
+	"github.com/BryanOx/dsn/vm"
+	"github.com/BryanOx/dsn/wallet"
 )
 
 // Node represents a DSN node that ties together state, mempool, and networking.

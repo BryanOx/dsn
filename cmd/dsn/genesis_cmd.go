@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dsn/dsn/dev/localnet"
-	"github.com/dsn/dsn/genesis"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/dev/localnet"
+	"github.com/BryanOx/dsn/genesis"
+	"github.com/BryanOx/dsn/types"
 	"github.com/spf13/cobra"
 )
 

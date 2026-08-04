@@ -1,4 +1,4 @@
-module github.com/dsn/dsn
+module github.com/BryanOx/dsn
 
 go 1.25.7
 

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dsn/dsn/integration"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/integration"
+	"github.com/BryanOx/dsn/types"
 	"github.com/stretchr/testify/require"
 )
 

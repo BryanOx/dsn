@@ -34,7 +34,7 @@
 
 | Package | Status | Duration |
 |---------|--------|----------|
-| Root (github.com/dsn/dsn) | ✅ PASS | ~2.2s |
+| Root (github.com/BryanOx/dsn) | ✅ PASS | ~2.2s |
 | config | ✅ PASS | ~1.4s |
 | consensus | ✅ PASS | ~1.3s |
 | genesis | ✅ PASS | ~0.7s |

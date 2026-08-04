@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/crypto/blake2b"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // HashTranscript computes the BLAKE2b hash of raw transaction execution data.

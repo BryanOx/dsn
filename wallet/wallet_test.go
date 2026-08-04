@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 func TestGenerateKey(t *testing.T) {

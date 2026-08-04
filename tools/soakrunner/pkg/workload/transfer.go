@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // TransferConfig holds configuration for transfer workload

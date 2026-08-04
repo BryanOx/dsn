@@ -3,7 +3,7 @@ package state
 import (
 	"fmt"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // Transfer moves `amount` DSN from `from` to `to`.

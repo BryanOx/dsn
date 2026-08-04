@@ -3,7 +3,7 @@ package staking
 import (
 	"testing"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 func TestGetTreasuryBalance_Default(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 	"golang.org/x/time/rate"
 )
 

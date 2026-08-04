@@ -2,7 +2,7 @@
 
 package main
 
-import "github.com/dsn/dsn/sdk/wasm"
+import "github.com/BryanOx/dsn/sdk/wasm"
 
 // State keys
 var (

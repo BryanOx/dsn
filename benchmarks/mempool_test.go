@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dsn/dsn/mempool"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/mempool"
+	"github.com/BryanOx/dsn/types"
 )
 
 // BenchmarkMempoolInsert measures the cost of inserting transactions into the mempool.

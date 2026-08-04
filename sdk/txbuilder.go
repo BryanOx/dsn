@@ -10,8 +10,8 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/dsn/dsn/types"
-	"github.com/dsn/dsn/wallet"
+	"github.com/BryanOx/dsn/types"
+	"github.com/BryanOx/dsn/wallet"
 )
 
 // TxBuilder is a fluent builder for transactions.

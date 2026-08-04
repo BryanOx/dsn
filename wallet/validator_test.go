@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // TestValidatorKey_GenerateAndSaveAndLoad tests the full round-trip of

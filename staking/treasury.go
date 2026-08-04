@@ -3,8 +3,8 @@ package staking
 import (
 	"fmt"
 
-	"github.com/dsn/dsn/state"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/state"
+	"github.com/BryanOx/dsn/types"
 )
 
 // TreasuryAddress is the canonical zero address used for the protocol treasury.

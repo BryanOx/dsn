@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dsn/dsn/state"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/state"
+	"github.com/BryanOx/dsn/types"
 )
 
 // setupSnapshotServer builds a P2PNode whose FastSyncEngine serves a stored

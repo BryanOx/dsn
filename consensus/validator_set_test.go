@@ -3,7 +3,7 @@ package consensus
 import (
 	"testing"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 func TestValidatorRoot_Empty(t *testing.T) {

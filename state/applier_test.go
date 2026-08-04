@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 func TestApplyTransaction_Valid(t *testing.T) {

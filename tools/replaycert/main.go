@@ -9,10 +9,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dsn/dsn/tools/replaycert/pkg/compare"
-	"github.com/dsn/dsn/tools/replaycert/pkg/hasher"
-	"github.com/dsn/dsn/tools/replaycert/pkg/transcript"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/tools/replaycert/pkg/compare"
+	"github.com/BryanOx/dsn/tools/replaycert/pkg/hasher"
+	"github.com/BryanOx/dsn/tools/replaycert/pkg/transcript"
+	"github.com/BryanOx/dsn/types"
 )
 
 type Config struct {

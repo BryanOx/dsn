@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/dsn/dsn/cmd/dsn-tui/client"
+	"github.com/BryanOx/dsn/cmd/dsn-tui/client"
 )
 
 type balanceMsg struct {

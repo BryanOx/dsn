@@ -7,7 +7,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 var _ StateDB = (*InMemoryState)(nil)

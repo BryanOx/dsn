@@ -3,7 +3,7 @@ package staking
 import (
 	"testing"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // TestSlashAmount_Calculation tests the slash amount calculation with various percentages and stakes.

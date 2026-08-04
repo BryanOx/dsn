@@ -1,6 +1,6 @@
 # DSN — Deterministic Settlement Network v0.1.0-sandbox
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/dsn/dsn)](https://goreportcard.com/report/github.com/dsn/dsn)
+[![Go Report Card](https://goreportcard.com/badge/github.com/BryanOx/dsn)](https://goreportcard.com/report/github.com/BryanOx/dsn)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 DSN is a **BFT blockchain for settlement finality** with deterministic WASM smart contracts, Ed25519 signing, and Sparse Merkle Tree state commitment. Built in Go 1.25 with BoltDB storage, custom TCP networking, and a pipelined voting consensus model.

@@ -5,7 +5,7 @@ package benchmarks
 import (
 	"testing"
 
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/types"
 )
 
 // BenchmarkStateLoad measures the cost of loading accounts from state.

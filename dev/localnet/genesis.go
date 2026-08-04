@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	wallet2 "github.com/dsn/dsn/wallet"
+	wallet2 "github.com/BryanOx/dsn/wallet"
 )
 
 // Config represents localnet configuration options.

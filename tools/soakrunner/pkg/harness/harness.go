@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/dsn/dsn/tools/soakrunner/pkg/metrics"
-	"github.com/dsn/dsn/tools/soakrunner/pkg/workload"
+	"github.com/BryanOx/dsn/tools/soakrunner/pkg/metrics"
+	"github.com/BryanOx/dsn/tools/soakrunner/pkg/workload"
 )
 
 // HarnessConfig holds configuration for the soak harness

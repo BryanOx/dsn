@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/dsn/dsn/internal/txfile"
+	"github.com/BryanOx/dsn/internal/txfile"
 	"github.com/spf13/cobra"
 )
 

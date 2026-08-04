@@ -94,4 +94,4 @@ const hash = await client.sendTransaction(tx);
 
 ## See Also
 
-Go SDK: `import "github.com/dsn/dsn/sdk"` (in-repo)
+Go SDK: `import "github.com/BryanOx/dsn/sdk"` (in-repo)

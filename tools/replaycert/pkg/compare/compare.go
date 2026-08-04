@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/dsn/dsn/tools/replaycert/pkg/transcript"
+	"github.com/BryanOx/dsn/tools/replaycert/pkg/transcript"
 )
 
 // CompareHashes compares two hash byte slices and returns whether they match,

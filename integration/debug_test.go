@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dsn/dsn/node"
-	"github.com/dsn/dsn/state"
-	"github.com/dsn/dsn/types"
+	"github.com/BryanOx/dsn/node"
+	"github.com/BryanOx/dsn/state"
+	"github.com/BryanOx/dsn/types"
 	"github.com/stretchr/testify/require"
 )
 

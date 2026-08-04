@@ -36,7 +36,7 @@ Validators stake tokens to participate in consensus. Rewards are distributed thr
 ## Quick Start
 ```bash
 # Clone and build
-git clone https://github.com/dsn/dsn.git
+git clone https://github.com/BryanOx/dsn.git
 cd dsn
 go build -o dsn ./cmd/dsn
 
@@ -49,4 +49,4 @@ go build -o dsn ./cmd/dsn
 Full documentation is available in the repository's docs/ directory.
 
 ## Support
-- GitHub Issues: https://github.com/dsn/dsn/issues
+- GitHub Issues: https://github.com/BryanOx/dsn/issues

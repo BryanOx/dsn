@@ -63,8 +63,14 @@ func TestDefaultConfig_Consensus(t *testing.T) {
 	if cfg.MaxTxPerBlock != 100 {
 		t.Errorf("MaxTxPerBlock = %d, want 100", cfg.MaxTxPerBlock)
 	}
-	if cfg.ProposerTimeout != 5*time.Second {
-		t.Errorf("ProposerTimeout = %v, want 5s", cfg.ProposerTimeout)
+	// S9: the default timeout base must sit ABOVE the ±5s clock-skew window
+	// (types.MaxTimestampDrift), so a round deadline can never be confused
+	// with a stale-block rejection.
+	if cfg.ProposerTimeout != 6*time.Second {
+		t.Errorf("ProposerTimeout = %v, want 6s (above the ±5s skew window)", cfg.ProposerTimeout)
+	}
+	if cfg.MaxRound != 8 {
+		t.Errorf("MaxRound = %d, want 8", cfg.MaxRound)
 	}
 }
 

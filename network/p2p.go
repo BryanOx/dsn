@@ -141,6 +141,11 @@ type P2PNode struct {
 	// Block processing: single-consumer channel pattern for goroutine safety
 	blockCh   chan blockJob
 	blockOnce sync.Once // ensures block processor starts only once
+	// blockDone is closed by the block processor goroutine when it has fully
+	// exited. Close joins on it so no in-flight block apply (which commits to
+	// the persistent DB) can run after Close returns — Node.Close closes the
+	// DB after p2p.Close returns, so a late apply would panic.
+	blockDone chan struct{}
 }
 
 // NewP2PNode creates a new P2P node listening on the given port (0 = random).
@@ -166,6 +171,7 @@ func NewP2PNode(listenPort int) (*P2PNode, error) {
 		connLimiter:  newConnectionLimiter(),
 		rateLimiters: make(map[string]*TokenBucket),
 		blockCh:      make(chan blockJob, 128), // buffered channel for block processing
+		blockDone:    make(chan struct{}),
 	}
 
 	// Outbound connections dialed through the PeerManager (e.g. by peer
@@ -672,9 +678,26 @@ func (n *P2PNode) SendTo(addr string, data []byte) error {
 	return nil
 }
 
+// blockProcessorJoinTimeout bounds how long Close waits for the block
+// processor goroutine to finish. The processor applies blocks that commit to
+// the persistent DB, so Close must join it before the caller (Node.Close)
+// closes the DB — but a wedged handler must not hang Close forever.
+const blockProcessorJoinTimeout = 2 * time.Second
+
 // Close shuts down the node and all connections.
 func (n *P2PNode) Close() error {
 	close(n.stopCh)
+
+	// Join the block processor before returning: the select in the processor
+	// may pick a buffered block job after stopCh fired, and processing it
+	// calls n.blockHandler (block apply → DB commit). Node.Close closes the
+	// persistent DB after this returns, so an in-flight apply would panic on
+	// the closed DB. Waiting for blockDone guarantees no apply can run after
+	// Close returns.
+	select {
+	case <-n.blockDone:
+	case <-time.After(blockProcessorJoinTimeout):
+	}
 
 	n.connMu.Lock()
 	for _, conn := range n.connections {
@@ -781,6 +804,7 @@ func (n *P2PNode) PeerManager() *PeerManager {
 func (n *P2PNode) startBlockProcessor() {
 	n.blockOnce.Do(func() {
 		go func() {
+			defer close(n.blockDone) // signal full exit so Close can join us
 			for {
 				select {
 				case <-n.stopCh:
@@ -818,6 +842,10 @@ func (n *P2PNode) startBlockProcessor() {
 // The actual processing happens in the single-consumer block processor goroutine.
 func (n *P2PNode) handleBlock(data []byte, src string) {
 	select {
+	case <-n.stopCh:
+		// Shutting down — drop the block. Without this guard a read loop that
+		// passed its stop check before the processor exited could send on the
+		// processor-closed blockCh and panic.
 	case n.blockCh <- blockJob{kind: blockJobGossip, data: data, src: src}:
 		// Job enqueued successfully
 	default:
@@ -830,6 +858,8 @@ func (n *P2PNode) handleBlock(data []byte, src string) {
 // Concurrent applies from multiple read loops would break determinism (D5).
 func (n *P2PNode) enqueueBlockRangeResponse(data []byte, src string) {
 	select {
+	case <-n.stopCh:
+		// Shutting down — drop the response (see handleBlock).
 	case n.blockCh <- blockJob{kind: blockJobRangeResponse, data: data, src: src}:
 		// Job enqueued successfully
 	default:

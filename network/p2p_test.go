@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -645,4 +646,62 @@ func TestP2PNode_GossipTransactionTypedFraming(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout: typed-framed gossiped transaction never arrived")
 	}
+}
+
+// TestP2PNode_CloseJoinsBlockProcessor pins the shutdown-race fix: Close must
+// wait for an in-flight block apply (which commits to the persistent DB) to
+// finish before returning, and no block apply may run after Close returns.
+// Without the join, P2PNode.Close returned immediately while the processor
+// goroutine could still select a buffered block job after stopCh fired —
+// Node.Close then closed the persistent DB, and the late apply panicked with
+// "persistent commit: database not open" (observed intermittently in
+// TestConvergence_ConsensusLoop at 2c453ad, pre-existing at PR3).
+func TestP2PNode_CloseJoinsBlockProcessor(t *testing.T) {
+	n, err := NewP2PNode(0)
+	require.NoError(t, err)
+
+	var applied atomic.Int32
+	release := make(chan struct{})
+
+	n.SetBlockHandler(func(data []byte) {
+		applied.Add(1)
+		<-release // hold the apply in flight until the test releases it
+	})
+
+	// Enqueue a job the single-consumer processor will pick up.
+	n.handleBlock([]byte("job"), "peer")
+
+	// Wait until the apply is in flight.
+	require.Eventually(t, func() bool { return applied.Load() == 1 },
+		5*time.Second, 10*time.Millisecond, "block handler never invoked")
+
+	// Close while the apply is in flight. Close must NOT return until the
+	// in-flight apply completes and the processor goroutine has exited.
+	closeDone := make(chan struct{})
+	go func() {
+		_ = n.Close()
+		close(closeDone)
+	}()
+
+	select {
+	case <-closeDone:
+		t.Fatal("Close returned while a block apply was still in flight")
+	case <-time.After(200 * time.Millisecond):
+		// Expected: Close is joining the processor.
+	}
+
+	// Release the in-flight apply; Close must now return.
+	close(release)
+	select {
+	case <-closeDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not return after the in-flight apply finished")
+	}
+
+	// The processor goroutine has exited by the time Close returned, so no
+	// apply can run afterwards. Give any (buggy) stray dispatch a window to
+	// show itself before asserting the final count.
+	time.Sleep(100 * time.Millisecond)
+	require.Equal(t, int32(1), applied.Load(),
+		"a block apply ran after Close returned")
 }

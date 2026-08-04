@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 
+	"github.com/BryanOx/dsn/internal/bip39"
 	"github.com/BryanOx/dsn/types"
 	"github.com/BryanOx/dsn/wallet"
 )
@@ -40,8 +41,8 @@ func NewKeyFromSeed(seed []byte) (*wallet.KeyPair, error) {
 	return kp, nil
 }
 
-// NewKeyFromMnemonic creates a keypair from a mnemonic phrase.
-// Note: This is a simple implementation. For production, use BIP-39.
+// NewKeyFromMnemonic creates a keypair from a mnemonic phrase using SHA-256.
+// Deprecated: Use NewKeyFromBIP39Mnemonic instead, which uses BIP-39 standard derivation.
 func NewKeyFromMnemonic(mnemonic string) (*wallet.KeyPair, error) {
 	seed := deriveSeedFromMnemonic(mnemonic)
 	return NewKeyFromSeed(seed)
@@ -98,4 +99,39 @@ func ValidateAddress(addr string) bool {
 // MustGetAddress returns the address from a keypair, panics on error.
 func MustGetAddress(kp *wallet.KeyPair) string {
 	return kp.Address().String()
+}
+
+// NewKeyFromBIP39Mnemonic creates a keypair from a valid BIP-39 English mnemonic.
+func NewKeyFromBIP39Mnemonic(phrase string) (*wallet.KeyPair, error) {
+	return wallet.KeyFromMnemonic(phrase)
+}
+
+// GenerateMnemonic generates a new 12-word BIP-39 English mnemonic.
+func GenerateMnemonic() (string, error) {
+	return bip39.GenerateMnemonic()
+}
+
+// RestoreFromMnemonic is an alias for NewKeyFromBIP39Mnemonic.
+func RestoreFromMnemonic(phrase string) (*wallet.KeyPair, error) {
+	return wallet.KeyFromMnemonic(phrase)
+}
+
+// EncryptKey encrypts a keypair with a passphrase, returning encrypted JSON.
+func EncryptKey(passphrase string, kp *wallet.KeyPair) ([]byte, error) {
+	return wallet.EncryptKey(passphrase, kp)
+}
+
+// DecryptKey decrypts an encrypted keystore with a passphrase.
+func DecryptKey(passphrase string, data []byte) (*wallet.KeyPair, error) {
+	return wallet.DecryptKey(passphrase, data)
+}
+
+// mnemonicToSeed wraps bip39.MnemonicToSeed for test use.
+func mnemonicToSeed(phrase string) ([]byte, error) {
+	return bip39.MnemonicToSeed(phrase)
+}
+
+// validateMnemonic wraps bip39.ValidateMnemonic for test use.
+func validateMnemonic(phrase string) error {
+	return bip39.ValidateMnemonic(phrase)
 }

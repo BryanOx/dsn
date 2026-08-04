@@ -164,12 +164,12 @@ func TestWeightedProposerAtHeightAndRound_RoundRotates(t *testing.T) {
 		round    uint32
 		expected types.Address
 	}{
-		{0, 0, types.Address{1}},   // (0+0)%300 = 0
-		{0, 1, types.Address{1}},   // (0+1)%300 = 1
-		{0, 99, types.Address{1}},  // (0+99)%300 = 99
-		{0, 100, types.Address{2}}, // (0+100)%300 = 100
-		{0, 200, types.Address{3}}, // (0+200)%300 = 200
-		{100, 0, types.Address{2}}, // (100+0)%300 = 100
+		{0, 0, types.Address{1}},     // (0+0)%300 = 0
+		{0, 1, types.Address{1}},     // (0+1)%300 = 1
+		{0, 99, types.Address{1}},    // (0+99)%300 = 99
+		{0, 100, types.Address{2}},   // (0+100)%300 = 100
+		{0, 200, types.Address{3}},   // (0+200)%300 = 200
+		{100, 0, types.Address{2}},   // (100+0)%300 = 100
 		{100, 100, types.Address{3}}, // (100+100)%300 = 200
 		{100, 200, types.Address{1}}, // (100+200)%300 = 0
 	}

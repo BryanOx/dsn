@@ -314,6 +314,13 @@ func validateCommitProof(block *types.Block, s *state.InMemoryState, epoch uint6
 		if vote.BlockHash != proof.BlockHash {
 			return fmt.Errorf("%w: vote %d block hash mismatch", ErrInvalidCommitProof, i)
 		}
+		// The precommit round must match the block round (S4): a round-r block
+		// needs round-r precommits. Round 0 is the legacy path (0==0) so
+		// existing chains remain valid.
+		if vote.Round != block.Header.Round {
+			return fmt.Errorf("%w: vote %d round mismatch: vote round %d, block round %d",
+				ErrInvalidCommitProof, i, vote.Round, block.Header.Round)
+		}
 
 		// Check no duplicate validators
 		if seen[vote.Validator] {

@@ -127,18 +127,15 @@ func (n *P2PNode) sendToPeer(peer string, msgType byte, payload []byte) error {
 		return fmt.Errorf("peer %s not found", peer)
 	}
 
-	// Build message: type byte + payload
-	msg := make([]byte, 1+len(payload))
-	msg[0] = msgType
-	copy(msg[1:], payload)
+	// Frame the type byte + payload with the 4-byte big-endian length prefix
+	// in ONE buffer and write it with a single conn.Write (see Broadcast):
+	// separate Write calls from concurrent senders on the same connection
+	// would interleave length prefixes with payloads and corrupt the stream.
+	msg := make([]byte, 5+len(payload))
+	binary.BigEndian.PutUint32(msg[:4], uint32(1+len(payload)))
+	msg[4] = msgType
+	copy(msg[5:], payload)
 
-	// Length prefix (4 bytes big-endian)
-	lenBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(lenBuf, uint32(len(msg)))
-
-	if _, err := conn.Write(lenBuf); err != nil {
-		return fmt.Errorf("failed to write length prefix: %w", err)
-	}
 	if _, err := conn.Write(msg); err != nil {
 		return fmt.Errorf("failed to write message: %w", err)
 	}

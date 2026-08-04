@@ -125,6 +125,14 @@ func (e *FastSyncEngine) Start() {
 		return // Already started or finished
 	}
 
+	// Fresh stop channel for this run. Goroutines of a previous run captured
+	// the old (closed) channel and have exited, so creating a new one here
+	// (under mu) is safe and lets a later Stop() signal this run. All field
+	// accesses to e.stopCh are guarded by e.mu (see queryPeers /
+	// handleQueryRetry / launchDownloadManager), so Stop() and the reader
+	// goroutines can never race on it.
+	e.stopCh = make(chan struct{})
+
 	e.setStateLocked(SyncQuerying)
 	e.queryRetryCount = 0
 	e.collectedInfos = e.collectedInfos[:0]
@@ -135,14 +143,18 @@ func (e *FastSyncEngine) Start() {
 
 // Stop stops the fast sync process.
 func (e *FastSyncEngine) Stop() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
 	select {
 	case <-e.stopCh:
-		return
+		return // already stopped
 	default:
+		close(e.stopCh)
 	}
-
-	close(e.stopCh)
-	e.stopCh = make(chan struct{})
+	// NOTE: the channel is NOT recreated here. Start() allocates the fresh
+	// one on the next run; recreating it in Stop() would race goroutines
+	// that read e.stopCh.
 }
 
 // State returns the current sync state (thread-safe).
@@ -240,6 +252,14 @@ func (e *FastSyncEngine) proceedFromSelection() {
 
 // queryPeers broadcasts MsgTypeSnapshotQuery to all connected peers.
 func (e *FastSyncEngine) queryPeers() {
+	// Capture the stop channel under mu: Stop() closes it (and Start()
+	// recreates it) while holding the same lock, so reading the field here
+	// unguarded would race. After the capture the channel is immutable and
+	// can be selected on freely.
+	e.mu.RLock()
+	stopCh := e.stopCh
+	e.mu.RUnlock()
+
 	// Broadcast snapshot query to all peers
 	e.p2p.BroadcastSnapshotQuery()
 
@@ -248,7 +268,7 @@ func (e *FastSyncEngine) queryPeers() {
 	defer timer.Stop()
 
 	select {
-	case <-e.stopCh:
+	case <-stopCh:
 		return
 	case <-timer.C:
 		// Timeout reached, check results
@@ -263,33 +283,41 @@ func (e *FastSyncEngine) queryPeers() {
 			e.Advance()
 			return
 		}
-		// No responses, retry with backoff
-		e.handleQueryRetry()
 		e.mu.Unlock()
+		// No responses, retry with backoff. The backoff wait must happen
+		// WITHOUT holding e.mu: Stop() closes the stop channel under the
+		// same lock, so selecting on it here while holding the lock would
+		// deadlock (the closer waits for the very lock this select holds).
+		e.handleQueryRetry(stopCh)
 	}
 }
 
 // handleQueryRetry handles retry logic with exponential backoff.
-func (e *FastSyncEngine) handleQueryRetry() {
+// Must NOT be called with e.mu held: the backoff wait blocks on stopCh,
+// which Stop() closes while holding e.mu.
+func (e *FastSyncEngine) handleQueryRetry(stopCh chan struct{}) {
+	e.mu.Lock()
 	e.queryRetryCount++
 
 	if e.queryRetryCount >= e.maxQueryRetries {
 		// Max retries reached, fall back to live sync
 		fmt.Printf("FastSyncEngine: max query retries (%d) reached, falling back to live sync\n", e.maxQueryRetries)
 		e.setStateLocked(SyncLive)
+		e.mu.Unlock()
 		return
 	}
 
 	// Exponential backoff: 2x multiplier
 	backoff := e.queryTimeout * time.Duration(1<<uint(e.queryRetryCount-1))
 	fmt.Printf("FastSyncEngine: query retry %d/%d, waiting %v\n", e.queryRetryCount, e.maxQueryRetries, backoff)
+	e.mu.Unlock()
 
-	// Reset timer with backoff
+	// Backoff wait without holding e.mu (see queryPeers).
 	timer := time.NewTimer(backoff)
 	defer timer.Stop()
 
 	select {
-	case <-e.stopCh:
+	case <-stopCh:
 		return
 	case <-timer.C:
 		// Retry query
@@ -768,12 +796,18 @@ func (e *FastSyncEngine) startDownloading() {
 // launchDownloadManager starts a goroutine that periodically checks for timed-out chunks.
 func (e *FastSyncEngine) launchDownloadManager() {
 	go func() {
+		// Capture the stop channel under mu (see queryPeers): Stop() closes
+		// it while holding the lock, and Start() recreates it — a bare
+		// field read would race those writes.
+		e.mu.RLock()
+		stopCh := e.stopCh
+		e.mu.RUnlock()
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
 
 		for {
 			select {
-			case <-e.stopCh:
+			case <-stopCh:
 				return
 			case <-ticker.C:
 				e.mu.Lock()
@@ -886,7 +920,8 @@ func (e *FastSyncEngine) verifyDownloadedSnapshot() {
 	// Build sorted slice of chunks
 	if len(e.collectedChunks) == 0 {
 		fmt.Printf("FastSyncEngine: no chunks collected for verification\n")
-		e.fallBackToLiveSync()
+		e.fallBackToLiveSyncLocked()
+		e.mu.Unlock()
 		return
 	}
 
@@ -900,6 +935,7 @@ func (e *FastSyncEngine) verifyDownloadedSnapshot() {
 	if err != nil {
 		fmt.Printf("FastSyncEngine: failed to reassemble snapshot: %v\n", err)
 		e.fallBackToLiveSyncLocked()
+		e.mu.Unlock()
 		return
 	}
 
@@ -913,6 +949,7 @@ func (e *FastSyncEngine) verifyDownloadedSnapshot() {
 			fmt.Printf("FastSyncEngine: snapshot hash mismatch: got %x, expected %x\n",
 				computedHash[:], expectedHash[:])
 			e.fallBackToLiveSyncLocked()
+			e.mu.Unlock()
 			return
 		}
 	}

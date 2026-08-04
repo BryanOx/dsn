@@ -1,10 +1,12 @@
 package network
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"io"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -704,4 +706,120 @@ func TestP2PNode_CloseJoinsBlockProcessor(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	require.Equal(t, int32(1), applied.Load(),
 		"a block apply ran after Close returned")
+}
+
+// TestP2PNode_ConcurrentWritesKeepFraming hammers a single connection with
+// concurrent frame writes (4-byte big-endian length prefix + payload) from
+// several goroutines and asserts the far side reads exactly N clean frames.
+//
+// Regression for the snapshot-download flake (W1 in the state-sync verify
+// report): SendTo/sendToPeer emitted the length prefix and the payload as two
+// separate conn.Write calls while Broadcast serialized only itself. Two
+// goroutines sending on the same connection could interleave prefix/payload
+// across frames, so the reader parsed a corrupt length — usually exceeding
+// MaxPayloadSize — and the read loop tore the connection down, surfacing as
+// "write: connection reset by peer" between the snapshot query and the
+// download, then "peer not found" on the download manager's re-request.
+// Every send path must emit each frame in a single conn.Write call so the
+// net.Conn per-call atomicity (never two frames' bytes interleaved) holds.
+func TestP2PNode_ConcurrentWritesKeepFraming(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		c, err := listener.Accept()
+		if err == nil {
+			accepted <- c
+		}
+	}()
+	client, err := net.Dial("tcp", listener.Addr().String())
+	require.NoError(t, err)
+	defer client.Close()
+	server := <-accepted
+	require.NotNil(t, server)
+	defer server.Close()
+
+	// Writer node with a single registered connection — the shape SendTo and
+	// sendToPeer operate on.
+	n := &P2PNode{
+		connections: map[string]net.Conn{"peer": server},
+	}
+
+	// Raw reader: parse frames exactly like readLoop does (length, payload).
+	reader := bufio.NewReader(client)
+	readerDone := make(chan struct{})
+	var okFrames, tooBigFrames atomic.Int64
+	go func() {
+		defer close(readerDone)
+		for {
+			lenBuf := make([]byte, 4)
+			if _, err := io.ReadFull(reader, lenBuf); err != nil {
+				return
+			}
+			msgLen := binary.BigEndian.Uint32(lenBuf)
+			if msgLen > MaxPayloadSize {
+				tooBigFrames.Add(1)
+				continue
+			}
+			if _, err := io.ReadFull(reader, make([]byte, msgLen)); err != nil {
+				return
+			}
+			okFrames.Add(1)
+		}
+	}()
+
+	payload := make([]byte, 150*1024) // like a snapshot chunk
+	const (
+		goroutines = 4
+		perG       = 150
+	)
+	total := 0
+
+	hammer := func(send func() error) {
+		var wg sync.WaitGroup
+		writeErrs := make(chan error, goroutines*perG)
+		for g := 0; g < goroutines; g++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for i := 0; i < perG; i++ {
+					if err := send(); err != nil {
+						writeErrs <- err
+						return
+					}
+				}
+			}()
+		}
+		wg.Wait()
+		close(writeErrs)
+		for err := range writeErrs {
+			t.Fatalf("send failed under concurrency: %v", err)
+		}
+		total += goroutines * perG
+	}
+
+	// Phase 1: SendTo (generic frame: type byte + payload as the caller
+	// supplies it).
+	hammer(func() error { return n.SendTo("peer", payload) })
+
+	// Phase 2: sendToPeer (the snapshot send path; frame = type + payload).
+	hammer(func() error {
+		return n.sendToPeer("peer", MsgTypeSnapshotChunk, payload)
+	})
+
+	// Wait until every frame has arrived at the reader before closing the
+	// client: Close discards unread bytes in the receive buffer, which would
+	// race the last in-flight frame.
+	require.Eventually(t, func() bool { return okFrames.Load() >= int64(total) },
+		10*time.Second, 5*time.Millisecond,
+		"reader never received all frames (corrupt lengths may have desynced the stream)")
+	client.Close()
+	<-readerDone
+
+	require.Equal(t, int64(total), okFrames.Load(),
+		"every frame must arrive intact; interleaved length/payload pairs corrupt the stream")
+	require.Zero(t, tooBigFrames.Load(),
+		"no corrupt (oversized) length may be read; > MaxPayloadSize makes the read loop exit")
 }

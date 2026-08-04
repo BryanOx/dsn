@@ -620,22 +620,23 @@ func (n *P2PNode) SetVoteHandler(handler func(vote *types.Vote)) {
 
 // Broadcast sends a message to all connected peers.
 func (n *P2PNode) Broadcast(data []byte) {
-	msgLen := uint32(len(data))
-	lenBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(lenBuf, msgLen)
+	// Frame the message (4-byte big-endian length + payload) in one buffer
+	// and write it with a single conn.Write. net.Conn serializes individual
+	// Write calls, so one call per frame guarantees no other concurrent
+	// sender (SendTo/sendToPeer) can interleave its length prefix between
+	// our prefix and payload, which would corrupt the frame stream and tear
+	// the connection down (read loop exits on a corrupt > MaxPayloadSize
+	// length).
+	frame := make([]byte, 4+len(data))
+	binary.BigEndian.PutUint32(frame[:4], uint32(len(data)))
+	copy(frame[4:], data)
 
 	n.connMu.Lock()
 	defer n.connMu.Unlock()
 
 	var failedPeers []string
 	for addr, conn := range n.connections {
-		_, err := conn.Write(lenBuf)
-		if err != nil {
-			failedPeers = append(failedPeers, addr)
-			continue
-		}
-		_, err = conn.Write(data)
-		if err != nil {
+		if _, err := conn.Write(frame); err != nil {
 			failedPeers = append(failedPeers, addr)
 			continue
 		}
@@ -653,9 +654,12 @@ func (n *P2PNode) Broadcast(data []byte) {
 // SendTo sends a framed message to a specific peer by address.
 // Returns error if peer not found or write fails.
 func (n *P2PNode) SendTo(addr string, data []byte) error {
-	msgLen := uint32(len(data))
-	lenBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(lenBuf, msgLen)
+	// One conn.Write per frame (see Broadcast): two separate Write calls
+	// from concurrent senders on the same connection could interleave a
+	// length prefix with another frame's payload and corrupt the stream.
+	frame := make([]byte, 4+len(data))
+	binary.BigEndian.PutUint32(frame[:4], uint32(len(data)))
+	copy(frame[4:], data)
 
 	n.connMu.RLock()
 	conn, ok := n.connections[addr]
@@ -665,14 +669,8 @@ func (n *P2PNode) SendTo(addr string, data []byte) error {
 		return fmt.Errorf("peer not found: %s", addr)
 	}
 
-	_, err := conn.Write(lenBuf)
-	if err != nil {
-		return fmt.Errorf("failed to write length: %w", err)
-	}
-
-	_, err = conn.Write(data)
-	if err != nil {
-		return fmt.Errorf("failed to write data: %w", err)
+	if _, err := conn.Write(frame); err != nil {
+		return fmt.Errorf("failed to write message: %w", err)
 	}
 
 	return nil

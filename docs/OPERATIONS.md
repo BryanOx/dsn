@@ -504,7 +504,7 @@ The node uses a flat `node.Config` struct (NOT the same as `config.Config`). Cre
 | `MetricsPort` | int | `9464` | 0 = disabled |
 | `IndexerEnabled` | bool | `false` | Requires DataDir to be set |
 | `SnapshotInterval` | uint64 | `10` | Epochs between state snapshots |
-| `FastSyncEnabled` | bool | `false` | Enable fast sync from checkpoint |
+| `FastSyncEnabled` | bool | `true` | Enable snapshot fast-sync from peers; a fresh node with empty state auto-triggers it |
 | `TrustedCheckpointHeight` | uint64 | `0` | Fast sync checkpoint height |
 | `TrustedCheckpointHash` | string | `""` | Fast sync checkpoint block hash |
 | `BootstrapPeers` | []string | `nil` | Initial peer multiaddrs |
@@ -578,7 +578,7 @@ RPCPort = 8545
 MetricsPort = 9464
 DataDir = "/var/lib/dsn"
 IndexerEnabled = true
-FastSyncEnabled = false
+FastSyncEnabled = true
 SnapshotInterval = 10
 MempoolMaxSize = 10000
 MaxTxPerBlock = 100

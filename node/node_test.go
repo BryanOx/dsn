@@ -629,3 +629,27 @@ func TestApplySyncedBlock_RootMismatchAborts(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, types.NewAmount(100_000), acc.Balance)
 }
+
+// TestApplySyncedBlock_AlreadyFinalizedSkipped verifies the already-applied
+// guard (D4/S1): a block at or below the finalized height must be skipped
+// silently — reported as accepted with no error so the serving peer is never
+// penalized for replaying an already-finalized range.
+func TestApplySyncedBlock_AlreadyFinalizedSkipped(t *testing.T) {
+	n, kp := newSyncedNode(t)
+	defer n.Close()
+
+	block := buildSignedBlock(t, n, kp)
+	n.finalizedHeight = 10 // the built block (height 1) is already finalized
+
+	wire, err := consensus.EncodeBlockMessage(block)
+	require.NoError(t, err)
+	served := wire[1:]
+
+	accepted, err := n.applySyncedBlock(served)
+	require.NoError(t, err, "already-finalized block must not error")
+	require.True(t, accepted, "already-finalized block must be reported accepted (skip, not penalize)")
+
+	// Chain untouched: nothing was applied.
+	require.Equal(t, uint64(0), n.CurrentHeight())
+	require.Equal(t, types.Hash{}, n.GetTipHash())
+}

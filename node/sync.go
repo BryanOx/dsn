@@ -41,11 +41,16 @@ func (n *Node) loadParentHeader(block *types.Block) (*types.BlockHeader, types.H
 // peer. It mirrors the live path (ValidateBlock → applyAcceptedBlock) so a
 // synced block is applied exactly as a gossiped one; returning (false, err)
 // stops the serving window and penalizes the serving peer. Heights at or below
-// the finalized height are skipped silently (already-applied guard, D4).
+// the finalized height are skipped silently — reported as accepted with no
+// error so the serving peer is never penalized for replaying an
+// already-finalized range (D4/S1).
 func (n *Node) applySyncedBlock(data []byte) (bool, error) {
 	block, err := decodeSyncedBlock(data)
-	if err != nil || block.Header.Height <= n.finalizedHeight {
+	if err != nil {
 		return false, err
+	}
+	if block.Header.Height <= n.finalizedHeight {
+		return true, nil
 	}
 	parent, prev := n.loadParentHeader(block)
 	snapID := n.state.Snapshot()

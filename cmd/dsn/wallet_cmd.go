@@ -3,47 +3,115 @@ package main
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/BryanOx/dsn/internal/bip39"
+	"github.com/BryanOx/dsn/internal/passphrase"
 	"github.com/BryanOx/dsn/types"
 	wallet2 "github.com/BryanOx/dsn/wallet"
 	"github.com/spf13/cobra"
 )
+
+// lastMnemonic holds the recovery phrase of the wallet created or restored in
+// the current process only. It is never written to disk; export-mnemonic reads
+// it and a fresh process starts empty.
+var lastMnemonic string
+
+// passphraseProvider supplies keystore passphrases. It is nil in production,
+// where walletPassphrase returns a TTY prompt; tests inject a deterministic
+// source.
+var passphraseProvider wallet2.PassphraseFunc
+
+// walletPassphrase returns the passphrase provider for keystore creation and
+// unlock, preferring an injected provider over the real TTY prompt.
+func walletPassphrase() wallet2.PassphraseFunc {
+	if passphraseProvider != nil {
+		return passphraseProvider
+	}
+	return ttyWalletPassphrase
+}
+
+// ttyWalletPassphrase prompts on the TTY with double entry.
+func ttyWalletPassphrase() (string, error) {
+	return passphrase.PromptTwice("wallet passphrase")
+}
 
 var walletCmd = &cobra.Command{
 	Use:   "wallet",
 	Short: "Wallet management commands",
 	Long: `Wallet management for DSN:
 
-  generate   Generate a new Ed25519 key pair
-  sign       Sign a transaction from a file
-  nonce      Get the current nonce for an address
+  generate         Generate a new wallet (encrypted keystore by default)
+  restore          Restore a wallet from a BIP-39 recovery phrase
+  export-mnemonic  Print the recovery phrase held in this process
+  migrate          Encrypt a legacy plaintext wallet in place
+  sign             Sign a transaction from a file
+  nonce            Get the current nonce for an address
 
 Examples:
   dsn wallet generate
   dsn wallet generate --output wallets/mywallet.json
+  dsn wallet restore --mnemonic "abandon abandon ... about"
   dsn wallet sign transactions/tx.json --key wallets/mywallet.json
   dsn wallet nonce 0x1234567890abcdef`,
 }
 
 var walletGenerateCmd = &cobra.Command{
 	Use:   "generate [flags]",
-	Short: "Generate a new wallet key pair",
-	Long: `Generate a new Ed25519 key pair and save to a file.
+	Short: "Generate a new wallet",
+	Long: `Generate a new Ed25519 key pair and save it as an encrypted keystore.
 
-The generated key pair includes:
-- Private key (hex encoded)
-- Public key (hex encoded)
-- Address (derived from public key)
+The recovery mnemonic is printed exactly once on stdout after the wallet is
+written.  Use --legacy-plaintext to write the old plaintext format without
+prompting (no mnemonic, no passphrase).
 
 Examples:
   dsn wallet generate
-  dsn wallet generate --output wallets/mywallet.json`,
+  dsn wallet generate --output wallets/mywallet.json
+  dsn wallet generate --legacy-plaintext`,
 	RunE: runWalletGenerate,
+}
+
+var walletRestoreCmd = &cobra.Command{
+	Use:   "restore",
+	Short: "Restore a wallet from a recovery phrase",
+	Long: `Restore an encrypted wallet from a BIP-39 12-word recovery phrase.
+
+The mnemonic is validated before any prompt or file write. A new passphrase is
+created for the encrypted keystore. The recovery mnemonic is printed again
+after the wallet is written (in-process only).
+
+Example:
+  dsn wallet restore --mnemonic "abandon abandon ... about"`,
+	RunE: runWalletRestore,
+}
+
+var walletExportCmd = &cobra.Command{
+	Use:           "export-mnemonic",
+	Short:         "Print the current recovery phrase",
+	Long: `Print the BIP-39 recovery phrase of the wallet generated or restored earlier
+in this same process. The phrase is never stored on disk; once the process
+exits it cannot be recovered.`,
+	RunE: runWalletExportMnemonic,
+}
+
+var walletMigrateCmd = &cobra.Command{
+	Use:   "migrate",
+	Short: "Encrypt a legacy plaintext wallet in place",
+	Long: `Encrypt a legacy plaintext wallet file with the new keystore format.
+
+A backup of the original is saved alongside as <path>.bak. The migration is
+verified after writing — if the encrypted file does not decrypt the original
+is preserved.
+
+Example:
+  dsn wallet migrate --key wallets/wallet.json`,
+	RunE: runWalletMigrate,
 }
 
 var walletSignCmd = &cobra.Command{
@@ -81,9 +149,12 @@ Examples:
 
 // WalletFlags holds wallet command flags
 type WalletFlags struct {
-	output string
-	key    string
-	rpc    string
+	output          string
+	key             string
+	rpc             string
+	passphrase      string
+	legacyPlaintext bool
+	mnemonic        string
 }
 
 var walletFlags WalletFlags
@@ -93,7 +164,21 @@ func init() {
 
 	// wallet generate flags
 	walletGenerateCmd.Flags().StringVarP(&walletFlags.output, "output", "o", "wallets/wallet.json", "output file path")
+	walletGenerateCmd.Flags().StringVar(&walletFlags.passphrase, "passphrase", "", "UNSUPPORTED: passphrases are prompted on the TTY only")
+	walletGenerateCmd.Flags().BoolVar(&walletFlags.legacyPlaintext, "legacy-plaintext", false, "write the legacy plaintext format (no prompt, no mnemonic)")
 	walletCmd.AddCommand(walletGenerateCmd)
+
+	// wallet restore flags
+	walletRestoreCmd.Flags().StringVar(&walletFlags.mnemonic, "mnemonic", "", "12-word BIP-39 recovery phrase")
+	walletRestoreCmd.Flags().StringVarP(&walletFlags.output, "output", "o", "wallets/wallet.json", "output file path")
+	walletCmd.AddCommand(walletRestoreCmd)
+
+	// wallet export-mnemonic (no flags)
+	walletCmd.AddCommand(walletExportCmd)
+
+	// wallet migrate flags
+	walletMigrateCmd.Flags().StringVarP(&walletFlags.key, "key", "k", "wallets/wallet.json", "legacy wallet key file to encrypt")
+	walletCmd.AddCommand(walletMigrateCmd)
 
 	// wallet sign flags
 	walletSignCmd.Flags().StringVarP(&walletFlags.key, "key", "k", "wallets/wallet.json", "wallet key file")
@@ -105,24 +190,114 @@ func init() {
 }
 
 func runWalletGenerate(cmd *cobra.Command, args []string) error {
-	// Generate new key pair
+	if cmd.Flags().Changed("passphrase") {
+		return errors.New("--passphrase is not supported: passphrases are prompted on the TTY only and must never appear on the command line")
+	}
+
+	if walletFlags.legacyPlaintext {
+		return runLegacyGenerate()
+	}
+
+	provider := walletPassphrase()
+	pass, err := provider()
+	if err != nil {
+		return fmt.Errorf("passphrase prompt failed: %w", err)
+	}
+
+	mnemonic, err := bip39.GenerateMnemonic()
+	if err != nil {
+		return fmt.Errorf("failed to generate mnemonic: %w", err)
+	}
+	kp, err := wallet2.KeyFromMnemonic(mnemonic)
+	if err != nil {
+		return fmt.Errorf("failed to derive key from mnemonic: %w", err)
+	}
+	if err := wallet2.SaveKeystore(walletFlags.output, pass, kp); err != nil {
+		return fmt.Errorf("failed to save encrypted keystore: %w", err)
+	}
+
+	lastMnemonic = mnemonic
+
+	fmt.Println("Encrypted wallet created successfully!")
+	fmt.Println()
+	fmt.Printf("Address:    %s\n", kp.Address().String())
+	fmt.Printf("Saved to:   %s\n", walletFlags.output)
+	fmt.Println()
+	fmt.Printf("Recovery mnemonic: %s\n", mnemonic)
+	fmt.Fprintln(os.Stderr, "warning: write down this mnemonic and keep it safe; it is shown once and never stored on disk")
+	return nil
+}
+
+// runLegacyGenerate is the pre-change generate path — no prompt, no mnemonic.
+func runLegacyGenerate() error {
 	kp, err := wallet2.GenerateKey()
 	if err != nil {
 		return fmt.Errorf("failed to generate key: %w", err)
 	}
-
-	// Save to file
 	if err := wallet2.SaveKey(walletFlags.output, kp); err != nil {
 		return fmt.Errorf("failed to save key: %w", err)
 	}
-
-	// Print results
 	fmt.Println("Wallet generated successfully!")
 	fmt.Println()
 	fmt.Printf("Address:    %s\n", kp.Address().String())
 	fmt.Printf("Public Key: %s\n", hex.EncodeToString(kp.PublicKey[:]))
 	fmt.Printf("Saved to:   %s\n", walletFlags.output)
+	return nil
+}
 
+func runWalletRestore(cmd *cobra.Command, args []string) error {
+	phrase := strings.TrimSpace(walletFlags.mnemonic)
+	if phrase == "" {
+		return errors.New("--mnemonic is required")
+	}
+	if err := bip39.ValidateMnemonic(phrase); err != nil {
+		return fmt.Errorf("invalid mnemonic: %w", err)
+	}
+
+	provider := walletPassphrase()
+	pass, err := provider()
+	if err != nil {
+		return fmt.Errorf("passphrase prompt failed: %w", err)
+	}
+	kp, err := wallet2.KeyFromMnemonic(phrase)
+	if err != nil {
+		return fmt.Errorf("failed to derive key from mnemonic: %w", err)
+	}
+	if err := wallet2.SaveKeystore(walletFlags.output, pass, kp); err != nil {
+		return fmt.Errorf("failed to save encrypted keystore: %w", err)
+	}
+
+	lastMnemonic = phrase
+
+	fmt.Println("Wallet restored successfully!")
+	fmt.Println()
+	fmt.Printf("Address:    %s\n", kp.Address().String())
+	fmt.Printf("Saved to:   %s\n", walletFlags.output)
+	fmt.Println()
+	fmt.Printf("Recovery mnemonic: %s\n", phrase)
+	fmt.Fprintln(os.Stderr, "warning: write down this mnemonic and keep it safe; it is shown once and never stored on disk")
+	return nil
+}
+
+func runWalletExportMnemonic(cmd *cobra.Command, args []string) error {
+	if lastMnemonic == "" {
+		return errors.New("no mnemonic available: the recovery phrase is held only in process memory for the session that generated or restored it; it can never be recovered from a keystore on disk")
+	}
+	fmt.Printf("Recovery mnemonic: %s\n", lastMnemonic)
+	fmt.Fprintln(os.Stderr, "warning: this mnemonic is shown once and never stored on disk; write it down and keep it safe")
+	return nil
+}
+
+func runWalletMigrate(cmd *cobra.Command, args []string) error {
+	provider := walletPassphrase()
+	pass, err := provider()
+	if err != nil {
+		return fmt.Errorf("passphrase prompt failed: %w", err)
+	}
+	if err := wallet2.Migrate(walletFlags.key, pass); err != nil {
+		return fmt.Errorf("failed to migrate wallet: %w", err)
+	}
+	fmt.Printf("Migrated %s to an encrypted keystore; original preserved as %s.bak\n", walletFlags.key, walletFlags.key)
 	return nil
 }
 
@@ -158,8 +333,8 @@ func runWalletSign(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to parse transaction file: %w", err)
 	}
 
-	// Load wallet key
-	kp, err := wallet2.LoadKey(walletFlags.key)
+	// Load wallet key (encrypted keystore prompts for passphrase)
+	kp, err := wallet2.LoadKeyFile(walletFlags.key, walletPassphrase())
 	if err != nil {
 		return fmt.Errorf("failed to load wallet key: %w", err)
 	}

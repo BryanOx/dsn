@@ -76,7 +76,7 @@ func legacyMain() {
 		fmt.Printf("   Address: %s\n", kp.Address().String())
 		fmt.Printf("   Balance: 100,000,000 DSN\n")
 	} else {
-		kp, err = wallet.LoadKey(*walletPath)
+		kp, err = wallet.LoadKeyFile(*walletPath, nil) // nil provider — daemon stays read-only, never hangs on prompt
 		if err != nil {
 			log.Printf("No wallet found at %s (run with -genesis to create one)", *walletPath)
 			// Continue without wallet (read-only mode)

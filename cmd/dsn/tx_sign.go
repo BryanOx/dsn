@@ -51,7 +51,7 @@ func runTxSign(inputPath string) error {
 		return fmt.Errorf("transaction file %s is already signed", inputPath)
 	}
 
-	kp, err := wallet.LoadKey(txSignFlags.keyFile)
+	kp, err := wallet.LoadKeyFile(txSignFlags.keyFile, walletPassphrase())
 	if err != nil {
 		return fmt.Errorf("loading wallet key from %s: %w", txSignFlags.keyFile, err)
 	}

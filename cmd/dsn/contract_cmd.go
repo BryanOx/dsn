@@ -189,7 +189,7 @@ func runContractDeploy(cmd *cobra.Command, args []string) error {
 	codeHash := types.Hash(sha256.Sum256(wasmData))
 
 	// Load wallet
-	kp, err := wallet2.LoadKey(contractFlags.key)
+	kp, err := wallet2.LoadKeyFile(contractFlags.key, walletPassphrase())
 	if err != nil {
 		return fmt.Errorf("failed to load wallet: %w", err)
 	}

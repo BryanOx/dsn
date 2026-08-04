@@ -1,11 +1,15 @@
 package main
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/BryanOx/dsn/cmd/dsn-tui/client"
 	"github.com/BryanOx/dsn/cmd/dsn-tui/screens"
+	"github.com/BryanOx/dsn/internal/passphrase"
 	"github.com/BryanOx/dsn/wallet"
 )
 
@@ -32,10 +36,19 @@ func newModel(rpcURL string, walletPath string) *rootModel {
 
 	var kp *wallet.KeyPair
 	if walletPath != "" {
+		// D11: prompt once at startup via the passphrase provider.
+		// Non-TTY environments use a nil provider — legacy plaintext wallets
+		// load directly; encrypted keystores fail gracefully (wallet stays nil).
+		var provider wallet.PassphraseFunc
+		if passphrase.IsTTY() {
+			provider = func() (string, error) {
+				return passphrase.PromptTwice("wallet passphrase")
+			}
+		}
 		var err error
-		kp, err = wallet.LoadKey(walletPath)
+		kp, err = wallet.LoadKeyFile(walletPath, provider)
 		if err != nil {
-			// Wallet is optional — run without it
+			fmt.Fprintf(os.Stderr, "warning: could not load wallet %s: %v\n", walletPath, err)
 			kp = nil
 		}
 	}

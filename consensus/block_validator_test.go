@@ -272,6 +272,48 @@ func TestValidateBlockProposal_RoundAwareProposer(t *testing.T) {
 	}
 }
 
+// TestValidateBlock_CommitProof_RoundMismatch is RED for the precommit round
+// check (S4): a round-r block must carry round-r precommits. A round-1 block
+// with round-0 precommits is rejected; a round-0 block with round-0
+// precommits keeps the legacy path working (0==0).
+func TestValidateBlock_CommitProof_RoundMismatch(t *testing.T) {
+	hasher := types.SHA256Hasher{}
+
+	// Scenario A (S4 negative): round-1 block with round-0 (r-1) precommits.
+	{
+		s, validators := setupMultiValidator(t, 1, []uint64{100_000})
+		mp := mempool.New(10000, 300*time.Second, s)
+
+		block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validators[0].ConsensusID, &mockSigner{}, hasher, 100, nil, 1)
+		require.NoError(t, err)
+		block.Header.Round = 1
+
+		// attachCommitProof signs round-0 precommits (r-1 for this block).
+		attachCommitProof(t, block, s, validators[0].ConsensusID, validators[0].PrivKey)
+
+		parent := &types.BlockHeader{Height: 0}
+		err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil, 1)
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrInvalidCommitProof)
+	}
+
+	// Scenario B (legacy path, triangulation): round-0 block with round-0
+	// precommits still passes — 0==0 keeps today's chains valid.
+	{
+		s, validators := setupMultiValidator(t, 1, []uint64{100_000})
+		mp := mempool.New(10000, 300*time.Second, s)
+
+		block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validators[0].ConsensusID, &mockSigner{}, hasher, 100, nil, 1)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), block.Header.Round)
+		attachCommitProof(t, block, s, validators[0].ConsensusID, validators[0].PrivKey)
+
+		parent := &types.BlockHeader{Height: 0}
+		err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil, 1)
+		require.NoError(t, err)
+	}
+}
+
 // TestValidateBlock_Valid verifies a fully proofed round-0 block passes.
 func TestValidateBlock_Valid(t *testing.T) {
 	hasher, s, mp, senderPubKey, privKey, _, validatorPrivKey, validatorConsensusID := setupTest(t)

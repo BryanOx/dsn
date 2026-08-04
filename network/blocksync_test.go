@@ -2,8 +2,11 @@ package network
 
 import (
 	"encoding/binary"
+	"io"
+	"net"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/dsn/dsn/consensus"
 	"github.com/dsn/dsn/state"
@@ -344,5 +347,245 @@ func TestBlockSyncEngine_ResponseProgressEqualsTip(t *testing.T) {
 	}
 	if got := engine2.resumeFrom(); got != 46 {
 		t.Errorf("resumeFrom = %d, want 46 (max(tip, persisted) + 1)", got)
+	}
+}
+
+// TestBlockSyncEngine_ResumeTipFloorAfterCrash verifies the crash-after-apply-
+// before-persist resume (W5/D4 tip-floor): blocks applied to disk with the tip
+// stored but no sync progress persisted must still resume from the on-disk tip
+// + 1, never re-requesting an already-applied block.
+func TestBlockSyncEngine_ResumeTipFloorAfterCrash(t *testing.T) {
+	ps, closeDB := newTestPersistentState(t)
+	defer closeDB()
+
+	// Crash window: tip stored (block 80 applied), progress never persisted.
+	if err := consensus.StoreTip(ps, &types.BlockHeader{Version: 1, Height: 80}); err != nil {
+		t.Fatal(err)
+	}
+
+	pm := NewPeerManager(nil)
+	p2p, err := NewP2PNode(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p2p.Close()
+
+	engine := NewBlockSyncEngine(pm, p2p, ps)
+	engine.Start()
+	defer engine.Stop()
+
+	if got := engine.resumeFrom(); got != 81 {
+		t.Errorf("resumeFrom = %d, want 81 (on-disk tip 80 + 1, no progress persisted)", got)
+	}
+	if got := engine.LastSyncedHeight(); got != 80 {
+		t.Errorf("LastSyncedHeight = %d, want 80 (resume floor above the applied tip)", got)
+	}
+}
+
+// TestBlockSyncEngine_CatchUpRequestStartsAtTipPlusOne proves no double-apply
+// at the wire level: after a crash with the tip on disk, the first catch-up
+// request starts at tip+1 — never at or below the applied tip.
+func TestBlockSyncEngine_CatchUpRequestStartsAtTipPlusOne(t *testing.T) {
+	ps, closeDB := newTestPersistentState(t)
+	defer closeDB()
+
+	if err := consensus.StoreTip(ps, &types.BlockHeader{Version: 1, Height: 80}); err != nil {
+		t.Fatal(err)
+	}
+
+	pm := NewPeerManager(nil)
+	p2p, err := NewP2PNode(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p2p.Close()
+
+	// A pipe connection stands in for the serving peer's socket so the
+	// engine's request is observable on the wire.
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	const peerAddr = "peer-addr"
+	peerID := PeerIDFromBytes([]byte(peerAddr))
+	peer := pm.AddPeer(peerID, peerAddr)
+	peer.mu.Lock()
+	peer.Conn = client
+	peer.SyncHeight = 500
+	peer.State = PeerConnected
+	peer.mu.Unlock()
+
+	// Register the pipe as the P2P node's connection to that peer (SendTo
+	// writes framed messages to n.connections[addr]).
+	p2p.connMu.Lock()
+	p2p.connections[peerAddr] = client
+	p2p.connMu.Unlock()
+
+	engine := NewBlockSyncEngine(pm, p2p, ps)
+	engine.Start()
+	defer engine.Stop()
+
+	got := make(chan []byte, 1)
+	go func() {
+		buf := make([]byte, 4+1+16)
+		if _, err := io.ReadFull(server, buf); err == nil {
+			got <- buf
+		}
+	}()
+
+	engine.startCatchUp()
+
+	select {
+	case buf := <-got:
+		if buf[4] != MsgTypeBlockRangeRequest {
+			t.Fatalf("message type = 0x%02x, want 0x30", buf[4])
+		}
+		start := binary.BigEndian.Uint64(buf[5:13])
+		end := binary.BigEndian.Uint64(buf[13:21])
+		if start != 81 {
+			t.Errorf("request starts at %d, want 81 (tip 80 + 1) — re-requests would double-apply", start)
+		}
+		if end != 180 {
+			t.Errorf("request ends at %d, want 180 (81 + 99)", end)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: no block-range request observed")
+	}
+}
+
+// TestBlockSyncEngine_ResumePrefersPersistedProgress verifies resume uses
+// max(tip, progress): persisted progress ahead of the on-disk tip wins, so a
+// restart never re-fetches a range the previous run already applied.
+func TestBlockSyncEngine_ResumePrefersPersistedProgress(t *testing.T) {
+	ps, closeDB := newTestPersistentState(t)
+	defer closeDB()
+
+	// Tip at 100; progress persisted at 120 (progress ahead of tip).
+	if err := consensus.StoreTip(ps, &types.BlockHeader{Version: 1, Height: 100}); err != nil {
+		t.Fatal(err)
+	}
+	pm := NewPeerManager(nil)
+	p2p, err := NewP2PNode(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p2p.Close()
+
+	engine := NewBlockSyncEngine(pm, p2p, ps)
+	engine.mu.Lock()
+	engine.lastSyncedHeight = 120
+	engine.mu.Unlock()
+	engine.persistProgress()
+
+	// A fresh engine on the same DB must resume from the persisted progress.
+	pm2 := NewPeerManager(nil)
+	p2p2, err := NewP2PNode(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p2p2.Close()
+
+	engine2 := NewBlockSyncEngine(pm2, p2p2, ps)
+	if got := engine2.resumeFrom(); got != 121 {
+		t.Errorf("resumeFrom = %d, want 121 (progress 120 beats tip 100)", got)
+	}
+}
+
+// TestBlockSyncEngine_PartialResponseNarrowsNextWindow pins the spec's
+// "partial responses SHOULD be re-requested narrowed to the missing heights"
+// (block-range-sync, partial-and-invalid): when a peer answers with fewer
+// blocks than requested, the engine applies what it got and requests the next
+// window from last-accepted + 1 — the first missing height — never re-sending
+// the already-applied prefix of the window.
+func TestBlockSyncEngine_PartialResponseNarrowsNextWindow(t *testing.T) {
+	ps, closeDB := newTestPersistentState(t)
+	defer closeDB()
+
+	// Tip 80 on disk: the catch-up window starts at 81.
+	if err := consensus.StoreTip(ps, &types.BlockHeader{Version: 1, Height: 80}); err != nil {
+		t.Fatal(err)
+	}
+
+	pm := NewPeerManager(nil)
+	p2p, err := NewP2PNode(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p2p.Close()
+
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	const peerAddr = "peer-addr"
+	peerID := PeerIDFromBytes([]byte(peerAddr))
+	peer := pm.AddPeer(peerID, peerAddr)
+	peer.mu.Lock()
+	peer.Conn = client
+	peer.SyncHeight = 500
+	peer.State = PeerConnected
+	peer.mu.Unlock()
+
+	p2p.connMu.Lock()
+	p2p.connections[peerAddr] = client
+	p2p.connMu.Unlock()
+
+	engine := NewBlockSyncEngine(pm, p2p, ps)
+	engine.Start()
+	defer engine.Stop()
+
+	engine.SetBlockHandler(func(data []byte) (bool, error) {
+		height := binary.BigEndian.Uint64(data)
+		if err := consensus.StoreTip(ps, &types.BlockHeader{Version: 1, Height: height}); err != nil {
+			return false, err
+		}
+		return true, nil
+	})
+
+	got := make(chan []byte, 2)
+	go func() {
+		for i := 0; i < 2; i++ {
+			buf := make([]byte, 4+1+16)
+			if _, err := io.ReadFull(server, buf); err != nil {
+				return
+			}
+			got <- buf
+		}
+	}()
+
+	engine.startCatchUp()
+
+	// First request covers the full window [81..180].
+	select {
+	case buf := <-got:
+		start := binary.BigEndian.Uint64(buf[5:13])
+		if start != 81 {
+			t.Fatalf("first request starts at %d, want 81", start)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: no initial window request observed")
+	}
+
+	// The peer answers only 3 of the 100 requested blocks (a partial window).
+	var blocks [][]byte
+	for h := uint64(81); h <= 83; h++ {
+		data := make([]byte, 8)
+		binary.BigEndian.PutUint64(data, h)
+		blocks = append(blocks, data)
+	}
+	engine.HandleBlockRangeResponse(encodeBlockList(blocks), peerID)
+
+	// The next request must start at 84 — the first missing height — not 81.
+	select {
+	case buf := <-got:
+		if buf[4] != MsgTypeBlockRangeRequest {
+			t.Fatalf("message type = 0x%02x, want 0x30", buf[4])
+		}
+		start := binary.BigEndian.Uint64(buf[5:13])
+		if start != 84 {
+			t.Errorf("narrowed re-request starts at %d, want 84 (last accepted + 1)", start)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: no narrowed re-request for the missing heights")
 	}
 }

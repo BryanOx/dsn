@@ -148,9 +148,11 @@ func validateBlock(block *types.Block, parentHeader *types.BlockHeader,
 			snap.SetHash, block.Header.ValidatorSetHash)
 	}
 
-	// 5. Verify proposer
+	// 5. Verify proposer — round-aware: the expected proposer is selected by
+	// (height, header round), so a round>0 proposal must come from the round-r
+	// proposer. Round 0 is the historical height-only schedule (S3).
 	if len(activeVals) > 0 {
-		expectedProposer := WeightedProposerAtHeight(block.Header.Height, activeVals)
+		expectedProposer := WeightedProposerAtHeightAndRound(block.Header.Height, block.Header.Round, activeVals)
 		if block.Header.Proposer != expectedProposer {
 			return fmt.Errorf("%w: expected %x, got %x", ErrWrongProposer,
 				expectedProposer, block.Header.Proposer)

@@ -74,13 +74,15 @@ func SaveKey(path string, kp *KeyPair) error {
 	return os.WriteFile(path, data, 0600)
 }
 
-// LoadKey reads a key pair from a JSON file.
+// LoadKey reads a key pair from a JSON file. Encrypted keystores require a
+// passphrase provider, which LoadKey does not have, so loading one returns
+// ErrKeystorePassphraseRequired; legacy plaintext files load directly.
 func LoadKey(path string) (*KeyPair, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
+	return LoadKeyFile(path, nil)
+}
 
+// loadLegacyKey parses a legacy plaintext key file.
+func loadLegacyKey(data []byte) (*KeyPair, error) {
 	var kf keyFile
 	if err := json.Unmarshal(data, &kf); err != nil {
 		return nil, err

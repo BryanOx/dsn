@@ -215,10 +215,15 @@ func NewConsensusLoopNetwork(t *testing.T, n int) ([]*node.Node, []*wallet.KeyPa
 	return nodes, keyPairs
 }
 
-// MineBlock manually builds and stores a block on the given node.
+// MineBlock manually builds and returns a block on the given node.
 // Uses consensus.BuildBlock with the node's state, VM, and mempool.
-// Stores the block header via consensus.StoreBlockHeader and consensus.StoreTip.
-// Updates node internals (currentHeight, currentTipHash) via applyAcceptedBlock or direct assignment.
+// NOTE: this helper only builds — it does NOT store the block on the node
+// (no StoreBlockHeader/StoreTip, no applyAcceptedBlock). The chain tip is only
+// advanced by the consensus loop (n.StartConsensus()) or by sync from a peer.
+// Callers that need the node's height to advance must mine through the
+// consensus loop; callers that only need a deterministic state root (e.g.
+// CompareStateRoots) can use this builder directly since BuildBlock commits
+// state as a side effect.
 // The allKeyPairs parameter should contain all validator keypairs for commit proof generation.
 // This function automatically determines the correct proposer from active validators.
 func MineBlock(t *testing.T, n *node.Node, proposerKP *wallet.KeyPair, allKeyPairs []*wallet.KeyPair) *types.Block {

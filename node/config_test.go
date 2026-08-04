@@ -83,6 +83,53 @@ func TestConfigFromEnv_Consensus(t *testing.T) {
 	}
 }
 
+// TestConfigFromEnv_RejectsTimeoutAtOrBelowSkewWindow is the S9 RED test. A
+// consensus timeout base at or below the ±5s clock-skew window cannot
+// distinguish a stalled proposer from a stale block, so configuration must
+// reject it. ConfigFromEnv rejects the value by falling back to the default;
+// values above the window pass through unchanged.
+func TestConfigFromEnv_RejectsTimeoutAtOrBelowSkewWindow(t *testing.T) {
+	for _, base := range []string{"1s", "2s", "4s", "5s"} {
+		t.Run(base, func(t *testing.T) {
+			t.Setenv("DSN_PROPOSER_TIMEOUT", base)
+			cfg := ConfigFromEnv()
+			want, _ := time.ParseDuration(base)
+			if cfg.ProposerTimeout == want {
+				t.Fatalf("ProposerTimeout = %v: a base at or below the ±5s skew window must be rejected", cfg.ProposerTimeout)
+			}
+		})
+	}
+}
+
+// TestConfigFromEnv_TimeoutAboveSkewAccepted is the S9 companion: bases above
+// the skew window must be accepted.
+func TestConfigFromEnv_TimeoutAboveSkewAccepted(t *testing.T) {
+	t.Setenv("DSN_PROPOSER_TIMEOUT", "6s")
+	cfg := ConfigFromEnv()
+	if cfg.ProposerTimeout != 6*time.Second {
+		t.Fatalf("ProposerTimeout = %v, want 6s (above skew window)", cfg.ProposerTimeout)
+	}
+}
+
+// TestConfig_MaxRoundDefaultsToEight is the S8 config-side RED test: the
+// default MaxRound cap must be 8.
+func TestConfig_MaxRoundDefaultsToEight(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.MaxRound != 8 {
+		t.Fatalf("MaxRound = %d, want 8", cfg.MaxRound)
+	}
+}
+
+// TestConfigFromEnv_MaxRound is the S8 config-side RED test: DSN_MAX_ROUND must
+// override the default cap.
+func TestConfigFromEnv_MaxRound(t *testing.T) {
+	t.Setenv("DSN_MAX_ROUND", "2")
+	cfg := ConfigFromEnv()
+	if cfg.MaxRound != 2 {
+		t.Fatalf("MaxRound = %d, want 2 from DSN_MAX_ROUND", cfg.MaxRound)
+	}
+}
+
 func TestConfigFromEnv_InvalidConsensus(t *testing.T) {
 	// Invalid values should be ignored, defaults used
 	t.Setenv("DSN_MAX_TX_PER_BLOCK", "-1")

@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dsn/dsn/state"
 	"github.com/dsn/dsn/types"
 	"golang.org/x/time/rate"
 )
@@ -445,10 +444,19 @@ func (n *P2PNode) readLoop(conn net.Conn, remoteAddr string, id PeerID) {
 					n.enqueueBlockRangeResponse(msgBuf[1:], remoteAddr)
 				}
 			case MsgTypeSyncHeight:
-				// Height announcement: record it monotonically and wake the
-				// block-sync engine so catch-up starts without waiting for
-				// its periodic tick.
-				if n.blockSync != nil && len(msgBuf) >= 1+8 {
+				// Height announcement: the payload must be exactly 8 bytes
+				// (W2). Any other length is malformed: penalize the sender
+				// and ignore the message so the recorded height stays
+				// unchanged. The penalty fires regardless of whether the
+				// block-sync engine is wired.
+				if len(msgBuf) != 1+8 {
+					n.pm.ReportFailure(id, 2)
+					continue
+				}
+				// Record the height monotonically and wake the block-sync
+				// engine so catch-up starts without waiting for its
+				// periodic tick.
+				if n.blockSync != nil {
 					h := binary.BigEndian.Uint64(msgBuf[1:9])
 					n.pm.UpdateSyncHeight(id, h)
 					n.blockSync.NotifyPeerHeight(h)
@@ -569,42 +577,23 @@ func (n *P2PNode) isConnected(addr string) bool {
 	return exists
 }
 
-// GossipTransaction broadcasts a transaction to all connected peers.
+// GossipTransaction broadcasts a transaction to all connected peers as a
+// single-framed typed message ([0x02][tx]). The legacy [len][raw-tx] framing
+// misrouted any tx whose first encoded byte is a known message type — a
+// Version-2 (0x0200) tx encodes 0x02 (MsgTypeTransaction) and the read loop
+// stripped that byte as a type prefix, shifting every field. Aligned with
+// GossipEngine.GossipTransaction (PR1c); the type byte makes the framing work
+// for every tx version (S2).
 func (n *P2PNode) GossipTransaction(tx *types.Transaction, hasher types.Hasher) error {
 	var buf bytes.Buffer
 	if err := tx.Encode(&buf); err != nil {
 		return err
 	}
 
-	msgLen := uint32(buf.Len())
-	lenBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(lenBuf, msgLen)
-
-	n.connMu.Lock()
-	defer n.connMu.Unlock()
-
-	var failedPeers []string
-	for addr, conn := range n.connections {
-		_, err := conn.Write(lenBuf)
-		if err != nil {
-			failedPeers = append(failedPeers, addr)
-			continue
-		}
-		_, err = conn.Write(buf.Bytes())
-		if err != nil {
-			failedPeers = append(failedPeers, addr)
-			continue
-		}
-	}
-
-	// Remove stale peers that failed to write
-	for _, addr := range failedPeers {
-		if conn, ok := n.connections[addr]; ok {
-			conn.Close()
-			delete(n.connections, addr)
-		}
-	}
-
+	msg := make([]byte, 1+buf.Len())
+	msg[0] = MsgTypeTransaction
+	copy(msg[1:], buf.Bytes())
+	n.Broadcast(msg)
 	return nil
 }
 
@@ -726,47 +715,20 @@ func (n *P2PNode) SetFastSyncEngine(e *FastSyncEngine) {
 	}
 
 	// Server-side: respond to snapshot queries with the latest stored
-	// snapshot's metadata (task 5.2). Serve handlers must not return nil when
-	// snapshots exist — the stored checkpoint + snapshot data is the source.
+	// snapshot's metadata (task 5.2, cached per 8.3). Serve handlers must not
+	// return nil when snapshots exist — the stored checkpoint + snapshot data
+	// is the source.
 	n.snapshotQueryHandler = func() *SnapshotInfo {
-		cp, err := state.LatestCheckpoint(e.persistent)
-		if err != nil {
-			return nil
-		}
-		if !state.SnapshotExists(e.persistent, cp.Height) {
-			return nil
-		}
-		data, err := state.LoadSnapshot(e.persistent, cp.Height)
-		if err != nil {
-			return nil
-		}
-		chunks, err := state.ChunkSnapshot(data, state.DefaultChunkSize)
-		if err != nil {
-			return nil
-		}
-		return &SnapshotInfo{
-			Height:       cp.Height,
-			SnapshotHash: cp.SnapshotHash,
-			StateRoot:    cp.StateRoot,
-			Epoch:        cp.Epoch,
-			Timestamp:    cp.Timestamp,
-			ChunkCount:   uint32(len(chunks)),
-		}
+		info, _ := e.ServeSnapshot()
+		return info
 	}
 
 	// Server-side: respond to chunk requests from the stored snapshot data.
-	// A chunk index beyond the snapshot's chunk count is not served.
+	// A chunk index beyond the snapshot's chunk count is not served. Chunks
+	// come from the latest-only cache (8.3).
 	n.snapshotRequestHandler = func(snapshotHash [32]byte, chunkIndex uint32) (*SnapshotChunk, bool) {
-		cp, err := state.LatestCheckpoint(e.persistent)
-		if err != nil || cp.SnapshotHash != snapshotHash {
-			return nil, false
-		}
-		data, err := state.LoadSnapshot(e.persistent, cp.Height)
-		if err != nil {
-			return nil, false
-		}
-		chunks, err := state.ChunkSnapshot(data, state.DefaultChunkSize)
-		if err != nil || chunkIndex >= uint32(len(chunks)) {
+		info, chunks := e.ServeSnapshot()
+		if info == nil || info.SnapshotHash != snapshotHash || chunkIndex >= uint32(len(chunks)) {
 			return nil, false
 		}
 		ch := chunks[chunkIndex]

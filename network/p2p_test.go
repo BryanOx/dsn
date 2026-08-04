@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dsn/dsn/types"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewP2PNode(t *testing.T) {
@@ -541,5 +542,107 @@ func TestPeerDiscovery_DialRegistersConnection(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout: connection dialed via PeerManager was never read")
+	}
+}
+
+// TestReadLoop_MalformedSyncHeightPenalizes verifies the wire-path hardening
+// (W2): a SyncHeight frame whose payload is not exactly 8 bytes must penalize
+// the sender (−2) and leave the recorded height unchanged. The penalty must
+// fire on the read-loop path, not only in ParseMessage (which production never
+// calls), and must not depend on the block-sync engine being wired.
+func TestReadLoop_MalformedSyncHeightPenalizes(t *testing.T) {
+	n1, _ := NewP2PNode(0)
+	defer n1.Close()
+	n2, _ := NewP2PNode(0)
+	defer n2.Close()
+
+	// Wire a block-sync engine so the valid path (UpdateSyncHeight +
+	// NotifyPeerHeight) is exercised end to end.
+	be := NewBlockSyncEngine(n1.PeerManager(), n1, nil)
+	n1.SetBlockSyncEngine(be)
+
+	if err := n1.Connect(n2.Addr()); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	// n1's peer record for n2, pre-seeded with a known height.
+	peerID := PeerIDFromBytes([]byte(n2.Addr()))
+	peer := n1.pm.GetPeer(peerID)
+	if peer == nil {
+		t.Fatal("n2 not registered as a peer of n1")
+	}
+	peer.mu.Lock()
+	peer.SyncHeight = 42
+	peer.mu.Unlock()
+
+	// Malformed: payload shorter than 8 bytes.
+	n2.Broadcast([]byte{byte(MsgTypeSyncHeight), 0x01, 0x02, 0x03, 0x04})
+	require.Eventually(t, func() bool {
+		peer.mu.RLock()
+		defer peer.mu.RUnlock()
+		return peer.Score == -2 && peer.SyncHeight == 42
+	}, 2*time.Second, 20*time.Millisecond,
+		"malformed 0x43 (short payload) must penalize −2 and keep the height")
+
+	// Oversized: payload longer than 8 bytes is also malformed.
+	n2.Broadcast(append([]byte{byte(MsgTypeSyncHeight)}, make([]byte, 12)...))
+	require.Eventually(t, func() bool {
+		peer.mu.RLock()
+		defer peer.mu.RUnlock()
+		return peer.Score == -4 && peer.SyncHeight == 42
+	}, 2*time.Second, 20*time.Millisecond,
+		"malformed 0x43 (oversized payload) must penalize −2 and keep the height")
+
+	// Valid 8-byte payload updates the height monotonically.
+	var h [8]byte
+	binary.BigEndian.PutUint64(h[:], 50)
+	n2.Broadcast(append([]byte{byte(MsgTypeSyncHeight)}, h[:]...))
+	require.Eventually(t, func() bool {
+		peer.mu.RLock()
+		defer peer.mu.RUnlock()
+		return peer.SyncHeight == 50
+	}, 2*time.Second, 20*time.Millisecond, "valid 0x43 must update the height")
+}
+
+// TestP2PNode_GossipTransactionTypedFraming verifies the S2 framing fix: a
+// transaction whose first encoded byte is a known message type (Version
+// 0x0200 encodes 0x02 = MsgTypeTransaction) must arrive intact. The legacy
+// [len][raw-tx] framing made the read loop treat that byte as a type prefix,
+// strip it, and decode garbage — the tx was never delivered.
+func TestP2PNode_GossipTransactionTypedFraming(t *testing.T) {
+	hasher := types.SHA256Hasher{}
+
+	n1, _ := NewP2PNode(0)
+	defer n1.Close()
+	n2, _ := NewP2PNode(0)
+	defer n2.Close()
+
+	if err := n1.Connect(n2.Addr()); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	received := make(chan *types.Transaction, 1)
+	n2.SetTxHandler(func(tx *types.Transaction) {
+		received <- tx
+	})
+
+	tx := &types.Transaction{
+		Version:  0x0200, // first encoded byte 0x02 → collides with MsgTypeTransaction
+		Nonce:    1,
+		MaxFee:   100,
+		IntentID: types.Hash{1, 2, 3},
+	}
+	if err := n1.GossipTransaction(tx, hasher); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case got := <-received:
+		require.Equal(t, tx.IntentID, got.IntentID, "typed-framed gossip must deliver the tx intact")
+		require.Equal(t, tx.Version, got.Version, "version must survive the typed framing")
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: typed-framed gossiped transaction never arrived")
 	}
 }

@@ -56,12 +56,16 @@ type Node struct {
 	bestChainHeight  uint64                     // tracks best chain height for fork choice
 
 	// Two-phase voting state for the pending proposal round. voteMu guards the
-	// pending round: voting (VotingState), pendingBlock and pendingHash.
-	voteMu        sync.Mutex
-	voting        *consensus.VotingState
-	pendingBlock  *types.Block
-	pendingHash   types.Hash
-	pendingHeight uint64
+	// pending round: voting (VotingState), pendingBlock, pendingHash and the
+	// view-change bookkeeping (pendingRound, pendingRoundTicks, precommitSent).
+	voteMu            sync.Mutex
+	voting            *consensus.VotingState
+	pendingBlock      *types.Block
+	pendingHash       types.Hash
+	pendingHeight     uint64
+	pendingRound      uint32
+	pendingRoundTicks uint64
+	precommitSent     bool
 
 	// Production Node Runtime fields (Phase 5B)
 	genesisDoc      *genesis.GenesisDoc
@@ -450,6 +454,16 @@ func (n *Node) consensusID() types.Address {
 // zero address when the node has no wallet, the registry read fails, or the
 // active validator set is empty.
 func (n *Node) consensusProposerAtHeight(height uint64) types.Address {
+	return n.consensusProposerAtHeightAndRound(height, 0)
+}
+
+// consensusProposerAtHeightAndRound selects the proposer for (height, round)
+// from the ACTIVE staking registry using the round-aware weighted schedule
+// (consensus.WeightedProposerAtHeightAndRound over staking.GetActiveValidators).
+// Round 0 reproduces the height-only schedule exactly. Returns the zero
+// address when the node has no wallet, the registry read fails, or the active
+// validator set is empty.
+func (n *Node) consensusProposerAtHeightAndRound(height uint64, round uint32) types.Address {
 	if n.wallet == nil {
 		return types.Address{}
 	}
@@ -457,7 +471,45 @@ func (n *Node) consensusProposerAtHeight(height uint64) types.Address {
 	if err != nil || len(active) == 0 {
 		return types.Address{}
 	}
-	return consensus.WeightedProposerAtHeight(height, active)
+	return consensus.WeightedProposerAtHeightAndRound(height, round, active)
+}
+
+// currentRound returns the round this node is currently pending on for the
+// given height, or 0 when the node has no pending round for it (the pending
+// round is only established once a proposal is built or adopted).
+func (n *Node) currentRound(height uint64) uint32 {
+	n.voteMu.Lock()
+	defer n.voteMu.Unlock()
+	if n.pendingHeight != height {
+		return 0
+	}
+	return n.pendingRound
+}
+
+// maybeAdvanceRound drives the view change: each consensus-loop tick while the
+// pending round stays unfinalized counts toward the round's deadline, and once
+// ProposerTimeout×(1+r) elapses the node advances to round r+1. The advance
+// abandons the old round's vote set (they are stale) and resets the precommit
+// gate, but keeps the pending block: the new round's proposer either rebuilds
+// fresh (proposeForHeight with replace) or a peer's higher-round proposal is
+// adopted (handleProposal). Round r must satisfy r+1 <= MaxRound; at the cap
+// the node waits and re-broadcasts instead of advancing.
+func (n *Node) maybeAdvanceRound(height uint64) {
+	n.voteMu.Lock()
+	defer n.voteMu.Unlock()
+	if n.currentHeight.Load() >= height || n.pendingHeight != height {
+		return
+	}
+	if n.pendingRound >= n.cfg.MaxRound {
+		return
+	}
+	n.pendingRoundTicks++
+	if n.pendingRoundTicks >= uint64(n.pendingRound)+1 {
+		n.pendingRound++
+		n.pendingRoundTicks = 0
+		n.precommitSent = false
+		n.voting = nil
+	}
 }
 
 // CurrentHeight returns the current chain height.
@@ -597,7 +649,11 @@ func (n *Node) runConsensusLoop() {
 		// The old static operator-address set (n.validators) + ProposerAtHeight
 		// never matched validation, so every block this node built was rejected
 		// with ErrWrongProposer.
-		proposer := n.consensusProposerAtHeight(height)
+		//
+		// PR2: the schedule is round-aware (WeightedProposerAtHeightAndRound);
+		// round 0 reproduces the height-only schedule exactly.
+		round := n.currentRound(height)
+		proposer := n.consensusProposerAtHeightAndRound(height, round)
 
 		if proposer != (types.Address{}) && proposer == n.consensusID() {
 			// I am the proposer — run the two-phase proposal round: build and
@@ -607,17 +663,25 @@ func (n *Node) runConsensusLoop() {
 			// entry and returns false on later ticks while the round is still
 			// pending; those ticks re-broadcast the stored proposal so peers
 			// that missed the initial send can still vote on it.
-			if !n.runProposerRound(height, proposer) {
+			if !n.runProposerRound(height, proposer, round) {
 				n.rebroadcastPendingProposal()
 			}
 		}
 
-		// Wait before next check
+		// PR2 view change: while the round stays unfinalized, the node
+		// advances its pending round on the linear ProposerTimeout×(1+r)
+		// deadline, capped at MaxRound. Advancing is independent of the
+		// proposer role — the schedule decides who proposes each round.
+		//
+		// The advance runs AFTER the wait so the tick that created the round
+		// does not immediately age it: round r lives at least (r+1)×
+		// ProposerTimeout from when it became pending.
 		select {
 		case <-n.consensusStopCh:
 			return
 		case <-time.After(n.cfg.ProposerTimeout):
 		}
+		n.maybeAdvanceRound(height)
 
 		// Missed-proposal detection: the height this iteration targeted never
 		// materialized while a peer advertises a longer chain — the node is
@@ -632,32 +696,36 @@ func (n *Node) runConsensusLoop() {
 }
 
 // runProposerRound runs one two-phase consensus round when this node is the
-// proposer for the given height. Phase 1 builds and broadcasts a proposal (a
-// signed block WITHOUT a commit proof) and votes for it. Phase 2 attaches the
-// commit proof once a 2/3 precommit majority is collected and broadcasts the
-// final block (see tryFinalizeLocked).
+// proposer for the given height and round. Phase 1 builds and broadcasts a
+// proposal (a signed block WITHOUT a commit proof) and prevotes for it. Phase
+// 2 attaches the commit proof once a 2/3 precommit majority is collected and
+// broadcasts the final block (see tryFinalizeLocked). The node's own precommit
+// is gated on a 2/3 prevote majority (see tryPrecommitLocked).
 //
 // It returns true when this call broadcast a fresh proposal, and false when
-// the round is already pending (or could not be started), so the consensus
-// loop can re-broadcast the stored proposal on later ticks.
-func (n *Node) runProposerRound(height uint64, proposer types.Address) bool {
+// the round is already pending at or above `round` (or could not be started),
+// so the consensus loop can re-broadcast the stored proposal on later ticks.
+func (n *Node) runProposerRound(height uint64, proposer types.Address, round uint32) bool {
 	if n.wallet == nil {
 		return false
 	}
 
 	n.voteMu.Lock()
-	if n.pendingHeight == height {
+	if n.pendingHeight == height && n.pendingBlock != nil && n.pendingBlock.Header.Round >= round {
 		n.voteMu.Unlock()
-		return false // already proposed this height
+		return false // already proposed this height at this or a higher round
 	}
+	replace := n.pendingHeight == height
 	n.voteMu.Unlock()
 
-	return n.proposeForHeight(height, proposer, false)
+	return n.proposeForHeight(height, proposer, round, replace)
 }
 
-// proposeForHeight builds a fresh proposal for the given height, self-validates
-// it through the exact pipeline peers use, (re)establishes the pending round
-// and broadcasts the proposal plus this node's votes.
+// proposeForHeight builds a fresh proposal for the given height and round,
+// self-validates it through the exact pipeline peers use, (re)establishes the
+// pending round and broadcasts the proposal plus this node's prevote. The
+// node's own precommit is emitted later, gated on a 2/3 prevote majority
+// (tryPrecommitLocked), so a proposer alone can never precommit below quorum.
 //
 // The proposal is validated with the Snapshot → build → revert → replay
 // pattern: the candidate is built in place, the state is reverted, and the
@@ -671,7 +739,7 @@ func (n *Node) runProposerRound(height uint64, proposer types.Address) bool {
 // height instead of skipping it. That is only allowed while the pending
 // proposal is still unvoted (no external votes), otherwise the replacement
 // would orphan peer votes and deadlock the round.
-func (n *Node) proposeForHeight(height uint64, proposer types.Address, replace bool) bool {
+func (n *Node) proposeForHeight(height uint64, proposer types.Address, round uint32, replace bool) bool {
 	if n.wallet == nil {
 		return false
 	}
@@ -684,6 +752,13 @@ func (n *Node) proposeForHeight(height uint64, proposer types.Address, replace b
 	block, err := consensus.BuildBlock(n.state, n.vm, n.mempool, height, n.GetTipHash(),
 		proposer, signer, n.hasher, n.cfg.MaxTxPerBlock, evidence, n.cfg.BlockTimeSec)
 	if err != nil {
+		_ = n.state.RevertToSnapshot(snapID)
+		return false
+	}
+	// Stamp the proposal with its round. Round is part of HeaderHash, so the
+	// stamp must happen before the header is hashed/signed — otherwise the
+	// proposal would not validate against its own HeaderHash.
+	if err := consensus.SetProposalRound(block, round, signer, n.hasher); err != nil {
 		_ = n.state.RevertToSnapshot(snapID)
 		return false
 	}
@@ -723,12 +798,18 @@ func (n *Node) proposeForHeight(height uint64, proposer types.Address, replace b
 		return false
 	}
 	if replace {
-		if n.pendingHeight != height || n.voting == nil {
+		if n.pendingHeight != height {
 			n.voteMu.Unlock()
 			_ = n.state.RevertToSnapshot(snapID)
 			return false
 		}
-		if n.votingHasExternalVotes(n.voting) {
+		// A SAME-round refresh would orphan peer votes on the old hash, so it
+		// is blocked while any external vote exists. A ROUND-advance rebuild
+		// abandons the old round entirely — those votes are stale and must not
+		// block the new proposer (the pendingRound deadline already advanced
+		// the view), so it always proceeds.
+		sameRound := n.pendingBlock != nil && n.pendingBlock.Header.Round == round
+		if sameRound && n.votingHasExternalVotes(n.voting) {
 			// A peer voted on the current proposal; refreshing the hash would
 			// orphan that vote. Keep the pending round as-is.
 			n.voteMu.Unlock()
@@ -757,28 +838,29 @@ func (n *Node) proposeForHeight(height uint64, proposer types.Address, replace b
 		n.voteMu.Unlock()
 		return false
 	}
-	vs := consensus.NewVotingState(height, 0, hash, snap)
-	prevote := n.newVote(height, hash, types.VotePrevote)
-	precommit := n.newVote(height, hash, types.VotePrecommit)
+	vs := consensus.NewVotingState(height, round, hash, snap)
+	prevote := n.newVote(height, hash, round, types.VotePrevote)
 	_ = vs.AddPrevote(prevote)
-	_ = vs.AddPrecommit(precommit)
 	n.voting = vs
 	n.pendingBlock = block
 	n.pendingHash = hash
 	n.pendingHeight = height
+	n.pendingRound = round
+	n.pendingRoundTicks = 0
+	n.precommitSent = false
 	n.voteMu.Unlock()
 
-	// Phase 1: broadcast the proposal (no commit proof yet) and our votes.
+	// Phase 1: broadcast the proposal (no commit proof yet) and our prevote.
 	data, err := consensus.EncodeBlockMessage(block)
 	if err == nil && n.p2p != nil {
 		n.p2p.Broadcast(data)
 	}
 	n.broadcastVote(prevote)
-	n.broadcastVote(precommit)
 
-	// Phase 2: if our own votes already reach the 2/3 precommit majority (a
-	// single-validator network), finalize immediately.
+	// Phase 2: if our own prevote already reaches the 2/3 prevote majority (a
+	// single-validator network), precommit and finalize immediately.
 	n.voteMu.Lock()
+	n.tryPrecommitLocked()
 	n.tryFinalizeLocked()
 	n.voteMu.Unlock()
 	return true
@@ -839,7 +921,9 @@ func (n *Node) publishSyncHeight() {
 func (n *Node) rebroadcastPendingProposal() {
 	n.voteMu.Lock()
 	height := n.pendingHeight
+	round := n.pendingRound
 	block := n.pendingBlock
+	hash := n.pendingHash
 	isProposer := n.voting != nil
 	stale := block != nil && types.ValidateTimestamp(block.Header.Timestamp) != nil
 	hasExternalVotes := n.votingHasExternalVotes(n.voting)
@@ -852,11 +936,15 @@ func (n *Node) rebroadcastPendingProposal() {
 		return // already finalized
 	}
 
-	// A stale, unvoted proposal is useless to peers — rebuild it fresh. The
-	// atomic guard in proposeForHeight re-checks the vote set under voteMu, so
-	// a vote racing in between this check and the rebuild cannot be orphaned.
+	// A stale, unvoted proposal is useless to peers — rebuild it fresh at the
+	// CURRENT pending round (the round may have advanced while this proposal
+	// was waiting). The rebuild is only reached from the loop when this node is
+	// the round's proposer, so the fresh block is built with the round-aware
+	// proposer schedule. The atomic guard in proposeForHeight re-checks the
+	// vote set under voteMu, so a vote racing in between this check and the
+	// rebuild cannot be orphaned.
 	if stale && !hasExternalVotes {
-		if n.proposeForHeight(height, block.Header.Proposer, true) {
+		if n.proposeForHeight(height, n.consensusProposerAtHeightAndRound(height, round), round, true) {
 			return
 		}
 	}
@@ -865,13 +953,25 @@ func (n *Node) rebroadcastPendingProposal() {
 	if err != nil || n.p2p == nil {
 		return
 	}
-	log.Printf("[consensus] re-broadcasting proposal for height %d", height)
+	log.Printf("[consensus] re-broadcasting proposal for height %d round %d", height, round)
 	n.p2p.Broadcast(data)
+
+	// Re-broadcast this node's own prevote alongside the block: the prevote
+	// was broadcast only once at proposal time, so a peer that connected (or
+	// lost) the initial send never observes the 2/3 prevote majority its
+	// precommit is gated on (S7) — and without that precommit this round can
+	// never finalize. Vote re-sends are idempotent for receivers (duplicates
+	// are dropped), so broadcasting on every pending tick is safe.
+	if n.wallet != nil {
+		n.broadcastVote(n.newVote(height, hash, round, types.VotePrevote))
+	}
 }
 
 // handleVoteMessage processes an incoming consensus vote from a peer. Only the
 // proposer tracks votes in its VotingState; other validators vote and wait for
-// the final block. Votes for unknown or already-finalized rounds are ignored.
+// the final block. Votes for unknown heights or rounds (mismatched with the
+// pending round) are ignored. A peer precommit only triggers finalization when
+// it matches the pending round.
 func (n *Node) handleVoteMessage(vote *types.Vote) {
 	if vote == nil {
 		return
@@ -879,20 +979,51 @@ func (n *Node) handleVoteMessage(vote *types.Vote) {
 	n.voteMu.Lock()
 	defer n.voteMu.Unlock()
 
-	if n.voting == nil || n.pendingHeight != vote.Height {
+	if n.voting == nil || n.pendingHeight != vote.Height || n.pendingRound != vote.Round {
 		return
 	}
 
 	switch vote.VoteType {
 	case types.VotePrevote:
 		_ = n.voting.AddPrevote(vote)
+		// A peer prevote can raise this node's own prevote majority: precommit
+		// (and possibly finalize) if the gate is now satisfied.
+		n.tryPrecommitLocked()
 	case types.VotePrecommit:
 		if err := n.voting.AddPrecommit(vote); err != nil {
-			log.Printf("[consensus] precommit rejected for height %d: %v", vote.Height, err)
+			log.Printf("[consensus] precommit rejected for height %d round %d: %v", vote.Height, vote.Round, err)
 		} else {
 			n.tryFinalizeLocked()
 		}
 	}
+}
+
+// tryPrecommitLocked emits this node's precommit for the pending round once a
+// 2/3 prevote majority exists (prevote-gated precommit). It is a no-op when
+// the gate is unsatisfied or this node already precommitted, so a proposer
+// alone can never precommit below quorum. Must be called with voteMu held.
+func (n *Node) tryPrecommitLocked() {
+	if n.voting == nil || n.pendingBlock == nil {
+		return
+	}
+	if n.precommitSent {
+		return
+	}
+	if !n.voting.HasPrevoteMajority() {
+		return
+	}
+	height := n.pendingHeight
+	round := n.pendingRound
+	hash := n.pendingHash
+	precommit := n.newVote(height, hash, round, types.VotePrecommit)
+	if err := n.voting.AddPrecommit(precommit); err != nil {
+		return
+	}
+	n.precommitSent = true
+	n.voteMu.Unlock()
+	n.broadcastVote(precommit)
+	n.voteMu.Lock()
+	n.tryFinalizeLocked()
 }
 
 // tryFinalizeLocked attaches the commit proof to the pending block and
@@ -942,15 +1073,19 @@ func (n *Node) resetPendingLocked() {
 	n.pendingBlock = nil
 	n.pendingHash = types.Hash{}
 	n.pendingHeight = 0
+	n.pendingRound = 0
+	n.pendingRoundTicks = 0
+	n.precommitSent = false
 }
 
-// newVote builds and signs a vote for the given height/block hash with this
-// node's consensus identity.
-func (n *Node) newVote(height uint64, blockHash types.Hash, voteType types.VoteType) *types.Vote {
+// newVote builds and signs a vote for the given height/round/block hash with
+// this node's consensus identity. Votes are scoped to (height, round): a vote
+// never carries a round it was not created for.
+func (n *Node) newVote(height uint64, blockHash types.Hash, round uint32, voteType types.VoteType) *types.Vote {
 	vote := &types.Vote{
 		VoteType:  voteType,
 		Height:    height,
-		Round:     0,
+		Round:     round,
 		BlockHash: blockHash,
 		Validator: n.consensusID(),
 	}
@@ -976,16 +1111,69 @@ func (n *Node) broadcastVote(vote *types.Vote) {
 
 // handleProposal records an incoming proof-less proposal, re-gossips it and
 // votes for it. Called after the proposal passed ValidateBlockProposal.
+//
+// Round policy (PR2): proposals are round-scoped. A proposal for a LOWER
+// round than the one already pending is ignored. A proposal for a HIGHER
+// round is accepted only while the pending round has no votes (prevotes or
+// precommits) — once a peer vote is registered, replacing the proposal would
+// orphan it and deadlock the round. Accepting a higher round bumps the pending
+// round and its view-change deadline so the round deadline restarts.
 func (n *Node) handleProposal(block *types.Block) {
+	snap, _ := staking.GetSnapshot(n.State(), block.Header.Epoch)
+	n.handleProposalWithSnap(block, snap)
+}
+
+// handleProposalWithSnap records an incoming proof-less proposal, re-gossips it
+// and votes for it. Called after the proposal passed ValidateBlockProposal.
+// snap is the validator snapshot for the proposal's epoch (captured by the
+// caller before the validation replay is reverted — at an epoch boundary the
+// working state's snapshot for the new epoch only exists during that replay).
+func (n *Node) handleProposalWithSnap(block *types.Block, snap *staking.ValidatorSnapshot) {
+	if block == nil {
+		return
+	}
 	n.voteMu.Lock()
-	if n.pendingHeight == block.Header.Height {
+	round := block.Header.Round
+	adopt := false
+	switch {
+	case n.pendingHeight != block.Header.Height:
+		// fresh height — adopt the proposal
+		adopt = true
+	case n.pendingBlock != nil:
+		if n.pendingBlock.Header.Round >= round {
+			// duplicate or stale round
+		} else if n.votingHasExternalVotes(n.voting) {
+			// a peer voted on the current round; switching the hash would
+			// orphan that vote — drop the higher-round proposal
+		} else {
+			adopt = true
+		}
+	default:
+		// no proposal held (the round advanced by timeout): adopt only rounds
+		// at or above the advanced round counter
+		adopt = round >= n.pendingRound
+	}
+	if !adopt {
 		n.voteMu.Unlock()
-		return // already voted for this round
+		return
 	}
 	hash, _ := block.HeaderHash(n.hasher)
 	n.pendingHeight = block.Header.Height
+	n.pendingRound = round
+	n.pendingRoundTicks = 0
 	n.pendingBlock = block
 	n.pendingHash = hash
+	n.precommitSent = false
+	// The receiver tracks votes too: precommits are gated on a 2/3 prevote
+	// majority (S7), which requires observing peers' prevotes.
+	if snap != nil {
+		vs := consensus.NewVotingState(block.Header.Height, round, hash, snap)
+		n.voting = vs
+	}
+	prevote := n.newVote(block.Header.Height, hash, round, types.VotePrevote)
+	if n.voting != nil {
+		_ = n.voting.AddPrevote(prevote)
+	}
 	n.voteMu.Unlock()
 
 	if n.gossip != nil {
@@ -997,8 +1185,12 @@ func (n *Node) handleProposal(block *types.Block) {
 	if n.wallet == nil {
 		return
 	}
-	n.broadcastVote(n.newVote(block.Header.Height, hash, types.VotePrevote))
-	n.broadcastVote(n.newVote(block.Header.Height, hash, types.VotePrecommit))
+	n.broadcastVote(prevote)
+	// Own prevote alone may already reach the gate on a single-validator
+	// network — precommit (but never finalize: only the proposer finalizes).
+	n.voteMu.Lock()
+	n.tryPrecommitLocked()
+	n.voteMu.Unlock()
 }
 
 // finalizeLocalBlock applies and persists a proposer-produced block, updates
@@ -1135,13 +1327,18 @@ func (n *Node) handleBlockMessage(data []byte) {
 		snapID := n.state.Snapshot()
 		err := consensus.ValidateBlockProposal(block, parentHeader, expectedPrevHash,
 			n.state, n.hasher, n.vm, n.cfg.BlockTimeSec)
+		// Capture the proposal's epoch snapshot while the validation replay
+		// has it in the working state: at an epoch boundary the new epoch's
+		// snapshot only exists during the replay (BeginBlock transitions the
+		// epoch and stores it), so it must be grabbed before the revert.
+		snap, _ := staking.GetSnapshot(n.state, block.Header.Epoch)
 		// The proposal check must not corrupt the working state — always revert.
 		_ = n.state.RevertToSnapshot(snapID)
 		if err != nil {
 			log.Printf("[consensus] proposal validation failed height=%d: %v", block.Header.Height, err)
 			return
 		}
-		n.handleProposal(block)
+		n.handleProposalWithSnap(block, snap)
 		return
 	}
 

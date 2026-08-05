@@ -148,25 +148,31 @@ func NewBFTTestHarness(t testing.TB, config BFTConfig) *BFTTestHarness {
 	}
 }
 
-// RunRound executes a single consensus round:
-// - Determines proposer via WeightedProposerAtHeight
+// RunRound executes a single consensus round at round 0. It is the historical
+// entry point kept for the adversarial test suite.
+func (h *BFTTestHarness) RunRound() {
+	h.RunRoundAt(0)
+}
+
+// RunRoundAt executes a single consensus round at the given round:
+// - Determines proposer via WeightedProposerAtHeightAndRound(height, round)
 // - If byzantine proposer: builds TWO blocks (equivocation)
 // - If honest: builds ONE block
 // - Each validator: receives block(s), validates, creates prevote
 // - If 2/3+ prevotes for a block, creates precommit
 // - If byzantine voter: votes for conflicting blocks
 // - Tracks committed blocks
-func (h *BFTTestHarness) RunRound() {
+func (h *BFTTestHarness) RunRoundAt(round uint32) {
 	h.t.Helper()
 
 	// Get active validators for proposer selection
 	activeVals, err := staking.GetActiveValidators(h.State)
-	require.NoError(h.t, err, "RunRound: get active validators failed")
-	require.Greater(h.t, len(activeVals), 0, "RunRound: no active validators")
+	require.NoError(h.t, err, "RunRoundAt: get active validators failed")
+	require.Greater(h.t, len(activeVals), 0, "RunRoundAt: no active validators")
 
-	// Determine proposer for current height
+	// Determine proposer for current height and round
 	height := h.Height + 1
-	proposerAddr := WeightedProposerAtHeight(height, activeVals)
+	proposerAddr := WeightedProposerAtHeightAndRound(height, round, activeVals)
 
 	// Find the validator index for the proposer
 	var proposerIdx int
@@ -192,15 +198,22 @@ func (h *BFTTestHarness) RunRound() {
 		blocks = []*types.Block{block}
 	}
 
+	// Stamp every proposal with the round it was proposed in. Round is part of
+	// HeaderHash, so the stamp must happen before the commit proof is built.
+	for i := range blocks {
+		require.NoError(h.t, SetProposalRound(blocks[i], round, &harnessSigner{kp: proposer.KeyPair}, h.Hasher),
+			"RunRoundAt: stamp round %d on block %d failed", round, i)
+	}
+
 	// Store blocks for this height
 	h.Blocks[height] = blocks
 
 	// Get snapshot for voting
 	snap := h.Snapshots[1] // Use epoch 1 snapshot for now
-	require.NotNil(h.t, snap, "RunRound: snapshot is nil")
+	require.NotNil(h.t, snap, "RunRoundAt: snapshot is nil")
 
 	// Simulate voting: each validator votes on block(s)
-	h.simulateVoting(height, blocks, snap)
+	h.simulateVoting(height, round, blocks, snap)
 
 	// Update height
 	h.Height = height
@@ -243,8 +256,8 @@ func (h *BFTTestHarness) getTipHash() types.Hash {
 	return headerHash
 }
 
-// simulateVoting simulates the voting phase of consensus
-func (h *BFTTestHarness) simulateVoting(height uint64, blocks []*types.Block, snap *staking.ValidatorSnapshot) {
+// simulateVoting simulates the voting phase of consensus at the given round
+func (h *BFTTestHarness) simulateVoting(height uint64, round uint32, blocks []*types.Block, snap *staking.ValidatorSnapshot) {
 	// For each block, create a voting state and collect votes
 	// If any block gets 2/3+ precommits, it becomes committed
 
@@ -254,7 +267,7 @@ func (h *BFTTestHarness) simulateVoting(height uint64, blocks []*types.Block, sn
 	for _, block := range blocks {
 		headerHash, err := block.HeaderHash(h.Hasher)
 		require.NoError(h.t, err, "simulateVoting: header hash failed")
-		blockVotes[headerHash] = NewVotingState(height, 0, headerHash, snap)
+		blockVotes[headerHash] = NewVotingState(height, round, headerHash, snap)
 	}
 
 	// PHASE 1: Collect all prevotes from all validators
@@ -283,7 +296,7 @@ func (h *BFTTestHarness) simulateVoting(height uint64, blocks []*types.Block, sn
 		prevote := &types.Vote{
 			VoteType:  types.VotePrevote,
 			Height:    height,
-			Round:     0,
+			Round:     round,
 			BlockHash: voteHash,
 			Validator: v.ConsensusID,
 		}
@@ -306,7 +319,7 @@ func (h *BFTTestHarness) simulateVoting(height uint64, blocks []*types.Block, sn
 				prevote2 := &types.Vote{
 					VoteType:  types.VotePrevote,
 					Height:    height,
-					Round:     0,
+					Round:     round,
 					BlockHash: voteHash2,
 					Validator: v.ConsensusID,
 				}
@@ -346,7 +359,7 @@ func (h *BFTTestHarness) simulateVoting(height uint64, blocks []*types.Block, sn
 			precommit := &types.Vote{
 				VoteType:  types.VotePrecommit,
 				Height:    height,
-				Round:     0,
+				Round:     round,
 				BlockHash: hash,
 				Validator: v.ConsensusID,
 			}
@@ -362,6 +375,13 @@ func (h *BFTTestHarness) simulateVoting(height uint64, blocks []*types.Block, sn
 				for _, block := range blocks {
 					blockHash, _ := block.HeaderHash(h.Hasher)
 					if blockHash == hash {
+						// Attach the commit proof so the stored block is a
+						// validatable final block (Round is part of the header
+						// hash, so the proof matches what block validation
+						// expects for a round-r final block).
+						if proof, err := vs.BuildCommitProof(); err == nil {
+							block.CommitProof = proof
+						}
 						h.Commits[height] = block
 						break
 					}

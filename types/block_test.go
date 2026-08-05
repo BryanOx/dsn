@@ -110,6 +110,48 @@ func TestBlockHeaderHash_DifferentHeights(t *testing.T) {
 	}
 }
 
+// TestBlockHeaderHash_RoundAffectsHash is RED for the Round header field (S1):
+// the round MUST be part of HeaderHash, so hashes differ iff the round differs.
+func TestBlockHeaderHash_RoundAffectsHash(t *testing.T) {
+	proposer := Address([20]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20})
+	hasher := SHA256Hasher{}
+
+	makeHeader := func(round uint32) *BlockHeader {
+		return &BlockHeader{
+			Version:       1,
+			Height:        1,
+			PreviousHash:  Hash{},
+			StateRoot:     Hash{},
+			TxRoot:        Hash{},
+			ReceiptRoot:   Hash{},
+			ValidatorRoot: Hash{},
+			Timestamp:     1700000000,
+			Proposer:      proposer,
+			Round:         round,
+		}
+	}
+
+	hashR0, err := makeHeader(0).HeaderHash(hasher)
+	if err != nil {
+		t.Fatalf("HeaderHash failed: %v", err)
+	}
+	hashR1, err := makeHeader(1).HeaderHash(hasher)
+	if err != nil {
+		t.Fatalf("HeaderHash failed: %v", err)
+	}
+	hashR0Dup, err := makeHeader(0).HeaderHash(hasher)
+	if err != nil {
+		t.Fatalf("HeaderHash failed: %v", err)
+	}
+
+	if hashR0 == hashR1 {
+		t.Error("Different rounds must produce different header hashes")
+	}
+	if hashR0 != hashR0Dup {
+		t.Error("Same round must produce identical header hashes")
+	}
+}
+
 func TestFeeSummary_Split70_20_10(t *testing.T) {
 	summary := NewFeeSummary(1000)
 

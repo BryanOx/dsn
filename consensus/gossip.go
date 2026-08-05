@@ -36,6 +36,9 @@ func EncodeBlockMessage(block *types.Block) ([]byte, error) {
 	if err := binary.Write(&blockBuf, binary.BigEndian, block.Header.Epoch); err != nil { // Add Epoch(8) after ValidatorSetHash
 		return nil, err
 	}
+	if err := binary.Write(&blockBuf, binary.BigEndian, block.Header.Round); err != nil { // Add Round(4) after Epoch
+		return nil, err
+	}
 	if err := binary.Write(&blockBuf, binary.BigEndian, block.Header.Timestamp); err != nil {
 		return nil, err
 	}
@@ -153,6 +156,9 @@ func DecodeBlockMessage(data []byte) (*types.Block, error) {
 		return nil, fmt.Errorf("failed to read validator set hash: %w", err)
 	}
 	if err := binary.Read(r, binary.BigEndian, &block.Header.Epoch); err != nil {
+		return nil, err
+	}
+	if err := binary.Read(r, binary.BigEndian, &block.Header.Round); err != nil {
 		return nil, err
 	}
 	if err := binary.Read(r, binary.BigEndian, &block.Header.Timestamp); err != nil {

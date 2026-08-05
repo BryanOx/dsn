@@ -148,9 +148,11 @@ func validateBlock(block *types.Block, parentHeader *types.BlockHeader,
 			snap.SetHash, block.Header.ValidatorSetHash)
 	}
 
-	// 5. Verify proposer
+	// 5. Verify proposer — round-aware: the expected proposer is selected by
+	// (height, header round), so a round>0 proposal must come from the round-r
+	// proposer. Round 0 is the historical height-only schedule (S3).
 	if len(activeVals) > 0 {
-		expectedProposer := WeightedProposerAtHeight(block.Header.Height, activeVals)
+		expectedProposer := WeightedProposerAtHeightAndRound(block.Header.Height, block.Header.Round, activeVals)
 		if block.Header.Proposer != expectedProposer {
 			return fmt.Errorf("%w: expected %x, got %x", ErrWrongProposer,
 				expectedProposer, block.Header.Proposer)
@@ -311,6 +313,13 @@ func validateCommitProof(block *types.Block, s *state.InMemoryState, epoch uint6
 		}
 		if vote.BlockHash != proof.BlockHash {
 			return fmt.Errorf("%w: vote %d block hash mismatch", ErrInvalidCommitProof, i)
+		}
+		// The precommit round must match the block round (S4): a round-r block
+		// needs round-r precommits. Round 0 is the legacy path (0==0) so
+		// existing chains remain valid.
+		if vote.Round != block.Header.Round {
+			return fmt.Errorf("%w: vote %d round mismatch: vote round %d, block round %d",
+				ErrInvalidCommitProof, i, vote.Round, block.Header.Round)
 		}
 
 		// Check no duplicate validators

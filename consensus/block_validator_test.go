@@ -183,6 +183,138 @@ func sortVotesByValidator(votes []types.Vote) {
 	}
 }
 
+// mirrorMultiValidatorState builds a fresh state whose active validator set is
+// identical to setupMultiValidator's (same operator addresses, seeds, stakes),
+// so block validation replays deterministically against it.
+func mirrorMultiValidatorState(t *testing.T, stakes []uint64) *state.InMemoryState {
+	hasher := types.SHA256Hasher{}
+	fs := state.NewInMemoryState(hasher)
+
+	for i, stake := range stakes {
+		addr := types.Address{}
+		addr[0] = byte(i + 1)
+
+		seed := make([]byte, 32)
+		seed[0] = byte(i + 1)
+		privKey := ed25519.NewKeyFromSeed(seed)
+		pubKey := privKey.Public().(ed25519.PublicKey)
+		var pubKey32 [32]byte
+		copy(pubKey32[:], pubKey)
+
+		acc := state.NewAccount(addr, pubKey32)
+		acc.Balance = types.NewAmount(stake * 2)
+		fs.SetAccount(addr, acc)
+
+		_, err := staking.RegisterValidator(fs, pubKey32, addr, types.NewAmount(stake), 0, 0)
+		require.NoError(t, err)
+		acc, _ = fs.GetAccount(addr)
+		acc.SubBalance(types.NewAmount(stake))
+		fs.SetAccount(addr, acc)
+	}
+
+	staking.ProcessEpochTransition(fs, 100)
+	staking.CreateSnapshot(fs, 1)
+	return fs
+}
+
+// TestValidateBlockProposal_RoundAwareProposer is RED for the round-aware
+// proposer check (S3): a round-1 proposal must be signed by the round-1
+// proposer. The round-0 proposer must fail ErrWrongProposer at round 1, and
+// the round-1 proposer's own proposal must pass.
+func TestValidateBlockProposal_RoundAwareProposer(t *testing.T) {
+	// Height whose round-0 and round-1 proposers differ: with equal 100k/100k
+	// power (total 200k) the offset (h+r)%200000 crosses the power boundary at
+	// h+r == 100000, so h=99999 selects different validators at r0 and r1.
+	const height = uint64(99_999)
+	parent := &types.BlockHeader{Height: height - 1}
+
+	// Scenario A (S3 negative): round-1 proposal from the round-0 proposer.
+	{
+		hasher := types.SHA256Hasher{}
+		s, _ := setupMultiValidator(t, 2, []uint64{100_000, 100_000})
+		mp := mempool.New(10000, 300*time.Second, s)
+
+		activeVals, err := staking.GetActiveValidators(s)
+		require.NoError(t, err)
+		proposerR0 := WeightedProposerAtHeightAndRound(height, 0, activeVals)
+		proposerR1 := WeightedProposerAtHeightAndRound(height, 1, activeVals)
+		require.NotEqual(t, proposerR0, proposerR1, "test precondition: rounds must select different proposers")
+
+		block, err := BuildBlock(s, nil, mp, height, types.Hash{}, proposerR0, &mockSigner{}, hasher, 100, nil, 1)
+		require.NoError(t, err)
+		require.Equal(t, proposerR0, block.Header.Proposer)
+		block.Header.Round = 1
+
+		freshS := mirrorMultiValidatorState(t, []uint64{100_000, 100_000})
+		err = ValidateBlockProposal(block, parent, types.ZeroHash, freshS, hasher, nil, 1)
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrWrongProposer)
+	}
+
+	// Scenario B (triangulation): the round-1 proposer's own proposal passes.
+	{
+		hasher := types.SHA256Hasher{}
+		s, _ := setupMultiValidator(t, 2, []uint64{100_000, 100_000})
+		mp := mempool.New(10000, 300*time.Second, s)
+
+		activeVals, err := staking.GetActiveValidators(s)
+		require.NoError(t, err)
+		proposerR1 := WeightedProposerAtHeightAndRound(height, 1, activeVals)
+
+		block, err := BuildBlock(s, nil, mp, height, types.Hash{}, proposerR1, &mockSigner{}, hasher, 100, nil, 1)
+		require.NoError(t, err)
+		require.Equal(t, proposerR1, block.Header.Proposer)
+		block.Header.Round = 1
+
+		freshS := mirrorMultiValidatorState(t, []uint64{100_000, 100_000})
+		err = ValidateBlockProposal(block, parent, types.ZeroHash, freshS, hasher, nil, 1)
+		require.NoError(t, err)
+	}
+}
+
+// TestValidateBlock_CommitProof_RoundMismatch is RED for the precommit round
+// check (S4): a round-r block must carry round-r precommits. A round-1 block
+// with round-0 precommits is rejected; a round-0 block with round-0
+// precommits keeps the legacy path working (0==0).
+func TestValidateBlock_CommitProof_RoundMismatch(t *testing.T) {
+	hasher := types.SHA256Hasher{}
+
+	// Scenario A (S4 negative): round-1 block with round-0 (r-1) precommits.
+	{
+		s, validators := setupMultiValidator(t, 1, []uint64{100_000})
+		mp := mempool.New(10000, 300*time.Second, s)
+
+		block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validators[0].ConsensusID, &mockSigner{}, hasher, 100, nil, 1)
+		require.NoError(t, err)
+		block.Header.Round = 1
+
+		// attachCommitProof signs round-0 precommits (r-1 for this block).
+		attachCommitProof(t, block, s, validators[0].ConsensusID, validators[0].PrivKey)
+
+		parent := &types.BlockHeader{Height: 0}
+		err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil, 1)
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrInvalidCommitProof)
+	}
+
+	// Scenario B (legacy path, triangulation): round-0 block with round-0
+	// precommits still passes — 0==0 keeps today's chains valid.
+	{
+		s, validators := setupMultiValidator(t, 1, []uint64{100_000})
+		mp := mempool.New(10000, 300*time.Second, s)
+
+		block, err := BuildBlock(s, nil, mp, 1, types.Hash{}, validators[0].ConsensusID, &mockSigner{}, hasher, 100, nil, 1)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), block.Header.Round)
+		attachCommitProof(t, block, s, validators[0].ConsensusID, validators[0].PrivKey)
+
+		parent := &types.BlockHeader{Height: 0}
+		err = ValidateBlock(block, parent, types.ZeroHash, s, hasher, nil, 1)
+		require.NoError(t, err)
+	}
+}
+
+// TestValidateBlock_Valid verifies a fully proofed round-0 block passes.
 func TestValidateBlock_Valid(t *testing.T) {
 	hasher, s, mp, senderPubKey, privKey, _, validatorPrivKey, validatorConsensusID := setupTest(t)
 

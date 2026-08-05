@@ -21,6 +21,7 @@ func TestBlockMessage_EncodeDecode(t *testing.T) {
 			ValidatorSetHash: types.Hash{20, 21},
 			EventsRoot:       types.Hash{16, 17, 18},
 			Epoch:            2,
+			Round:            3,
 			Timestamp:        1234567890,
 		},
 		Transactions: []types.Transaction{
@@ -57,6 +58,9 @@ func TestBlockMessage_EncodeDecode(t *testing.T) {
 	}
 	if decoded.Header.Proposer != block.Header.Proposer {
 		t.Errorf("expected proposer %v, got %v", block.Header.Proposer, decoded.Header.Proposer)
+	}
+	if decoded.Header.Round != block.Header.Round {
+		t.Errorf("expected round %d, got %d", block.Header.Round, decoded.Header.Round)
 	}
 	if len(decoded.Transactions) != 1 {
 		t.Errorf("expected 1 transaction, got %d", len(decoded.Transactions))

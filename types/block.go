@@ -17,6 +17,7 @@ type BlockHeader struct {
 	ValidatorRoot    Hash
 	ValidatorSetHash Hash   // NEW: hash of full active validator set
 	Epoch            uint64 // NEW: epoch this block belongs to
+	Round            uint32 // consensus round this block was proposed in; genesis Round 0
 	Timestamp        uint64
 	Proposer         Address
 	EventsRoot       Hash // NEW: root hash of all events in this block
@@ -64,6 +65,7 @@ func NewGenesisBlock(proposer Address) *Block {
 			ValidatorRoot:    Hash{},
 			ValidatorSetHash: Hash{}, // matches genesis snapshot
 			Epoch:            0,
+			Round:            0, // genesis is always round 0
 			Timestamp:        uint64(time.Now().Unix()),
 			Proposer:         proposer,
 			EventsRoot:       Hash{},
@@ -90,6 +92,9 @@ func (h *BlockHeader) HeaderHash(hasher Hasher) (Hash, error) {
 	buf.Write(h.ValidatorRoot[:])
 	buf.Write(h.ValidatorSetHash[:])                                     // Write ValidatorSetHash(32) after ValidatorRoot
 	if err := binary.Write(buf, binary.BigEndian, h.Epoch); err != nil { // Write Epoch(8) after ValidatorSetHash
+		return Hash{}, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, h.Round); err != nil { // Write Round(4) after Epoch
 		return Hash{}, err
 	}
 	if err := binary.Write(buf, binary.BigEndian, h.Timestamp); err != nil {

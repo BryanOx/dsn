@@ -192,6 +192,45 @@ func TestChainStore_UpdateTip(t *testing.T) {
 	}
 }
 
+// TestHeaderEncodeDecode_RoundRoundTrip is RED for the header-layout change
+// (S1): the bbolt header grows to 248 bytes with Round(4) between Epoch(8) and
+// Timestamp(8), and a round value survives encode/decode.
+func TestHeaderEncodeDecode_RoundRoundTrip(t *testing.T) {
+	header := &types.BlockHeader{
+		Version:          1,
+		Height:           42,
+		PreviousHash:     types.Hash{1, 2, 3},
+		StateRoot:        types.Hash{4, 5, 6},
+		TxRoot:           types.Hash{7, 8, 9},
+		ReceiptRoot:      types.Hash{10, 11, 12},
+		ValidatorRoot:    types.Hash{13, 14, 15},
+		ValidatorSetHash: types.Hash{16},
+		Epoch:            3,
+		Round:            7,
+		Timestamp:        1234567890,
+		Proposer:         types.Address{7},
+	}
+
+	encoded := encodeHeader(header)
+	require.Len(t, encoded, 248, "header layout must be Epoch(8)+Round(4)+Timestamp(8)+Proposer(20) = 248 bytes")
+
+	decoded, err := decodeHeader(encoded)
+	require.NoError(t, err)
+	require.Equal(t, header.Epoch, decoded.Epoch)
+	require.Equal(t, header.Round, decoded.Round)
+	require.Equal(t, header.Timestamp, decoded.Timestamp)
+	require.Equal(t, header.Proposer, decoded.Proposer)
+}
+
+// TestHeaderDecode_RejectsLegacy244Bytes is RED for the chain-reset path (S1):
+// a 244-byte header from a pre-round chain must fail the length check so the
+// node re-syncs instead of reading a shifted layout.
+func TestHeaderDecode_RejectsLegacy244Bytes(t *testing.T) {
+	_, err := decodeHeader(make([]byte, 244))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "header too short")
+}
+
 func TestStoreLoadProposal(t *testing.T) {
 	dbPath := "test_proposal.db"
 	defer os.Remove(dbPath)

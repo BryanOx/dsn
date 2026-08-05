@@ -17,6 +17,7 @@ import (
 	"github.com/BryanOx/dsn/network"
 	"github.com/BryanOx/dsn/staking"
 	"github.com/BryanOx/dsn/state"
+	"github.com/BryanOx/dsn/telemetry"
 	"github.com/BryanOx/dsn/types"
 	"github.com/BryanOx/dsn/vm"
 	"github.com/BryanOx/dsn/wallet"
@@ -486,6 +487,15 @@ func (n *Node) currentRound(height uint64) uint32 {
 	return n.pendingRound
 }
 
+// recordConsensusMetrics publishes the node's current consensus height and
+// round to the telemetry gauges exposed on the production /metrics endpoint
+// (S14). It is called on round changes (view change / higher-round adopt) and
+// on block finalization so the gauges always report the current (height, round).
+func (n *Node) recordConsensusMetrics(height uint64, round uint32) {
+	telemetry.ConsensusHeight.Set(float64(height))
+	telemetry.ConsensusRound.Set(float64(round))
+}
+
 // maybeAdvanceRound drives the view change: each consensus-loop tick while the
 // pending round stays unfinalized counts toward the round's deadline, and once
 // ProposerTimeout×(1+r) elapses the node advances to round r+1. The advance
@@ -509,6 +519,7 @@ func (n *Node) maybeAdvanceRound(height uint64) {
 		n.pendingRoundTicks = 0
 		n.precommitSent = false
 		n.voting = nil
+		n.recordConsensusMetrics(height, n.pendingRound)
 	}
 }
 
@@ -570,6 +581,10 @@ func (n *Node) StartConsensus() {
 			n.setTip(tip.Height, hash)
 			n.currentEpoch.Store(tip.Epoch)
 		}
+
+		// Publish the boot (height, round) so /metrics is populated before the
+		// first round-change or finalize event (S14).
+		n.recordConsensusMetrics(n.currentHeight.Load(), 0)
 
 		// Fast sync: snapshot sync for fresh (empty-state) nodes; nodes with
 		// existing state always use block-range catch-up (automatic).
@@ -1164,6 +1179,7 @@ func (n *Node) handleProposalWithSnap(block *types.Block, snap *staking.Validato
 	n.pendingBlock = block
 	n.pendingHash = hash
 	n.precommitSent = false
+	n.recordConsensusMetrics(block.Header.Height, round)
 	// The receiver tracks votes too: precommits are gated on a 2/3 prevote
 	// majority (S7), which requires observing peers' prevotes.
 	if snap != nil {
@@ -1236,6 +1252,7 @@ func (n *Node) finalizeLocalBlock(block *types.Block) {
 
 	hash, _ := block.HeaderHash(n.hasher)
 	n.setTip(block.Header.Height, hash)
+	n.recordConsensusMetrics(block.Header.Height, block.Header.Round)
 
 	for _, tx := range block.Transactions {
 		n.mempool.Remove(tx.IntentID)
@@ -1414,6 +1431,7 @@ func (n *Node) handleFork(block *types.Block) {
 func (n *Node) applyAcceptedBlock(block *types.Block) {
 	hash, _ := block.HeaderHash(n.hasher)
 	n.setTip(block.Header.Height, hash)
+	n.recordConsensusMetrics(block.Header.Height, block.Header.Round)
 
 	// Store atomically
 	if n.persistent != nil {

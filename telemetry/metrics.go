@@ -25,6 +25,22 @@ var (
 		[]string{"method"},
 	)
 
+	// ConsensusHeight tracks the current chain height from the consensus loop
+	ConsensusHeight = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "dsn_consensus_height",
+			Help: "Current consensus block height",
+		},
+	)
+
+	// ConsensusRound tracks the current consensus round (per-round view change)
+	ConsensusRound = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "dsn_consensus_round",
+			Help: "Current consensus round",
+		},
+	)
+
 	// IndexerHeight tracks the latest indexed block height
 	IndexerHeight = promauto.NewGauge(
 		prometheus.GaugeOpts{

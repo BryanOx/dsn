@@ -15,6 +15,8 @@ import (
 	"github.com/BryanOx/dsn/state"
 	"github.com/BryanOx/dsn/types"
 	"github.com/BryanOx/dsn/wallet"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.etcd.io/bbolt"
 )
 
@@ -765,8 +767,16 @@ func (ms *MetricsServer) Stop() {
 }
 
 func (ms *MetricsServer) handleMetrics(w http.ResponseWriter, r *http.Request) {
-	// Prometheus metrics would be generated here
-	// For now, return basic metrics
+	// Standard Prometheus exposition for the telemetry gauges, including the
+	// consensus round/height gauges recorded on round change and finalization.
+	// Compression is disabled so the legacy hand-rolled line below stays a
+	// valid plain-text part of a single exposition.
+	promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
+		DisableCompression: true,
+	}).ServeHTTP(w, r)
+
+	// Legacy hand-rolled height line, kept for backward compatibility with
+	// existing scrapers and dashboards.
 	fmt.Fprintf(w, "# HELP dsn_block_height Current block height\n")
 	fmt.Fprintf(w, "# TYPE dsn_block_height gauge\n")
 	fmt.Fprintf(w, "dsn_block_height %d\n", ms.node.currentHeight.Load())

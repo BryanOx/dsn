@@ -3,6 +3,10 @@ package node
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -60,6 +64,48 @@ func TestStartup_PersistsGenesisState(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, acc.Balance.Cmp(types.NewAmount(5000000)), "treasury balance should be recovered after restart")
 	require.Equal(t, uint64(8000000), staking.ReadUint64(n2.State(), staking.KeyTotalSupply), "kvstore should be recovered after restart")
+}
+
+// TestMetrics_ScrapeExposesConsensusGauges verifies S14: a /metrics scrape of
+// the production handler reports both consensus gauges (current height and
+// round) alongside the legacy hand-rolled dsn_block_height line.
+func TestMetrics_ScrapeExposesConsensusGauges(t *testing.T) {
+	testCases := []struct {
+		name   string
+		height uint64
+		round  uint32
+	}{
+		{name: "height seven round three", height: 7, round: 3},
+		{name: "height forty-two round zero", height: 42, round: 0},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			n := &Node{}
+			n.currentHeight.Store(tc.height)
+			n.recordConsensusMetrics(tc.height, tc.round)
+
+			ms := &MetricsServer{node: n}
+			srv := httptest.NewServer(http.HandlerFunc(ms.handleMetrics))
+			defer srv.Close()
+
+			resp, err := http.Get(srv.URL + "/metrics")
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+
+			text := string(body)
+			require.Contains(t, text, fmt.Sprintf("dsn_consensus_height %d", tc.height),
+				"scrape must report the node's current consensus height")
+			require.Contains(t, text, fmt.Sprintf("dsn_consensus_round %d", tc.round),
+				"scrape must report the node's current consensus round")
+			require.Contains(t, text, fmt.Sprintf("dsn_block_height %d", tc.height),
+				"legacy hand-rolled height line must be kept alongside the telemetry gauges")
+		})
+	}
 }
 
 // writeGenesisFile writes a valid genesis document and returns its path.

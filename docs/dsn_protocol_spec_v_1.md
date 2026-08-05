@@ -520,7 +520,31 @@ Block finalization requires:
 
 ---
 
-## 12.5 Slashing Conditions
+## 12.5 Rounds and View Change
+
+Each height is attempted in rounds. `BlockHeader.Round` carries the round,
+is hashed into `HeaderHash`, and is the single source of truth for proposer
+selection, vote matching, and commit proofs.
+
+Proposer selection is deterministic and round-aware: the proposer for
+`(height, round)` is `(height + round) % totalPower` over the active
+validator set (ordered by voting power descending, consensus ID ascending).
+Round 0 reproduces the height-only schedule.
+
+If a round does not finalize, validators advance to round `r+1` after a
+linear backoff of `ProposerTimeout × (1+r)`. Advancement stops at `MaxRound`
+(default 8, configurable via `DSN_MAX_ROUND`); at the cap the node waits and
+re-broadcasts instead of advancing. The timeout base must stay above the
+±5s clock-skew window.
+
+Voting is two-phase per round: validators broadcast a pre-vote for the
+proposal they validate, and pre-commit only after observing 2/3+ of total
+voting power pre-vote for the same block in the current round. A block
+finalizes on 2/3+ pre-commits (see 12.4).
+
+---
+
+## 12.6 Slashing Conditions
 
 Validators are slashed for:
 

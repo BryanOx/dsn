@@ -1,0 +1,70 @@
+# openspec/config.yaml — SDD configuration for DSN
+schema: spec-driven
+
+context: |
+  DSN (Deterministic Settlement Network): BFT blockchain for settlement finality.
+  Go 1.25 module github.com/BryanOx/dsn; binaries cmd/dsn (node) and cmd/dsn-tui (terminal dashboard).
+  Consensus: 2-phase (preVote→preCommit) BFT voting with per-round view change, round-aware weighted proposer, evidence-based slashing.
+  Runtime: deterministic WASM VM (wazero), Ed25519 signing, SMT state commitment (32-byte roots), bbolt storage.
+  Networking: custom TCP gossip P2P with bootstrap discovery (no libp2p).
+  Interfaces: JSON-RPC 2.0 (16 methods), Prometheus metrics, Cobra CLI, Bubbletea TUI.
+  Deploy: Docker Compose devnet (dev/localnet), Helm chart (charts/dsn), staging kustomize.
+
+strict_tdd: true
+
+testing:
+  runner:
+    command: make test
+    detail: "go test ./... -cover -count=1 -timeout=120s"
+    framework: Go stdlib testing + stretchr/testify
+  layers:
+    unit:
+      available: true
+      tool: "go test ./... (105 _test.go files across types, state, mempool, wallet, network, consensus, staking, node, rpc, vm, config, telemetry, internal)"
+    integration:
+      available: true
+      tool: "make test-integration (go test -tags=integration -count=1 -timeout=300s ./integration/...)"
+    e2e:
+      available: partial
+      tool: "integration/soak + integration/staging suites (build-tag integration); no TUI/E2E driver — no bubbletea teatest coverage"
+  coverage:
+    available: true
+    command: "go test ./... -cover"
+    threshold: 0
+  quality:
+    linter:
+      available: true
+      tool: "go vet ./... (make lint target; CI lint job)"
+    type_checker:
+      available: false
+      tool: "— (Go is statically compiled; no separate type-checker stage)"
+    formatter:
+      available: true
+      tool: "gofmt (verified clean)"
+    static_analysis:
+      available: optional
+      tool: "staticcheck — probed by make lint but not installed locally"
+
+rules:
+  proposal:
+    - Include production-readiness impact and rollback plan for risky changes
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex consensus/P2P flows
+    - Document architecture decisions with rationale
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    guidelines:
+      - Follow existing code patterns (see docs/ARCHITECTURE.md)
+    tdd: true
+    test_command: "go test ./... -count=1 -timeout=120s"
+  verify:
+    test_command: make test
+    build_command: make build
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas

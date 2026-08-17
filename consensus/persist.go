@@ -510,3 +510,24 @@ func EvidenceCount(ps *state.PersistentState) int {
 	})
 	return count
 }
+
+// RemoveBlock deletes a block (header + full block) from persistent storage.
+// Best-effort: returns nil if the block does not exist.
+func RemoveBlock(ps *state.PersistentState, height uint64) error {
+	return ps.DB().Update(func(tx *bbolt.Tx) error {
+		key := make([]byte, 8)
+		binary.BigEndian.PutUint64(key, height)
+
+		// Remove from blocks bucket (headers)
+		if b := tx.Bucket(blocksBucket); b != nil {
+			_ = b.Delete(key)
+		}
+
+		// Remove from full_blocks bucket
+		if b := tx.Bucket(fullBlocksBucket); b != nil {
+			_ = b.Delete(key)
+		}
+
+		return nil
+	})
+}

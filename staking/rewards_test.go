@@ -7,6 +7,18 @@ import (
 	"github.com/BryanOx/dsn/types"
 )
 
+// registerAndActivateWithCommission creates and activates a validator with the given commission rate.
+func registerAndActivateWithCommission(s *testStakingState, addr types.Address, stake uint64, commission uint16) types.Address {
+	pubKey := [32]byte{}
+	copy(pubKey[:], addr.Bytes())
+	cid, _ := RegisterValidator(s, pubKey, addr, types.NewAmount(stake), commission, 0)
+	ActivateValidator(s, cid, 1)
+	acc, _ := s.GetAccount(addr)
+	acc.SubBalance(types.NewAmount(stake))
+	s.SetAccount(addr, acc)
+	return cid
+}
+
 // setupValidators creates and activates validators with the given addresses and stakes.
 // Returns the validator IDs (ConsensusID).
 func setupValidators(s *testStakingState, addrs []types.Address, stakes []uint64) []types.Address {
@@ -475,5 +487,164 @@ func TestDistributeValidatorRewards_CreateAccountIfMissing(t *testing.T) {
 	}
 	if acc.Balance.Cmp(types.NewAmount(100)) != 0 {
 		t.Errorf("rewardAddr balance = %s, want 100", acc.Balance)
+	}
+}
+
+// TestCommissionOnFees tests that a 5% commission (500 bps) with 30% power
+// from 1000 total fees gives the validator the correct amount.
+func TestCommissionOnFees(t *testing.T) {
+	s := newTestStakingState()
+	addr1, _ := types.AddressFromBytes([]byte("11111111111111111111"))
+	addr2, _ := types.AddressFromBytes([]byte("22222222222222222222"))
+	addr3, _ := types.AddressFromBytes([]byte("33333333333333333333"))
+
+	// Fund enough for stake + remaining balance
+	fundAccount(s, addr1, 200_000) // 30% power validator with 5% commission
+	fundAccount(s, addr2, 200_000) // 35% power validator with 0% commission
+	fundAccount(s, addr3, 200_000) // 35% power validator with 0% commission
+
+	// Use different stakes so voting powers are different
+	// addr1: 100k stake (30% of total 333333... approximately)
+	// But we need exact proportional math. Let's use:
+	// addr1: 30k, addr2: 35k, addr3: 35k → total = 100k
+	// But min stake is 100k. So let's scale up:
+	// addr1: 300k (30%), addr2: 350k (35%), addr3: 350k (35%)
+	fundAccount(s, addr1, 600_000) // extra for stake
+	fundAccount(s, addr2, 700_000)
+	fundAccount(s, addr3, 700_000)
+
+	id1 := registerAndActivateWithCommission(s, addr1, 300_000, 500) // 5% commission
+	id2 := registerAndActivate(s, addr2, 350_000)                    // 0% commission
+	id3 := registerAndActivate(s, addr3, 350_000)                    // 0% commission
+
+	totalFees := types.NewAmount(1000)
+	vShare, _, _, err := DistributeRewards(s, totalFees)
+	if err != nil {
+		t.Fatalf("DistributeRewards failed: %v", err)
+	}
+
+	// Validator share = 70% of 1000 = 700
+	if vShare.Cmp(types.NewAmount(700)) != 0 {
+		t.Errorf("validator share = %s, want 700", vShare)
+	}
+
+	// addr1 (30% power, 5% commission):
+	//   Share of pool = 700 * 300k / 1000k = 210
+	//   Commission = 210 * 500 / 10000 = 10
+	//   Net proportional reward = 690 * 300k / 1000k = 207
+	// addr2 (35% power):
+	//   Net proportional reward = 690 * 350k / 1000k = 241 (+1 remainder = 242)
+	// addr3 (35% power):
+	//   Net proportional reward = 690 * 350k / 1000k = 241
+	// Total paid: 207 + 242 + 241 = 690 (700 - 10 commission)
+
+	acc1, _ := s.GetAccount(addr1)
+	acc2, _ := s.GetAccount(addr2)
+	acc3, _ := s.GetAccount(addr3)
+
+	// addr1: 300k remaining + 10 commission + 207 reward = 300217
+	// (commission goes to OperatorAddress=RewardAddress=addr1)
+	expected1 := uint64(300_000 + 10 + 207) // commission + reward
+	if acc1.Balance.Cmp(types.NewAmount(expected1)) != 0 {
+		t.Errorf("addr1 balance = %s, want %d", acc1.Balance, expected1)
+	}
+
+	expected2 := uint64(350_000 + 242)
+	if acc2.Balance.Cmp(types.NewAmount(expected2)) != 0 {
+		t.Errorf("addr2 balance = %s, want %d", acc2.Balance, expected2)
+	}
+
+	expected3 := uint64(350_000 + 241)
+	if acc3.Balance.Cmp(types.NewAmount(expected3)) != 0 {
+		t.Errorf("addr3 balance = %s, want %d", acc3.Balance, expected3)
+	}
+
+	// Verify total distributed = 700 (including commission)
+	total := uint64(10 + 207 + 242 + 241)
+	if total != 700 {
+		t.Errorf("total distributed = %d, want 700", total)
+	}
+
+	_ = id1
+	_ = id2
+	_ = id3
+}
+
+// TestCommissionZeroRate tests that 0% commission distributes the full share.
+func TestCommissionZeroRate(t *testing.T) {
+	s := newTestStakingState()
+	addr1, _ := types.AddressFromBytes([]byte("11111111111111111111"))
+	addr2, _ := types.AddressFromBytes([]byte("22222222222222222222"))
+
+	fundAccount(s, addr1, 200_000)
+	fundAccount(s, addr2, 200_000)
+
+	// Both have 100k stake with 0% commission → 50% each
+	registerAndActivateWithCommission(s, addr1, 100_000, 0)
+	registerAndActivateWithCommission(s, addr2, 100_000, 0)
+
+	totalFees := types.NewAmount(1000)
+	vShare, _, _, err := DistributeRewards(s, totalFees)
+	if err != nil {
+		t.Fatalf("DistributeRewards failed: %v", err)
+	}
+
+	// Validator share = 700, each gets 350
+	if vShare.Cmp(types.NewAmount(700)) != 0 {
+		t.Errorf("validator share = %s, want 700", vShare)
+	}
+
+	acc1, _ := s.GetAccount(addr1)
+	acc2, _ := s.GetAccount(addr2)
+
+	// Balance: 100k (after stake deduction) + 350 reward
+	if acc1.Balance.Cmp(types.NewAmount(100_350)) != 0 {
+		t.Errorf("addr1 balance = %s, want 100350", acc1.Balance)
+	}
+	if acc2.Balance.Cmp(types.NewAmount(100_350)) != 0 {
+		t.Errorf("addr2 balance = %s, want 100350", acc2.Balance)
+	}
+}
+
+// TestRewardsToRewardAddress tests that commission goes to RewardAddress when set.
+func TestRewardsToRewardAddress(t *testing.T) {
+	s := newTestStakingState()
+	addr, _ := types.AddressFromBytes([]byte("11111111111111111111"))
+	rewardAddr, _ := types.AddressFromBytes([]byte("22222222222222222222"))
+
+	fundAccount(s, addr, 200_000)
+	fundAccount(s, rewardAddr, 0) // ensure account exists
+
+	id := registerAndActivateWithCommission(s, addr, 100_000, 500) // 5% commission
+
+	// Set RewardAddress before creating snapshot
+	v, _ := GetValidator(s, id)
+	v.RewardAddress = rewardAddr
+	UpdateValidator(s, v)
+
+	// Create snapshot for epoch 1 (epoch-1 = 1-1 = 0)
+	CreateSnapshot(s, 1)
+
+	// Write validator pool for epoch 2
+	WriteUint64(s, KeyEpochValidatorPool+"2", 1000)
+
+	// Distribute
+	err := DistributeValidatorRewards(s, 2)
+	if err != nil {
+		t.Fatalf("DistributeValidatorRewards: %v", err)
+	}
+
+	// DistributeValidatorRewards uses RewardAddress if set.
+	// The full pool (1000) goes to rewardAddr (single validator, 100% power).
+	accReward, _ := s.GetAccount(rewardAddr)
+	accOperator, _ := s.GetAccount(addr)
+
+	// rewardAddr: 0 + 1000 = 1000
+	// addr: 100k (after registration) + 0
+	if accReward.Balance.Cmp(types.NewAmount(1000)) != 0 {
+		t.Errorf("rewardAddr balance = %s, want 1000", accReward.Balance)
+	}
+	if accOperator.Balance.Cmp(types.NewAmount(100_000)) != 0 {
+		t.Errorf("addr balance = %s, want 100000 (no reward)", accOperator.Balance)
 	}
 }

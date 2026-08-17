@@ -628,6 +628,39 @@ func TestMalformedVoteEvidence_Height(t *testing.T) {
 
 // ============ Type() Method Tests ============
 
+// TestDoubleSignEvidenceValidation is the dedicated validation regression test.
+// It verifies the exact same-height/different-hash and different-height cases.
+func TestDoubleSignEvidenceValidation(t *testing.T) {
+	t.Run("same_height_different_hash_passes", func(t *testing.T) {
+		voteA := createTestVote(VotePrevote, 100, 0, Hash{0x01}, Address{0x0A})
+		voteB := createTestVote(VotePrevote, 100, 0, Hash{0x02}, Address{0x0A})
+		ev := DoubleSignEvidence{VoteA: voteA, VoteB: voteB}
+		if err := ev.Validate(); err != nil {
+			t.Fatalf("expected nil error, got %v", err)
+		}
+	})
+
+	t.Run("different_height_fails", func(t *testing.T) {
+		voteA := createTestVote(VotePrevote, 100, 0, Hash{0x01}, Address{0x0A})
+		voteB := createTestVote(VotePrevote, 200, 0, Hash{0x02}, Address{0x0A})
+		ev := DoubleSignEvidence{VoteA: voteA, VoteB: voteB}
+		if err := ev.Validate(); err == nil {
+			t.Fatal("expected error for height mismatch, got nil")
+		}
+	})
+
+	t.Run("same_hash_fails", func(t *testing.T) {
+		voteA := createTestVote(VotePrevote, 100, 0, Hash{0x01}, Address{0x0A})
+		voteB := createTestVote(VotePrevote, 100, 0, Hash{0x01}, Address{0x0A})
+		ev := DoubleSignEvidence{VoteA: voteA, VoteB: voteB}
+		if err := ev.Validate(); err == nil {
+			t.Fatal("expected error for same block hash, got nil")
+		}
+	})
+}
+
+// ============ Type() Method Tests ============
+
 func TestEvidenceType_Methods(t *testing.T) {
 	ev1 := &DoubleSignEvidence{}
 	if ev1.Type() != EvidenceTypeDoubleSign {

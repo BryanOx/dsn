@@ -47,6 +47,9 @@ type Node struct {
 	finalizedHeight uint64 // k=6 finality
 	reorgBuffer     []ReorgEntry
 
+	// Evidence pool for pending evidence awaiting block inclusion
+	evidencePool *consensus.EvidencePool
+
 	// Consensus fields
 	consensusRunning bool
 	consensusStopCh  chan struct{}
@@ -144,12 +147,13 @@ func New(cfg Config) (*Node, error) {
 	}
 
 	n := &Node{
-		cfg:        cfg,
-		state:      s,
-		persistent: persistent,
-		mempool:    mp,
-		hasher:     hasher,
-		p2p:        p2pNode,
+		cfg:         cfg,
+		state:       s,
+		persistent:  persistent,
+		mempool:     mp,
+		hasher:      hasher,
+		p2p:         p2pNode,
+		evidencePool: consensus.NewEvidencePool(1000),
 	}
 
 	// Create WASM VM for contract execution
@@ -762,8 +766,7 @@ func (n *Node) proposeForHeight(height uint64, proposer types.Address, round uin
 	snapID := n.state.Snapshot()
 
 	signer := &walletSigner{kp: n.wallet}
-	// TODO: Get evidence from evidence pool
-	var evidence []types.Evidence
+	evidence := n.evidencePool.Drain(10)
 	block, err := consensus.BuildBlock(n.state, n.vm, n.mempool, height, n.GetTipHash(),
 		proposer, signer, n.hasher, n.cfg.MaxTxPerBlock, evidence, n.cfg.BlockTimeSec)
 	if err != nil {

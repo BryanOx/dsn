@@ -152,6 +152,10 @@ func ReleaseStake(s StakingState, consensusID types.Address) error {
 
 // DistributeRewards distributes fees to validators proportionally to voting power.
 // Total fees are split: 70% to validators, 20% burn, 10% treasury.
+// Within the 70% validator share, each validator's commission is deducted first
+// and credited to the OperatorAddress (or RewardAddress if set). The remainder
+// is distributed proportionally to voting power. Uses the largest-remainder
+// method for integer rounding.
 // Returns (validatorShare, burnShare, treasuryShare).
 func DistributeRewards(s StakingState, totalFees types.Amount) (types.Amount, types.Amount, types.Amount, error) {
 	validatorShare := amountFraction(totalFees, 70, 100)
@@ -182,29 +186,61 @@ func DistributeRewards(s StakingState, totalFees types.Amount) (types.Amount, ty
 		return validatorShare, burnShare, treasuryShare, nil
 	}
 
-	// Distribute proportionally
-	// Note: integer division may leave remainder. We use the largest-remainder
-	// method common in proportional allocation: distribute floor amounts, then
-	// give the remainder to the validator with the most voting power.
 	vp := validatorShareToUint64(validatorShare)
+
+	// Phase 1: Deduct commission from each validator's share and credit it
+	// Commission is calculated on the validator's proportional share of the pool.
+	// commission = share * commissionRate / 10000
+	commissionTotal := uint64(0)
+	commissions := make([]uint64, len(active))
+
+	for i, v := range active {
+		share := vp * v.VotingPower / totalPower
+		commission := share * uint64(v.CommissionRate) / uint64(CommissionRateMaxBasisPoints)
+		commissions[i] = commission
+		commissionTotal += commission
+	}
+
+	// Phase 2: Distribute the remainder (pool - total commission) proportionally
+	// using largest-remainder method for integer rounding.
+	remainderPool := vp - commissionTotal
 	distributed := uint64(0)
 	rewards := make([]uint64, len(active))
 
 	for i, v := range active {
-		portion := vp * v.VotingPower / totalPower
+		portion := remainderPool * v.VotingPower / totalPower
 		rewards[i] = portion
 		distributed += portion
 	}
 
-	// Give remainder to top validator by voting power
-	remainder := vp - distributed
-	if remainder > 0 && len(active) > 0 {
-		// Top validator is at index 0 (sorted by power DESC)
-		rewards[0] += remainder
+	// Give rounding remainder to top validator by voting power
+	roundingRemainder := remainderPool - distributed
+	if roundingRemainder > 0 && len(active) > 0 {
+		rewards[0] += roundingRemainder
 	}
 
-	// Apply rewards to validator accounts
+	// Phase 3: Apply rewards to validator accounts
 	for i, v := range active {
+		// Credit commission to OperatorAddress (or RewardAddress if set)
+		if commissions[i] > 0 {
+			commissionAddr := v.RewardAddress
+			if commissionAddr == (types.Address{}) {
+				commissionAddr = v.OperatorAddress
+			}
+			commAmt := types.NewAmount(commissions[i])
+			acc, err := s.GetAccount(commissionAddr)
+			if err != nil {
+				acc = NewValidatorAccount(s, commissionAddr)
+			}
+			if err := acc.AddBalance(commAmt); err != nil {
+				return types.Amount{}, types.Amount{}, types.Amount{}, err
+			}
+			if err := s.SetAccount(commissionAddr, acc); err != nil {
+				return types.Amount{}, types.Amount{}, types.Amount{}, err
+			}
+		}
+
+		// Credit proportional reward (minus commission) to OperatorAddress
 		if rewards[i] == 0 {
 			continue
 		}

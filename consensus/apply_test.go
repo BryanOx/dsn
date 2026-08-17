@@ -158,3 +158,65 @@ func TestApplyTransaction_StandardTxChargesFullMaxFee(t *testing.T) {
 	// 1_000_000 - 100 fee - 1000 transfer
 	require.Equal(t, 0, accAfter.Balance.Cmp(types.NewAmount(998_900)))
 }
+
+func TestEvidenceIncludedInBlock(t *testing.T) {
+	t.Run("drain_3_from_10", func(t *testing.T) {
+		pool := NewEvidencePool(100)
+		for i := 0; i < 3; i++ {
+			ev := &types.DoubleSignEvidence{
+				VoteA: types.Vote{
+					VoteType:  types.VotePrevote,
+					Height:    uint64(10 + i),
+					Round:     0,
+					BlockHash: types.Hash{byte(i)},
+					Validator: types.Address{0x01},
+					Signature: make([]byte, 64),
+				},
+				VoteB: types.Vote{
+					VoteType:  types.VotePrevote,
+					Height:    uint64(10 + i),
+					Round:     0,
+					BlockHash: types.Hash{byte(i + 0x80)},
+					Validator: types.Address{0x01},
+					Signature: make([]byte, 64),
+				},
+			}
+			require.NoError(t, pool.Add(ev))
+		}
+		require.Equal(t, 3, pool.Len())
+
+		drained := pool.Drain(10)
+		require.Len(t, drained, 3)
+		require.Equal(t, 0, pool.Len())
+	})
+
+	t.Run("drain_10_from_15", func(t *testing.T) {
+		pool := NewEvidencePool(100)
+		for i := 0; i < 15; i++ {
+			ev := &types.DoubleSignEvidence{
+				VoteA: types.Vote{
+					VoteType:  types.VotePrevote,
+					Height:    uint64(100 + i),
+					Round:     0,
+					BlockHash: types.Hash{byte(i)},
+					Validator: types.Address{0x01},
+					Signature: make([]byte, 64),
+				},
+				VoteB: types.Vote{
+					VoteType:  types.VotePrevote,
+					Height:    uint64(100 + i),
+					Round:     0,
+					BlockHash: types.Hash{byte(i + 0x80)},
+					Validator: types.Address{0x01},
+					Signature: make([]byte, 64),
+				},
+			}
+			require.NoError(t, pool.Add(ev))
+		}
+		require.Equal(t, 15, pool.Len())
+
+		drained := pool.Drain(10)
+		require.Len(t, drained, 10)
+		require.Equal(t, 5, pool.Len(), "5 evidence items should remain")
+	})
+}

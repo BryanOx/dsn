@@ -9,6 +9,9 @@ import (
 	"github.com/BryanOx/dsn/types"
 )
 
+// MsgTypeEvidence is the gossip message type for evidence.
+const MsgTypeEvidence byte = 0x02
+
 const (
 	BlockMessageType byte = 0x01
 	MaxBlockSize          = 10 * 1024 * 1024 // 10MB
@@ -290,4 +293,30 @@ func (s *SeenSet) Mark(h types.Hash) {
 // Size returns the number of seen hashes.
 func (s *SeenSet) Size() int {
 	return len(s.hashes)
+}
+
+// EncodeEvidenceMessage serializes an evidence object for gossip.
+// Format: [0x02 type byte][evidence payload]
+func EncodeEvidenceMessage(e types.Evidence) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := types.EncodeEvidence(&buf, e); err != nil {
+		return nil, err
+	}
+	evidenceBytes := buf.Bytes()
+	result := make([]byte, 1+len(evidenceBytes))
+	result[0] = MsgTypeEvidence
+	copy(result[1:], evidenceBytes)
+	return result, nil
+}
+
+// DecodeEvidenceMessage deserializes an evidence object from gossip bytes.
+// Expects [0x02 type byte][evidence payload].
+func DecodeEvidenceMessage(data []byte) (types.Evidence, error) {
+	if len(data) < 2 {
+		return nil, fmt.Errorf("evidence message too short")
+	}
+	if data[0] != MsgTypeEvidence {
+		return nil, fmt.Errorf("invalid evidence message type: %d", data[0])
+	}
+	return types.DecodeEvidence(bytes.NewReader(data[1:]))
 }

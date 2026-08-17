@@ -255,3 +255,99 @@ func TestReplayBlocks_StateRootMismatch(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "state root mismatch")
 }
+
+// TestReorgWithinFinality verifies that RevertBlocks works within the finality
+// window. It builds a chain, then reverts the most recent block.
+func TestReorgWithinFinality(t *testing.T) {
+	kp, err := wallet.GenerateKey()
+	require.NoError(t, err)
+
+	cfg := DefaultConfig()
+	cfg.DataDir = t.TempDir()
+	n, err := New(cfg)
+	require.NoError(t, err)
+	defer n.Close()
+	n.SetWallet(kp)
+
+	registerValidator(t, n.State(), kp, 1, 100_000)
+	staking.ProcessEpochTransition(n.State(), 100)
+	staking.CreateSnapshot(n.State(), 1)
+	staking.WriteUint64(n.State(), staking.KeyTotalSupply, 10_000_000)
+
+	var pubKey32 [32]byte
+	copy(pubKey32[:], kp.PublicKey[:])
+	acc := state.NewAccount(kp.Address(), pubKey32)
+	acc.AddBalance(types.NewAmount(10_000_000))
+	require.NoError(t, n.State().SetAccount(kp.Address(), acc))
+
+	// Build and apply 3 blocks
+	prevHash := n.GetTipHash()
+	for height := uint64(1); height <= 3; height++ {
+		block, err := consensus.BuildBlock(n.State(), n.vm, n.Mempool(), height, prevHash,
+			n.consensusProposerAtHeight(height), &walletSigner{kp: n.wallet}, n.hasher, 100, nil, 1)
+		require.NoError(t, err)
+		n.applyAcceptedBlock(block)
+		headerHash, _ := block.HeaderHash(n.hasher)
+		prevHash = headerHash
+	}
+	require.Equal(t, uint64(3), n.CurrentHeight())
+
+	// Set finalizedHeight so that reverting from 3 to 2 is within the window
+	n.finalizedHeight = 0 // allow all reverts
+
+	// Revert block 3 → tip becomes height 2
+	require.NoError(t, n.RevertBlocks(3, 2))
+	require.Equal(t, uint64(2), n.CurrentHeight())
+
+	// Block at height 2 should no longer be accessible from persistence
+	// (block 3 was removed)
+	if n.persistent != nil {
+		_, err := consensus.LoadBlock(n.persistent, 3)
+		require.Error(t, err, "block at height 3 should be removed")
+	}
+}
+
+// TestReorgBeyondFinalityRejected verifies that RevertBlocks returns an error
+// when trying to revert below the finalized height.
+func TestReorgBeyondFinalityRejected(t *testing.T) {
+	kp, err := wallet.GenerateKey()
+	require.NoError(t, err)
+
+	cfg := DefaultConfig()
+	cfg.DataDir = t.TempDir()
+	n, err := New(cfg)
+	require.NoError(t, err)
+	defer n.Close()
+	n.SetWallet(kp)
+
+	registerValidator(t, n.State(), kp, 1, 100_000)
+	staking.ProcessEpochTransition(n.State(), 100)
+	staking.CreateSnapshot(n.State(), 1)
+	staking.WriteUint64(n.State(), staking.KeyTotalSupply, 10_000_000)
+
+	var pubKey32 [32]byte
+	copy(pubKey32[:], kp.PublicKey[:])
+	acc := state.NewAccount(kp.Address(), pubKey32)
+	acc.AddBalance(types.NewAmount(10_000_000))
+	require.NoError(t, n.State().SetAccount(kp.Address(), acc))
+
+	// Build and apply 10 blocks so finalized height advances
+	prevHash := n.GetTipHash()
+	for height := uint64(1); height <= 10; height++ {
+		block, err := consensus.BuildBlock(n.State(), n.vm, n.Mempool(), height, prevHash,
+			n.consensusProposerAtHeight(height), &walletSigner{kp: n.wallet}, n.hasher, 100, nil, 1)
+		require.NoError(t, err)
+		n.applyAcceptedBlock(block)
+		headerHash, _ := block.HeaderHash(n.hasher)
+		prevHash = headerHash
+	}
+	require.Equal(t, uint64(10), n.CurrentHeight())
+
+	// Set finalizedHeight to k=6: block at height 10 means finalized = 4
+	n.finalizedHeight = 10 - finalityK // = 4
+
+	// Trying to revert from height 5 to height 3 should fail (to=3 < finalizedHeight=4)
+	err = n.RevertBlocks(5, 3)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "finalized height")
+}

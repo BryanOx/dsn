@@ -215,3 +215,60 @@ func TestDecodeBlockMessage_TooShort(t *testing.T) {
 		t.Error("expected error for too short data")
 	}
 }
+
+func TestEvidenceGossipRoundTrip(t *testing.T) {
+	validator := types.Address{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}
+	blockHashA := types.Hash{0xAA}
+	blockHashB := types.Hash{0xBB}
+
+	voteA := types.Vote{
+		VoteType:  types.VotePrevote,
+		Height:    42,
+		Round:     0,
+		BlockHash: blockHashA,
+		Validator: validator,
+		Signature: make([]byte, 64),
+	}
+	voteB := types.Vote{
+		VoteType:  types.VotePrevote,
+		Height:    42,
+		Round:     0,
+		BlockHash: blockHashB,
+		Validator: validator,
+		Signature: make([]byte, 64),
+	}
+
+	ev := &types.DoubleSignEvidence{VoteA: voteA, VoteB: voteB}
+
+	// Encode
+	data, err := EncodeEvidenceMessage(ev)
+	require.NoError(t, err)
+
+	// First byte must be MsgTypeEvidence (0x02)
+	require.Equal(t, MsgTypeEvidence, data[0], "evidence message type byte must be 0x02")
+
+	// Decode
+	decoded, err := DecodeEvidenceMessage(data)
+	require.NoError(t, err)
+
+	// Assert round-trip equality
+	ds, ok := decoded.(*types.DoubleSignEvidence)
+	require.True(t, ok, "decoded evidence should be *DoubleSignEvidence")
+	require.Equal(t, voteA.Height, ds.VoteA.Height)
+	require.Equal(t, voteA.BlockHash, ds.VoteA.BlockHash)
+	require.Equal(t, voteA.Validator, ds.VoteA.Validator)
+	require.Equal(t, voteB.BlockHash, ds.VoteB.BlockHash)
+	require.Equal(t, voteB.Validator, ds.VoteB.Validator)
+}
+
+func TestDecodeEvidenceMessage_TooShort(t *testing.T) {
+	_, err := DecodeEvidenceMessage([]byte{MsgTypeEvidence})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "too short")
+}
+
+func TestDecodeEvidenceMessage_WrongType(t *testing.T) {
+	_, err := DecodeEvidenceMessage([]byte{0xFF, 0x01, 0x02})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid evidence message type")
+}

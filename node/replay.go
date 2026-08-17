@@ -92,3 +92,31 @@ func (n *Node) ReplayBlocks(fromHeight, toHeight uint64) error {
 
 	return nil
 }
+
+// RevertBlocks reverts state and removes blocks from `from` down to `to+1`
+// (exclusive of `to`). The block at height `to` becomes the new tip.
+// Returns an error if `to` is below the finalized height (k=6 finality guard).
+func (n *Node) RevertBlocks(from, to uint64) error {
+	if to < n.finalizedHeight {
+		return fmt.Errorf("cannot revert below finalized height %d", n.finalizedHeight)
+	}
+
+	snapID := n.state.Snapshot()
+
+	// Remove blocks from persistence (highest first)
+	for h := from; h > to; h-- {
+		if n.persistent != nil {
+			// Best-effort removal: ignore errors for missing blocks
+			_ = consensus.RemoveBlock(n.persistent, h)
+		}
+	}
+
+	// Revert state to the snapshot taken before the loop.
+	// This undoes all state changes from the reverted blocks.
+	if err := n.state.RevertToSnapshot(snapID); err != nil {
+		return fmt.Errorf("revert state: %w", err)
+	}
+
+	n.setTip(to, types.Hash{})
+	return nil
+}

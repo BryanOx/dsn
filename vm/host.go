@@ -2,12 +2,14 @@ package vm
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 
 	"github.com/BryanOx/dsn/state"
 	"github.com/BryanOx/dsn/types"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
+	"golang.org/x/crypto/sha3"
 )
 
 // HostEnv holds the execution context for host functions.
@@ -287,6 +289,102 @@ func BuildHostModule(ctx context.Context, runtime wazero.Runtime, env *HostEnv) 
 			return 0 // success
 		}).
 		Export("transfer_token")
+
+	// sha256(ptr, len, out_ptr) -> void
+	// Reads len bytes from WASM memory at ptr, computes SHA-256 hash,
+	// writes 32-byte hash to out_ptr.
+	builder.NewFunctionBuilder().
+		WithFunc(func(ctx context.Context, module api.Module, ptr uint32, length uint32, outPtr uint32) {
+			if err := env.meter.Deduct(GasNondeterministic); err != nil {
+				return
+			}
+
+			mem := module.Memory()
+			if ptr+length > uint32(mem.Size()) || outPtr+32 > uint32(mem.Size()) {
+				return
+			}
+
+			data, ok := mem.Read(ptr, length)
+			if !ok {
+				return
+			}
+
+			hash := sha256.Sum256(data)
+			mem.Write(outPtr, hash[:])
+		}).
+		Export("sha256")
+
+	// keccak256(ptr, len, out_ptr) -> void
+	// Reads len bytes from WASM memory at ptr, computes Keccak-256 hash,
+	// writes 32-byte hash to out_ptr.
+	builder.NewFunctionBuilder().
+		WithFunc(func(ctx context.Context, module api.Module, ptr uint32, length uint32, outPtr uint32) {
+			if err := env.meter.Deduct(GasNondeterministic); err != nil {
+				return
+			}
+
+			mem := module.Memory()
+			if ptr+length > uint32(mem.Size()) || outPtr+32 > uint32(mem.Size()) {
+				return
+			}
+
+			data, ok := mem.Read(ptr, length)
+			if !ok {
+				return
+			}
+
+			h := sha3.NewLegacyKeccak256()
+			h.Write(data)
+			var hash [32]byte
+			copy(hash[:], h.Sum(nil))
+			mem.Write(outPtr, hash[:])
+		}).
+		Export("keccak256")
+
+	// get_balance(addr_ptr, out_ptr) -> void
+	// Reads 20-byte address from WASM memory at addr_ptr,
+	// looks up account balance, writes 16 bytes (two big-endian uint64s: hi, lo) to out_ptr.
+	builder.NewFunctionBuilder().
+		WithFunc(func(ctx context.Context, module api.Module, addrPtr uint32, outPtr uint32) {
+			if err := env.meter.Deduct(GasReadStorage); err != nil {
+				return
+			}
+
+			mem := module.Memory()
+			if addrPtr+20 > uint32(mem.Size()) || outPtr+16 > uint32(mem.Size()) {
+				return
+			}
+
+			addrBytes, ok := mem.Read(addrPtr, 20)
+			if !ok {
+				return
+			}
+
+			var addr types.Address
+			copy(addr[:], addrBytes)
+
+			acc, err := env.state.GetAccount(addr)
+			if err != nil {
+				// Account not found: write zeros
+				var zero [16]byte
+				mem.Write(outPtr, zero[:])
+				return
+			}
+
+			// Get balance as bytes (big-endian, up to 16 bytes)
+			balBytes, err := acc.Balance.MarshalBinary()
+			if err != nil {
+				var zero [16]byte
+				mem.Write(outPtr, zero[:])
+				return
+			}
+
+			// Pad to 16 bytes (big-endian)
+			var bal16 [16]byte
+			copy(bal16[16-len(balBytes):], balBytes)
+			mem.Write(outPtr, bal16[:])
+		}).
+		Export("get_balance")
 
 	return builder.Instantiate(ctx)
 }

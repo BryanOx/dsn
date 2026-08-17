@@ -4,6 +4,8 @@ import (
 	"math"
 	"testing"
 
+	"github.com/BryanOx/dsn/state"
+	"github.com/BryanOx/dsn/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -102,4 +104,174 @@ func TestDeterministicGas(t *testing.T) {
 	// Both should have identical used gas
 	require.Equal(t, used1, used2, "Gas meters should produce identical Used values across replay")
 	require.Equal(t, uint64(350), used1)
+}
+
+// PR1-1.1 GREEN: TestGasMeterPerInstruction proves instruction-level gas metering is wired.
+// Deploys a WASM contract with 100 nop instructions + i32.const 0,
+// asserts callResult.GasUsed >= 100 (each op costs GasBaseOp=1).
+func TestGasMeterPerInstruction(t *testing.T) {
+	hasher := &types.SHA256Hasher{}
+	st := state.NewInMemoryState(hasher)
+	vmInst, err := NewVM(hasher)
+	require.NoError(t, err)
+	defer vmInst.Close()
+
+	// Build valid WASM module: 100 nop instructions + i32.const 0
+	wb := newWasmBuilder()
+	typeIdx := wb.addFuncType(nil, []byte{0x7f}) // () -> i32
+	wb.addMemory(1)
+	body := make([]byte, 0, 103)
+	for i := 0; i < 100; i++ {
+		body = append(body, 0x01) // nop
+	}
+	body = append(body, 0x41, 0x00) // i32.const 0
+	moduleFuncIdx := wb.addFunc(typeIdx, body)
+	wb.addExport("run", 0x00, moduleFuncIdx)
+	wb.addExport("memory", 0x02, 0)
+	wasmModule := wb.build()
+
+	// Deploy the contract
+	deployTx := &types.DeployContractTx{
+		Sender:   types.Address{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
+		Nonce:    0,
+		CodeHash: types.Hash{},
+		WasmCode: wasmModule,
+		GasLimit: 1_000_000,
+	}
+	deployResult, err := vmInst.Execute(deployTx, st, 1, 1000, 0)
+	require.NoError(t, err)
+	require.False(t, deployResult.Reverted)
+
+	contractID := DeriveContractID(deployTx.Sender, deployTx.Nonce, deployTx.CodeHash)
+
+	// Call the entrypoint
+	callTx := &types.CallContractTx{
+		Sender:     deployTx.Sender,
+		Nonce:      1,
+		ContractID: contractID,
+		Entrypoint: "run",
+		Calldata:   []byte{},
+		GasLimit:   1_000_000,
+	}
+	callResult, err := vmInst.Execute(callTx, st, 2, 1000, 0)
+	require.NoError(t, err)
+	require.False(t, callResult.Reverted)
+
+	// Proves instruction-level metering is wired: 101 instructions × GasBaseOp(1) ≥ 100
+	require.GreaterOrEqual(t, callResult.GasUsed, uint64(100),
+		"GasUsed should reflect instruction-level metering (≥ 100 for 100 nop instructions)")
+	t.Logf("GasUsed=%d for 100 nops (GasBaseOp=%d)", callResult.GasUsed, GasBaseOp)
+}
+
+// PR1-2.1 GREEN: TestReturnDataLengthPrefixed verifies return data reading with a 2-byte
+// big-endian length prefix.
+func TestReturnDataLengthPrefixed(t *testing.T) {
+	// Build WASM module that writes length prefix and 10 data bytes to memory offset 2048
+	// using i32.store8 (opcode 0x3a), then returns 0.
+	wb := newWasmBuilder()
+	retTypeIdx := wb.addFuncType(nil, []byte{0x7f}) // () -> i32
+	wb.addMemory(1)
+
+	// Generate body: write 12 bytes (2 length prefix + 10 data) to memory offset 2048
+	// Each byte: i32.const 0 (address); i32.const <value>; i32.store8 align=0 offset=<2048+i>
+	// i32.store8 pops address first, then value from the stack.
+	var body []byte
+	data := []byte{0x00, 0x0A, 0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE, 0x01, 0x5E}
+	for i, b := range data {
+		offset := uint32(2048 + i)
+		body = append(body, 0x41, 0x00) // i32.const 0 (base address)
+		body = append(body, 0x41)       // i32.const value (signed LEB128)
+		body = append(body, encodeSignedLEB128Bytes(int32(b))...)
+		body = append(body, 0x3a, 0x00) // i32.store8 align=0
+		body = append(body, encodeULEB128Bytes(offset)...)
+	}
+	body = append(body, 0x41, 0x00) // i32.const 0 (return value)
+
+	moduleFuncIdx := wb.addFunc(retTypeIdx, body)
+	wb.addExport("run", 0x00, moduleFuncIdx)
+	returnDataModule := wb.build()
+
+	expectedReturnData := []byte{0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE, 0x01, 0x5E}
+
+	hasher := &types.SHA256Hasher{}
+	st := state.NewInMemoryState(hasher)
+	vmInst, err := NewVM(hasher)
+	require.NoError(t, err)
+	defer vmInst.Close()
+
+	deployTx := &types.DeployContractTx{
+		Sender:   types.Address{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
+		Nonce:    0,
+		CodeHash: types.Hash{},
+		WasmCode: returnDataModule,
+		GasLimit: 1_000_000,
+	}
+	deployResult, err := vmInst.Execute(deployTx, st, 1, 1000, 0)
+	require.NoError(t, err)
+	require.False(t, deployResult.Reverted)
+
+	contractID := DeriveContractID(deployTx.Sender, deployTx.Nonce, deployTx.CodeHash)
+
+	callTx := &types.CallContractTx{
+		Sender:     deployTx.Sender,
+		Nonce:      1,
+		ContractID: contractID,
+		Entrypoint: "run",
+		Calldata:   []byte{},
+		GasLimit:   1_000_000,
+	}
+	callResult, err := vmInst.Execute(callTx, st, 2, 1000, 0)
+	require.NoError(t, err)
+	require.False(t, callResult.Reverted)
+
+	require.Equal(t, expectedReturnData, callResult.ReturnData,
+		"ReturnData should be the 10 bytes after the 2-byte big-endian length prefix")
+}
+
+// PR1-2.2 RED: TestEmptyReturnData verifies that a contract which writes nothing to
+// offset 2048 produces nil or empty ReturnData.
+func TestEmptyReturnData(t *testing.T) {
+	// Minimal WASM module: returns 0
+	wb := newWasmBuilder()
+	typeIdx := wb.addFuncType(nil, []byte{0x7f}) // () -> i32
+	wb.addMemory(1)
+	moduleFuncIdx := wb.addFunc(typeIdx, []byte{
+		0x41, 0x00, // i32.const 0
+	})
+	wb.addExport("run", 0x00, moduleFuncIdx)
+	emptyReturnModule := wb.build()
+
+	hasher := &types.SHA256Hasher{}
+	st := state.NewInMemoryState(hasher)
+	vmInst, err := NewVM(hasher)
+	require.NoError(t, err)
+	defer vmInst.Close()
+
+	deployTx := &types.DeployContractTx{
+		Sender:   types.Address{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
+		Nonce:    0,
+		CodeHash: types.Hash{},
+		WasmCode: emptyReturnModule,
+		GasLimit: 1_000_000,
+	}
+	deployResult, err := vmInst.Execute(deployTx, st, 1, 1000, 0)
+	require.NoError(t, err)
+	require.False(t, deployResult.Reverted)
+
+	contractID := DeriveContractID(deployTx.Sender, deployTx.Nonce, deployTx.CodeHash)
+
+	callTx := &types.CallContractTx{
+		Sender:     deployTx.Sender,
+		Nonce:      1,
+		ContractID: contractID,
+		Entrypoint: "run",
+		Calldata:   []byte{},
+		GasLimit:   1_000_000,
+	}
+	callResult, err := vmInst.Execute(callTx, st, 2, 1000, 0)
+	require.NoError(t, err)
+	require.False(t, callResult.Reverted)
+
+	require.True(t, len(callResult.ReturnData) == 0,
+		"ReturnData should be nil or empty when no data is written to offset 2048")
 }

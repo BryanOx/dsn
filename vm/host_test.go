@@ -2,12 +2,14 @@ package vm
 
 import (
 	"context"
+	"crypto/sha256"
 	"testing"
 
 	"github.com/BryanOx/dsn/state"
 	"github.com/BryanOx/dsn/types"
 	"github.com/stretchr/testify/require"
 	"github.com/tetratelabs/wazero"
+	"golang.org/x/crypto/sha3"
 )
 
 // WASM module that imports host functions from "env" and exports test entry points.
@@ -365,4 +367,218 @@ func TestOOGImmediateAbort(t *testing.T) {
 
 	// Verify remaining gas is correct
 	require.Equal(t, uint64(5), meter.Remaining())
+}
+
+// sha256Wasm returns a WASM module that calls env.sha256(ptr, len, out_ptr).
+// The module function "run" calls sha256(0, 32, 64): hashes 32 bytes at offset 0, writes result to offset 64.
+func sha256Wasm() []byte {
+	wb := newWasmBuilder()
+	typeIdx := wb.addFuncType([]byte{0x7f, 0x7f, 0x7f}, nil) // (i32, i32, i32) -> ()
+	voidTypeIdx := wb.addFuncType(nil, nil)                   // () -> ()
+	wb.addFuncImport("env", "sha256", typeIdx)
+	wb.addMemory(1)
+	moduleFuncIdx := wb.addFunc(voidTypeIdx, []byte{
+		0x41, 0x00,       // i32.const 0 (ptr)
+		0x41, 0x20,       // i32.const 32 (len)
+		0x41, 0xC0, 0x00, // i32.const 64 (out_ptr) — 64 requires 2-byte signed LEB128
+		0x10, 0x00,       // call sha256 (import func 0)
+	})
+	wb.addExport("run", 0x00, moduleFuncIdx)
+	return wb.build()
+}
+
+// keccak256Wasm returns a WASM module that calls env.keccak256(ptr, len, out_ptr).
+func keccak256Wasm() []byte {
+	wb := newWasmBuilder()
+	typeIdx := wb.addFuncType([]byte{0x7f, 0x7f, 0x7f}, nil) // (i32, i32, i32) -> ()
+	voidTypeIdx := wb.addFuncType(nil, nil)                   // () -> ()
+	wb.addFuncImport("env", "keccak256", typeIdx)
+	wb.addMemory(1)
+	moduleFuncIdx := wb.addFunc(voidTypeIdx, []byte{
+		0x41, 0x00,       // i32.const 0 (ptr)
+		0x41, 0x20,       // i32.const 32 (len)
+		0x41, 0xC0, 0x00, // i32.const 64 (out_ptr) — 64 requires 2-byte signed LEB128
+		0x10, 0x00,       // call keccak256 (import func 0)
+	})
+	wb.addExport("run", 0x00, moduleFuncIdx)
+	return wb.build()
+}
+
+// getBalanceWasm returns a WASM module that calls env.get_balance(addr_ptr, out_ptr).
+// get_balance reads 20-byte address from addr_ptr and writes 16-byte balance to out_ptr.
+func getBalanceWasm() []byte {
+	wb := newWasmBuilder()
+	typeIdx := wb.addFuncType([]byte{0x7f, 0x7f}, nil) // (i32, i32) -> void
+	voidTypeIdx := wb.addFuncType(nil, nil)             // () -> ()
+	wb.addFuncImport("env", "get_balance", typeIdx)
+	wb.addMemory(1)
+	moduleFuncIdx := wb.addFunc(voidTypeIdx, []byte{
+		0x41, 0x00, // i32.const 0 (addr_ptr)
+		0x41, 0x14, // i32.const 20 (out_ptr)
+		0x10, 0x00, // call get_balance (import func 0)
+	})
+	wb.addExport("run", 0x00, moduleFuncIdx)
+	return wb.build()
+}
+
+// PR1-3.1 RED: TestHostFunctionSha256 verifies:
+// - WASM module calling env.sha256(ptr, len, out_ptr) gets correct SHA-256 hash
+// - Gas deducted: GasNondeterministic (100)
+func TestHostFunctionSha256(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := NewRuntime(ctx)
+	require.NoError(t, err)
+	defer runtime.Close(ctx)
+
+	inputData := make([]byte, 32)
+	for i := range inputData {
+		inputData[i] = byte(i)
+	}
+	expectedHash := sha256.Sum256(inputData)
+
+	st := state.NewInMemoryState(&types.SHA256Hasher{})
+	meter := NewGasMeter(1_000_000)
+	contractID := types.Hash{}
+	env := NewHostEnv(meter, st, types.Address{}, contractID, 0, 0, 0)
+
+	hostModule, err := BuildHostModule(ctx, runtime, env)
+	require.NoError(t, err)
+	defer hostModule.Close(ctx)
+
+	compiled, err := CompileModule(ctx, runtime, sha256Wasm())
+	require.NoError(t, err)
+	defer compiled.Close(ctx)
+
+	module, err := runtime.InstantiateModule(ctx, compiled, wazero.NewModuleConfig())
+	require.NoError(t, err)
+	defer module.Close(ctx)
+
+	mem := module.Memory()
+	require.True(t, mem.Write(0, inputData), "failed to write input data")
+
+	results, callErr := module.ExportedFunction("run").Call(ctx)
+	require.NoError(t, callErr)
+	require.Len(t, results, 0)
+
+	hashBytes, ok := mem.Read(64, 32)
+	require.True(t, ok, "failed to read hash from memory")
+	require.Equal(t, expectedHash[:], hashBytes, "SHA-256 hash mismatch")
+
+	require.Equal(t, GasNondeterministic, meter.Used,
+		"sha256 should deduct GasNondeterministic (100) gas")
+}
+
+// PR1-3.2 RED: TestHostFunctionKeccak256 verifies:
+// - WASM module calling env.keccak256(ptr, len, out_ptr) gets correct Keccak-256 hash
+// - Gas deducted: GasNondeterministic (100)
+func TestHostFunctionKeccak256(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := NewRuntime(ctx)
+	require.NoError(t, err)
+	defer runtime.Close(ctx)
+
+	inputData := make([]byte, 32)
+	for i := range inputData {
+		inputData[i] = byte(i)
+	}
+	h := sha3.NewLegacyKeccak256()
+	h.Write(inputData)
+	var expectedHash [32]byte
+	copy(expectedHash[:], h.Sum(nil))
+
+	st := state.NewInMemoryState(&types.SHA256Hasher{})
+	meter := NewGasMeter(1_000_000)
+	contractID := types.Hash{}
+	env := NewHostEnv(meter, st, types.Address{}, contractID, 0, 0, 0)
+
+	hostModule, err := BuildHostModule(ctx, runtime, env)
+	require.NoError(t, err)
+	defer hostModule.Close(ctx)
+
+	compiled, err := CompileModule(ctx, runtime, keccak256Wasm())
+	require.NoError(t, err)
+	defer compiled.Close(ctx)
+
+	module, err := runtime.InstantiateModule(ctx, compiled, wazero.NewModuleConfig())
+	require.NoError(t, err)
+	defer module.Close(ctx)
+
+	mem := module.Memory()
+	require.True(t, mem.Write(0, inputData), "failed to write input data")
+
+	results, callErr := module.ExportedFunction("run").Call(ctx)
+	require.NoError(t, callErr)
+	require.Len(t, results, 0)
+
+	hashBytes, ok := mem.Read(64, 32)
+	require.True(t, ok, "failed to read hash from memory")
+	require.Equal(t, expectedHash[:], hashBytes, "Keccak-256 hash mismatch")
+
+	require.Equal(t, GasNondeterministic, meter.Used,
+		"keccak256 should deduct GasNondeterministic (100) gas")
+}
+
+// PR1-3.3 RED: TestHostFunctionGetBalance verifies:
+// - WASM module calling env.get_balance(addr_ptr, out_ptr) gets correct balance
+// - Pre-funded address with 1000 DSN
+// - 16-byte (128-bit) balance written as two uint64s (hi, lo) big-endian
+// - Gas deducted: GasReadStorage (20)
+func TestHostFunctionGetBalance(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := NewRuntime(ctx)
+	require.NoError(t, err)
+	defer runtime.Close(ctx)
+
+	st := state.NewInMemoryState(&types.SHA256Hasher{})
+	meter := NewGasMeter(1_000_000)
+
+	// Create and fund an account
+	addr := types.Address{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}
+	acc := state.NewAccount(addr, [32]byte{})
+	require.NoError(t, acc.AddBalance(types.NewAmount(1000)))
+	require.NoError(t, st.SetAccount(addr, acc))
+
+	contractID := types.Hash{}
+	env := NewHostEnv(meter, st, types.Address{}, contractID, 0, 0, 0)
+
+	hostModule, err := BuildHostModule(ctx, runtime, env)
+	require.NoError(t, err)
+	defer hostModule.Close(ctx)
+
+	compiled, err := CompileModule(ctx, runtime, getBalanceWasm())
+	require.NoError(t, err)
+	defer compiled.Close(ctx)
+
+	module, err := runtime.InstantiateModule(ctx, compiled, wazero.NewModuleConfig())
+	require.NoError(t, err)
+	defer module.Close(ctx)
+
+	mem := module.Memory()
+	// Write address at offset 0
+	require.True(t, mem.Write(0, addr[:]), "failed to write address")
+
+	results, callErr := module.ExportedFunction("run").Call(ctx)
+	require.NoError(t, callErr)
+	require.Len(t, results, 0)
+
+	// Read 16 bytes at offset 20: hi (8 bytes) + lo (8 bytes) big-endian
+	balanceBytes, ok := mem.Read(20, 16)
+	require.True(t, ok, "failed to read balance from memory")
+
+	hi := uint64(balanceBytes[0])<<56 | uint64(balanceBytes[1])<<48 |
+		uint64(balanceBytes[2])<<40 | uint64(balanceBytes[3])<<32 |
+		uint64(balanceBytes[4])<<24 | uint64(balanceBytes[5])<<16 |
+		uint64(balanceBytes[6])<<8 | uint64(balanceBytes[7])
+	lo := uint64(balanceBytes[8])<<56 | uint64(balanceBytes[9])<<48 |
+		uint64(balanceBytes[10])<<40 | uint64(balanceBytes[11])<<32 |
+		uint64(balanceBytes[12])<<24 | uint64(balanceBytes[13])<<16 |
+		uint64(balanceBytes[14])<<8 | uint64(balanceBytes[15])
+
+	// 1000 in hi:lo = hi=0, lo=1000
+	require.Equal(t, uint64(0), hi, "balance hi should be 0 for 1000 DSN")
+	require.Equal(t, uint64(1000), lo, "balance lo should be 1000 for 1000 DSN")
+
+	// Verify gas deducted: GasReadStorage (20)
+	require.Equal(t, GasReadStorage, meter.Used,
+		"get_balance should deduct GasReadStorage (20) gas")
 }

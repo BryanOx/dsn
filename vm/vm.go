@@ -262,6 +262,18 @@ func (vm *VM) executeCall(ctx context.Context, tx *types.CallContractTx, st stat
 		return nil, fmt.Errorf("%w: function '%s' not found", ErrHostFunction, tx.Entrypoint)
 	}
 
+	// Instruction-level gas metering: pre-charge based on function body instruction count
+	if body := findEntrypointBody(code, tx.Entrypoint); body != nil {
+		instrCount := countInstructions(body)
+		if err := meter.Deduct(instrCount * GasBaseOp); err != nil {
+			return &ExecutionResult{
+				GasUsed:  meter.Used,
+				Reverted: true,
+				GasLimit: tx.GasLimit,
+			}, nil
+		}
+	}
+
 	// Prepare call parameters - pass calldata as memory
 	mem := module.Memory()
 	var callParams []uint64
@@ -298,6 +310,15 @@ func (vm *VM) executeCall(ctx context.Context, tx *types.CallContractTx, st stat
 
 	// Check for execution error
 	if err != nil {
+		// Context cancellation (timeout) is treated as a gas-exhaustion revert,
+		// not a hard error. The state is rolled back by the caller.
+		if ctx.Err() != nil {
+			return &ExecutionResult{
+				GasUsed:  meter.Used,
+				Reverted: true,
+				GasLimit: tx.GasLimit,
+			}, nil
+		}
 		// Check if it was a gas limit error
 		if meter.Used >= tx.GasLimit {
 			return &ExecutionResult{
@@ -318,8 +339,18 @@ func (vm *VM) executeCall(ctx context.Context, tx *types.CallContractTx, st stat
 			GasLimit: tx.GasLimit,
 		}, nil
 	}
-	// If return data was written to memory, read it
-	// For now, we return empty - contracts can write to known offsets
+	// If return data was written to memory at ReturnDataMemOffset, read it.
+	// Format: 2-byte big-endian length prefix, followed by that many data bytes.
+	mem = module.Memory()
+	if mem != nil && mem.Size() >= ReturnDataMemOffset+2 {
+		lenBytes, ok := mem.Read(ReturnDataMemOffset, 2)
+		if ok {
+			dataLen := uint16(lenBytes[0])<<8 | uint16(lenBytes[1])
+			if dataLen > 0 && mem.Size() >= ReturnDataMemOffset+2+uint32(dataLen) {
+				returnData, _ = mem.Read(ReturnDataMemOffset+2, uint32(dataLen))
+			}
+		}
+	}
 
 	// Collect events from the event log
 	events := hostEnv.eventLog.Events()
@@ -342,6 +373,9 @@ var allowedHostFunctions = map[string]bool{
 	"read_block_height":    true,
 	"read_block_timestamp": true,
 	"transfer_token":       true,
+	"sha256":               true,
+	"keccak256":            true,
+	"get_balance":          true,
 }
 
 // validateImports checks that the compiled module only imports from allowed modules.
@@ -396,6 +430,11 @@ func SHA256Sum(data []byte) [32]byte {
 // before calling contract entrypoints. This is used by the SDK to locate
 // the contractID for storage operations.
 const ContractIDMemOffset uint32 = 1024
+
+// ReturnDataMemOffset is the fixed memory offset from which return data is read
+// after entrypoint execution. The first 2 bytes are a big-endian uint16 length prefix,
+// followed by that many bytes of return data.
+const ReturnDataMemOffset uint32 = 2048
 
 // Close releases the VM's resources.
 func (vm *VM) Close() error {

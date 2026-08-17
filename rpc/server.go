@@ -105,16 +105,7 @@ func (s *Server) SubscriptionHandler() *ws.SubscriptionHandler {
 
 // ServeHTTP handles HTTP JSON-RPC requests.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Set CORS headers
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method == http.MethodOptions {
-		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
 
 	if r.Method != http.MethodPost {
 		writeError(w, -32600, "only POST allowed", nil)
@@ -193,6 +184,15 @@ func (s *Server) handleRequest(ctx context.Context, req *RPCRequest) *RPCRespons
 	// Supply methods
 	case "dsn_getSupply":
 		return s.handleRPCGetSupply(ctx, req)
+	// Chain info methods
+	case "dsn_blockNumber":
+		return s.handleRPCBlockNumber(ctx, req)
+	case "dsn_chainId":
+		return s.handleRPCChainId(ctx, req)
+	case "dsn_syncing":
+		return s.handleRPCSyncing(ctx, req)
+	case "dsn_getCode":
+		return s.handleRPCGetCode(ctx, req)
 	// Legacy methods (backward compatibility)
 	case "dsn_getStateRoot":
 		return s.handleLegacyGetStateRoot(ctx, req)
@@ -419,6 +419,47 @@ func (s *Server) handleRPCGetSupply(ctx context.Context, req *RPCRequest) *RPCRe
 		return errorResponse(req.ID, -32000, err.Error())
 	}
 
+	return successResponse(req.ID, result)
+}
+
+// dsn_blockNumber handler
+func (s *Server) handleRPCBlockNumber(ctx context.Context, req *RPCRequest) *RPCResponse {
+	result, err := s.handler.handleBlockNumber(ctx)
+	if err != nil {
+		return errorResponse(req.ID, -32000, err.Error())
+	}
+	return successResponse(req.ID, result)
+}
+
+// dsn_chainId handler
+func (s *Server) handleRPCChainId(ctx context.Context, req *RPCRequest) *RPCResponse {
+	result, err := s.handler.handleChainId(ctx)
+	if err != nil {
+		return errorResponse(req.ID, -32000, err.Error())
+	}
+	return successResponse(req.ID, result)
+}
+
+// dsn_syncing handler
+func (s *Server) handleRPCSyncing(ctx context.Context, req *RPCRequest) *RPCResponse {
+	result, err := s.handler.handleSyncing(ctx)
+	if err != nil {
+		return errorResponse(req.ID, -32000, err.Error())
+	}
+	return successResponse(req.ID, result)
+}
+
+// dsn_getCode handler
+func (s *Server) handleRPCGetCode(ctx context.Context, req *RPCRequest) *RPCResponse {
+	reqParams, err := parseGetCodeRequest(req.Params)
+	if err != nil {
+		return errorResponse(req.ID, -32602, "invalid params: "+err.Error())
+	}
+
+	result, err := s.handler.handleGetCode(ctx, reqParams)
+	if err != nil {
+		return errorResponse(req.ID, -32000, err.Error())
+	}
 	return successResponse(req.ID, result)
 }
 

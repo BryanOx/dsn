@@ -193,5 +193,6 @@ func convertToNodeConfig(cfg *config.Config) node.Config {
 		TrustedCheckpointHeight: cfg.Chain.TrustedCheckpointHeight,
 		TrustedCheckpointHash:   cfg.Chain.TrustedCheckpointHash,
 		BootstrapPeers:          cfg.P2P.BootstrapPeers,
+		CORSOrigins:             cfg.RPC.CORSOrigins,
 	}
 }

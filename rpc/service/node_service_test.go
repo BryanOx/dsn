@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/hex"
 	"testing"
 
 	"github.com/BryanOx/dsn/node"
@@ -77,5 +78,166 @@ func TestGetSupply(t *testing.T) {
 	}
 	if res.Circulating != "9900000" {
 		t.Errorf("Circulating = %s, want 9900000", res.Circulating)
+	}
+}
+
+func TestBlockNumberReturnsHex(t *testing.T) {
+	cfg := node.DefaultConfig()
+	n, err := node.New(cfg)
+	if err != nil {
+		t.Fatalf("node.New: %v", err)
+	}
+	defer n.Close()
+
+	svc := &nodeService{node: n}
+	ctx := context.Background()
+
+	result, err := svc.BlockNumber(ctx)
+	if err != nil {
+		t.Fatalf("BlockNumber: %v", err)
+	}
+
+	// Fresh node starts at height 0 → "0x0"
+	if result != "0x0" {
+		t.Errorf("BlockNumber = %s, want 0x0", result)
+	}
+
+	// Must be hex-encoded (starts with 0x)
+	if len(result) < 3 || result[:2] != "0x" {
+		t.Errorf("BlockNumber = %s, want 0x-prefixed hex", result)
+	}
+}
+
+func TestChainIdReturnsHex(t *testing.T) {
+	cfg := node.DefaultConfig()
+	cfg.ChainID = 7777
+	n, err := node.New(cfg)
+	if err != nil {
+		t.Fatalf("node.New: %v", err)
+	}
+	defer n.Close()
+
+	svc := &nodeService{node: n}
+	ctx := context.Background()
+
+	result, err := svc.ChainId(ctx)
+	if err != nil {
+		t.Fatalf("ChainId: %v", err)
+	}
+
+	// 7777 in hex is 1e61
+	if result != "0x1e61" {
+		t.Errorf("ChainId = %s, want 0x1e61", result)
+	}
+}
+
+func TestSyncingSynced(t *testing.T) {
+	n, err := node.New(node.DefaultConfig())
+	if err != nil {
+		t.Fatalf("node.New: %v", err)
+	}
+	defer n.Close()
+
+	svc := &nodeService{node: n}
+	ctx := context.Background()
+
+	result, err := svc.Syncing(ctx)
+	if err != nil {
+		t.Fatalf("Syncing: %v", err)
+	}
+
+	// Fresh node at height 0 is synced (genesis = synced)
+	if result != false {
+		t.Errorf("Syncing = %v, want false (synced)", result)
+	}
+}
+
+func TestSyncingSyncing(t *testing.T) {
+	// DSN is a small chain — Syncing always returns false.
+	// This test verifies the return type is consistent.
+	n, err := node.New(node.DefaultConfig())
+	if err != nil {
+		t.Fatalf("node.New: %v", err)
+	}
+	defer n.Close()
+
+	svc := &nodeService{node: n}
+	ctx := context.Background()
+
+	result, err := svc.Syncing(ctx)
+	if err != nil {
+		t.Fatalf("Syncing: %v", err)
+	}
+
+	// DSN is always synced (small chain)
+	if result != false {
+		t.Errorf("Syncing = %v, want false (small chain always synced)", result)
+	}
+}
+
+func TestGetCodeReturnsBytecode(t *testing.T) {
+	n, err := node.New(node.DefaultConfig())
+	if err != nil {
+		t.Fatalf("node.New: %v", err)
+	}
+	defer n.Close()
+
+	svc := &nodeService{node: n}
+	s := n.State()
+	ctx := context.Background()
+
+	// Create an address for testing (20-byte hex)
+	addrBytes := make([]byte, 20)
+	addrBytes[0] = 0x01
+	addrHex := "0x" + hex.EncodeToString(addrBytes)
+
+	// Test EOA (no code deployed) — should return "0x"
+	result, err := svc.GetCode(ctx, addrHex)
+	if err != nil {
+		t.Fatalf("GetCode EOA: %v", err)
+	}
+	if result != "0x" {
+		t.Errorf("GetCode EOA = %s, want 0x", result)
+	}
+
+	// Deploy code for the address
+	var contractID types.Hash
+	copy(contractID[:], addrBytes)
+	testCode := []byte{0x00, 0x61, 0x00, 0x10, 0x01} // mock WASM bytecode
+	if err := s.SetCode(contractID, testCode); err != nil {
+		t.Fatalf("SetCode: %v", err)
+	}
+
+	// Test contract — should return hex-encoded bytecode
+	result, err = svc.GetCode(ctx, addrHex)
+	if err != nil {
+		t.Fatalf("GetCode contract: %v", err)
+	}
+	expected := "0x" + hex.EncodeToString(testCode)
+	if result != expected {
+		t.Errorf("GetCode contract = %s, want %s", result, expected)
+	}
+}
+
+func TestGetCodeInvalidAddress(t *testing.T) {
+	n, err := node.New(node.DefaultConfig())
+	if err != nil {
+		t.Fatalf("node.New: %v", err)
+	}
+	defer n.Close()
+
+	svc := &nodeService{node: n}
+	ctx := context.Background()
+
+	// Invalid hex address
+	_, err = svc.GetCode(ctx, "not-an-address")
+	if err == nil {
+		t.Error("GetCode with invalid address should return error")
+	}
+
+	// Wrong length
+	_, err = svc.GetCode(ctx, "0x01")
+	if err == nil {
+		t.Error("GetCode with short address should return error")
 	}
 }

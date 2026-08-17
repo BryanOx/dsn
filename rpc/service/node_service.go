@@ -552,3 +552,47 @@ func (s *nodeService) GetTransactionReceipt(ctx context.Context, txHash string) 
 	// For now, return not found - full implementation requires block indexer
 	return nil, ErrNotFound
 }
+
+// BlockNumber returns the current chain height as a hex string.
+func (s *nodeService) BlockNumber(ctx context.Context) (string, error) {
+	height := s.node.CurrentHeight()
+	return fmt.Sprintf("0x%x", height), nil
+}
+
+// ChainId returns the chain ID as a hex string.
+func (s *nodeService) ChainId(ctx context.Context) (string, error) {
+	return fmt.Sprintf("0x%x", s.node.Config().ChainID), nil
+}
+
+// Syncing returns false if the node is synced, or an object with
+// currentBlock and highestBlock if syncing.
+// DSN is a small chain — for now, the node is always considered synced.
+func (s *nodeService) Syncing(ctx context.Context) (interface{}, error) {
+	height := s.node.CurrentHeight()
+	if height == 0 {
+		return false, nil // genesis = synced
+	}
+	// For now, return false (fully synced) since DSN is a small chain.
+	// In production, compare with peer heights.
+	return false, nil
+}
+
+// GetCode returns the bytecode at the given address as a hex string.
+// Returns "0x" for EOAs or addresses with no deployed code.
+func (s *nodeService) GetCode(ctx context.Context, address string) (string, error) {
+	// Parse hex address (0x-prefixed or raw)
+	hexAddr := strings.TrimPrefix(address, "0x")
+	addrBytes, err := hex.DecodeString(hexAddr)
+	if err != nil || len(addrBytes) != 20 {
+		return "", fmt.Errorf("%w: invalid address", ErrInvalidParams)
+	}
+
+	var contractID types.Hash
+	copy(contractID[:], addrBytes)
+
+	code, err := s.node.State().GetCode(contractID)
+	if err != nil || len(code) == 0 {
+		return "0x", nil // EOA or no code
+	}
+	return "0x" + hex.EncodeToString(code), nil
+}

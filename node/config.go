@@ -93,6 +93,10 @@ type Config struct {
 
 	// BlockTimeSec is the block time in seconds for economic calculations (default: 1).
 	BlockTimeSec uint64
+
+	// CORSOrigins is the list of allowed CORS origins for the RPC server.
+	// Empty means no CORS headers are sent (reject all cross-origin requests).
+	CORSOrigins []string
 }
 
 func DefaultConfig() Config {
@@ -123,6 +127,7 @@ func DefaultConfig() Config {
 		RPCApiKey:               "",          // no API key by default
 		RPCApiKeyHeader:         "X-API-Key", // default header name
 		BlockTimeSec:            1,           // 1 second block time by default
+		CORSOrigins:             []string{},  // no CORS origins by default
 	}
 }
 
@@ -216,6 +221,9 @@ func ConfigFromEnv() Config {
 	}
 	if v := os.Getenv("DSN_RPC_API_KEY_HEADER"); v != "" {
 		cfg.RPCApiKeyHeader = v
+	}
+	if v := os.Getenv("DSN_RPC_CORS_ORIGINS"); v != "" {
+		cfg.CORSOrigins = strings.Split(v, ",")
 	}
 
 	return cfg

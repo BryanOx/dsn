@@ -171,12 +171,37 @@ func (idx *Indexer) indexBlock(ib *IndexableBlock) error {
 		}
 
 		for _, tx := range ib.Txns {
-			receipt := TransactionReceipt{
-				Hash:        tx.IntentID,
-				Data:        tx,
-				Status:      true,
-				GasUsed:     tx.GasLimit,
-				BlockNumber: ib.Number,
+			var receipt TransactionReceipt
+			if ib.TxResults != nil {
+				if result, ok := ib.TxResults[tx.IntentID]; ok {
+					receipt = TransactionReceipt{
+						Hash:            tx.IntentID,
+						Data:            tx,
+						Status:          result.Success,
+						GasUsed:         result.GasUsed,
+						BlockNumber:     ib.Number,
+						ContractAddress: result.ContractAddress,
+						ReturnData:      string(result.ReturnData),
+					}
+				} else {
+					// Tx not found in results map — use backward-compatible defaults
+					receipt = TransactionReceipt{
+						Hash:        tx.IntentID,
+						Data:        tx,
+						Status:      true,
+						GasUsed:     tx.GasLimit,
+						BlockNumber: ib.Number,
+					}
+				}
+			} else {
+				// No TxResults map — backward-compatible defaults
+				receipt = TransactionReceipt{
+					Hash:        tx.IntentID,
+					Data:        tx,
+					Status:      true,
+					GasUsed:     tx.GasLimit,
+					BlockNumber: ib.Number,
+				}
 			}
 
 			txSerialized, err := json.Marshal(receipt)

@@ -7,6 +7,14 @@ import (
 	"github.com/BryanOx/dsn/types"
 )
 
+// TxResult holds the real execution result for a single transaction.
+type TxResult struct {
+	GasUsed         uint64
+	Success         bool
+	ContractAddress string
+	ReturnData      []byte
+}
+
 // IndexableBlock represents a block ready for indexing.
 type IndexableBlock struct {
 	Number    uint64
@@ -14,6 +22,7 @@ type IndexableBlock struct {
 	Header    *types.BlockHeader
 	Txns      []*types.Transaction
 	Events    []*types.Event
+	TxResults map[types.Hash]*TxResult // keyed by tx IntentID; nil falls back to defaults
 	StateRoot types.Hash
 }
 

@@ -9,16 +9,18 @@ import (
 
 // TransactionReceipt represents transaction data stored in the indexer.
 type TransactionReceipt struct {
-	Hash        types.Hash         `json:"hash"`
-	Data        *types.Transaction `json:"data"`
-	Status      bool               `json:"status"`
-	GasUsed     uint64             `json:"gas_used"`
-	BlockNumber uint64             `json:"block_number"`
-	Events      []*types.Event     `json:"events"`
+	Hash            types.Hash         `json:"hash"`
+	Data            *types.Transaction `json:"data"`
+	Status          bool               `json:"status"`
+	GasUsed         uint64             `json:"gas_used"`
+	BlockNumber     uint64             `json:"block_number"`
+	Events          []*types.Event     `json:"events"`
+	ContractAddress string             `json:"contract_address,omitempty"`
+	ReturnData      string             `json:"return_data,omitempty"`
 }
 
-// indexTransaction stores a transaction and its receipt.
-func indexTransaction(db *bbolt.DB, tx *types.Transaction, blockNumber uint64, events []*types.Event) error {
+// indexTransaction stores a transaction and its receipt with real execution results.
+func indexTransaction(db *bbolt.DB, tx *types.Transaction, blockNumber uint64, events []*types.Event, gasUsed uint64, success bool, contractAddress string, returnData []byte) error {
 	return db.Update(func(boltTx *bbolt.Tx) error {
 		transactions, err := boltTx.CreateBucketIfNotExists(transactionsBucket)
 		if err != nil {
@@ -26,12 +28,14 @@ func indexTransaction(db *bbolt.DB, tx *types.Transaction, blockNumber uint64, e
 		}
 
 		receipt := TransactionReceipt{
-			Hash:        tx.IntentID,
-			Data:        tx,
-			Status:      true,        // default to success
-			GasUsed:     tx.GasLimit, // Use GasLimit as placeholder
-			BlockNumber: blockNumber,
-			Events:      events,
+			Hash:            tx.IntentID,
+			Data:            tx,
+			Status:          success,
+			GasUsed:         gasUsed,
+			BlockNumber:     blockNumber,
+			Events:          events,
+			ContractAddress: contractAddress,
+			ReturnData:      string(returnData),
 		}
 
 		serialized, err := json.Marshal(receipt)

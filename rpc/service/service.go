@@ -55,6 +55,20 @@ type NodeService interface {
 
 	// GetPendingTxs returns pending transactions from the mempool.
 	GetPendingTxs(ctx context.Context) ([]TransactionResult, error)
+
+	// BlockNumber returns the current chain height as a hex string.
+	BlockNumber(ctx context.Context) (string, error)
+
+	// ChainId returns the chain ID as a hex string.
+	ChainId(ctx context.Context) (string, error)
+
+	// Syncing returns false if the node is synced, or an object with
+	// currentBlock and highestBlock if syncing.
+	Syncing(ctx context.Context) (interface{}, error)
+
+	// GetCode returns the bytecode at the given address as a hex string.
+	// Returns "0x" for EOAs or addresses with no code.
+	GetCode(ctx context.Context, address string) (string, error)
 }
 
 // CallRequest represents a contract call request.

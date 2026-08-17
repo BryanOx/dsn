@@ -23,6 +23,7 @@ type RouterConfig struct {
 	TLSEnabled   bool
 	ApiKey       string
 	ApiKeyHeader string
+	CORSOrigins  []string
 }
 
 // DefaultRouterConfig returns a default router config.
@@ -46,8 +47,8 @@ func NewRouter(svc service.NodeService, cfg ...RouterConfig) *Router {
 		config = cfg[0]
 	}
 
-	// Create WebSocket hub
-	hub := ws.NewHub()
+	// Create WebSocket hub with origin restrictions
+	hub := ws.NewHub(config.CORSOrigins)
 	go hub.Run()
 
 	// Create subscription handler
@@ -64,13 +65,14 @@ func NewRouter(svc service.NodeService, cfg ...RouterConfig) *Router {
 	}
 
 	// Build middleware chain (outermost to innermost):
-	// 1. Security headers (applied first)
-	// 2. Rate limiting (100 req/s, burst 200)
-	// 3. API key authentication
-	// 4. Request body size limit (1 MiB)
-	// 5. Request ID generation
-	// 6. Metrics collection
-	// 7. JSON-RPC handling
+	// 1. CORS (applied first — handles OPTIONS preflight without auth)
+	// 2. Security headers
+	// 3. Rate limiting (100 req/s, burst 200)
+	// 4. API key authentication
+	// 5. Request body size limit (1 MiB)
+	// 6. Request ID generation
+	// 7. Metrics collection
+	// 8. JSON-RPC handling
 
 	// Start with the JSON-RPC handler as http.Handler
 	var rpcHandler http.Handler = handleJSONRPC(svc)
@@ -93,8 +95,19 @@ func NewRouter(svc service.NodeService, cfg ...RouterConfig) *Router {
 	// Add rate limiting
 	rpcHandler = rateLimiter.Middleware(rpcHandler)
 
-	// Add security headers (outermost)
+	// Add security headers
 	rpcHandler = middleware.SecurityHeadersMiddleware(config.TLSEnabled)(rpcHandler)
+
+	// Add CORS middleware (outermost — handles OPTIONS preflight before auth)
+	if len(config.CORSOrigins) > 0 {
+		corsConfig := middleware.CORSConfig{
+			AllowedOrigins: config.CORSOrigins,
+			AllowedMethods: []string{"POST", "OPTIONS"},
+			AllowedHeaders: []string{"Content-Type"},
+			MaxAge:         86400,
+		}
+		rpcHandler = middleware.CORS(corsConfig)(rpcHandler)
+	}
 
 	router.Handle("/", rpcHandler).Methods(http.MethodPost)
 

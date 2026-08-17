@@ -83,6 +83,10 @@ type GetTransactionReceiptRequest struct {
 	TxHash string `json:"txHash"`
 }
 
+type GetCodeRequest struct {
+	Address string `json:"address"`
+}
+
 // Handler methods that delegate to NodeService
 
 // handleGetBlock implements dsn_getBlock.
@@ -209,6 +213,29 @@ func (h *Handler) handleGetStateRoot(ctx context.Context) (*service.StateRootRes
 // handleGetPendingTxs implements dsn_getPendingTxs.
 func (h *Handler) handleGetPendingTxs(ctx context.Context) ([]service.TransactionResult, error) {
 	return h.service.GetPendingTxs(ctx)
+}
+
+// handleBlockNumber implements dsn_blockNumber.
+func (h *Handler) handleBlockNumber(ctx context.Context) (string, error) {
+	return h.service.BlockNumber(ctx)
+}
+
+// handleChainId implements dsn_chainId.
+func (h *Handler) handleChainId(ctx context.Context) (string, error) {
+	return h.service.ChainId(ctx)
+}
+
+// handleSyncing implements dsn_syncing.
+func (h *Handler) handleSyncing(ctx context.Context) (interface{}, error) {
+	return h.service.Syncing(ctx)
+}
+
+// handleGetCode implements dsn_getCode.
+func (h *Handler) handleGetCode(ctx context.Context, req *GetCodeRequest) (string, error) {
+	if req.Address == "" {
+		return "", fmt.Errorf("%w: address is required", service.ErrInvalidParams)
+	}
+	return h.service.GetCode(ctx, req.Address)
 }
 
 // Helper to parse request parameters
@@ -356,6 +383,23 @@ func parseGetTransactionReceiptRequest(params json.RawMessage) (*GetTransactionR
 		if len(args) > 0 {
 			if txHash, ok := args[0].(string); ok {
 				req.TxHash = txHash
+			}
+		}
+	}
+	return &req, nil
+}
+
+func parseGetCodeRequest(params json.RawMessage) (*GetCodeRequest, error) {
+	var req GetCodeRequest
+	if err := json.Unmarshal(params, &req); err != nil {
+		// Try positional params
+		var args []interface{}
+		if err := json.Unmarshal(params, &args); err != nil {
+			return nil, err
+		}
+		if len(args) > 0 {
+			if addr, ok := args[0].(string); ok {
+				req.Address = addr
 			}
 		}
 	}

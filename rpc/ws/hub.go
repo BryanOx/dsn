@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,6 +32,13 @@ type Hub struct {
 
 	// Mutex for thread-safe access
 	mu sync.RWMutex
+
+	// allowedOrigins is the list of allowed WebSocket origins.
+	// Empty means all origins are allowed (backward compatible).
+	allowedOrigins []string
+
+	// done signals the Run loop to exit
+	done chan struct{}
 }
 
 // Message represents a WebSocket message.
@@ -73,30 +81,60 @@ const (
 )
 
 // Upgrader configuration
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		// Allow all origins in development
-		return true
-	},
+var defaultUpgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 }
 
 // NewHub creates a new Hub.
-func NewHub() *Hub {
-	return &Hub{
+// If allowedOrigins is non-empty, only those origins may upgrade to WebSocket.
+// An empty allowedOrigins allows all origins (backward compatible).
+func NewHub(allowedOrigins ...[]string) *Hub {
+	var origins []string
+	if len(allowedOrigins) > 0 {
+		origins = allowedOrigins[0]
+	}
+	h := &Hub{
 		subscribers:     make(map[string]map[*Client]bool),
 		register:        make(chan *Client),
 		unregister:      make(chan *Client),
 		broadcast:       make(chan *Message, 256),
 		connectionLimit: make(chan struct{}, MaxConnections),
+		allowedOrigins:  origins,
+		done:            make(chan struct{}),
 	}
+	return h
+}
+
+// newUpgrader creates a websocket.Upgrader with origin checking
+// configured for the given hub's allowed origins.
+func newUpgrader(allowedOrigins []string) websocket.Upgrader {
+	u := defaultUpgrader
+	u.CheckOrigin = func(r *http.Request) bool {
+		// No restrictions configured — allow all origins (backward compatible)
+		if len(allowedOrigins) == 0 {
+			return true
+		}
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true // same-origin or non-browser clients
+		}
+		for _, allowed := range allowedOrigins {
+			if strings.EqualFold(origin, allowed) {
+				return true
+			}
+		}
+		return false
+	}
+	return u
 }
 
 // Run runs the hub's main loop.
 func (h *Hub) Run() {
 	for {
 		select {
+		case <-h.done:
+			return
 		case client := <-h.register:
 			h.registerClient(client)
 		case client := <-h.unregister:
@@ -104,6 +142,16 @@ func (h *Hub) Run() {
 		case message := <-h.broadcast:
 			h.broadcastMessage(message)
 		}
+	}
+}
+
+// Stop signals the hub's Run loop to exit.
+func (h *Hub) Stop() {
+	select {
+	case <-h.done:
+		// already closed
+	default:
+		close(h.done)
 	}
 }
 
@@ -276,6 +324,9 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
+
+	// Create per-hub upgrader with origin checking
+	upgrader := newUpgrader(h.allowedOrigins)
 
 	// Upgrade connection
 	conn, err := upgrader.Upgrade(w, r, nil)
